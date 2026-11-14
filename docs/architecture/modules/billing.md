@@ -119,6 +119,7 @@ Source: `apps/core/src/modules/billing/`
 - `receipts.ts`
   - `advanceOf(exec: Db | Tx, patientId: string): Promise<number>`
   - `allocateReceipt(db: Db, actor: Actor, input: AllocateReceiptInput, now: Date = new Date()): Promise<AllocateReceiptResult>`
+  - `invoiceSettlements(exec: Db | Tx, invoiceIds: readonly string[]): Promise<Map<string, Settlement>>`
   - `listDues(db: Db, actor: Actor, filters: { patientId?: string } = {}): Promise<DueRow[]>`
   - `markEnteredInError(db: Db, actor: Actor, input: { receiptId: string; reason: string }, now: Date = new Date()): Promise<MarkEnteredInErrorR…`
   - `patientBalance(db: Db, actor: Actor, patientId: string): Promise<PatientBalance>`

@@ -9,7 +9,7 @@ import { patientTimeline, getVisit } from "../../modules/opd/encounters";
 import { listVitals } from "../../modules/opd/vitals";
 import { careContextFor } from "../../modules/opd/care-context";
 import { registerOpdCareContextProvider } from "../../modules/opd/opd.module";
-import { PHI_ACCESS_RETAIN_DAYS, prunePhiAccessLog, recordPhiAccess } from "./audit";
+import { PHI_ACCESS_RETAIN_DAYS, prunePhiAccessLog, recordPhiAccess, recordPhiAccessMany } from "./audit";
 import type { Db } from "../db/client";
 
 /**
@@ -83,6 +83,16 @@ describe("phi access log (07a T2)", () => {
     } as unknown as Db;
     await expect(recordPhiAccess(exploding, {
       actor: clerk.actor, patientId: patient.id, surface: "patient.detail", context: "none",
+    })).resolves.toBeUndefined();
+  });
+
+  it("#1076: the list writer does not fail the read either", async () => {
+    const exploding = {
+      insert: () => { throw new Error("disk full"); },
+      select: () => { throw new Error("disk full"); },
+    } as unknown as Db;
+    await expect(recordPhiAccessMany(exploding, {
+      actor: clerk.actor, patientIds: [patient.id], surface: "patient.detail",
     })).resolves.toBeUndefined();
   });
 

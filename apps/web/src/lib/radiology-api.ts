@@ -27,6 +27,8 @@ export type WireWorklistRow = {
   formFRequired: boolean; restricted: boolean;
   /** 18-S RS3 — when the order arrived and when the patient was checked in (the desk's clocks). */
   createdAt: string; checkedInAt: string | null;
+  /** #1076 — the full list row: UHID (blank for a confidential patient without clearance), age, sex, the book's study name. Absent from older servers. */
+  uhid?: string; ageYears?: number | null; sex?: string; studyTypeName?: string;
 };
 
 export type WireStudyView = WireWorklistRow & {
@@ -351,6 +353,8 @@ export type WirePrepRow = {
   scheduledAt: string | null; checkedInAt: string | null; deviceCode: string | null;
   patientId: string; patientName: string; restricted: boolean;
   openPrep: string[]; openRoom: string[]; asked: string[];
+  /** #1076 — the full list row: UHID (blank for a confidential patient without clearance), age, sex, the book's study name. Absent from older servers. */
+  uhid?: string; ageYears?: number | null; sex?: string; studyTypeName?: string;
 };
 
 export type WireEgfr =

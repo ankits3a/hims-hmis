@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccess, recordPhiAccessMany } from "../../kernel/phi/audit";
 import { imagingReportDelivery, imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
 import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
@@ -11,6 +11,12 @@ import { isTreatingDoctor } from "./closed-loop";
 import { outsideStudyFor } from "./outside";
 import { mintStudyInstanceUid } from "./uid";
 import { IMAGES_READ, studyImageViews } from "./views"; // pass 2 N2 — the button follows the door's own string
+import { ageInYearsOn } from "./applicability";
+import { contrastAdministrationsFor } from "./contrast";
+import { contrastReactionsFor } from "./reactions";
+import { studyTypeNameLookup } from "./study-types";
+import type { ContrastAdministrationRow } from "./contrast";
+import type { ContrastReactionRow } from "./reactions";
 import type { ImageViewRow } from "./views";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -109,6 +115,14 @@ export type WorklistRow = {
   createdAt: Date;
   /** 18-S RS3 — when the patient was checked in (the desk's "here and not ready" clock). */
   checkedInAt: Date | null;
+  /**
+   * #1076 — the row names the person and the study, not just a name and a code. The UHID is blank for a
+   * confidential patient read without clearance (the room console's rule); age is whole years on `now`.
+   */
+  uhid: string;
+  ageYears: number | null;
+  sex: string;
+  studyTypeName: string;
 };
 
 /** The technologist's day and the radiologist's unread list, from one index (DD16). */
@@ -125,8 +139,9 @@ export type WorklistView = keyof typeof WORKLIST_VIEWS;
 export async function worklist(
   db: Db,
   actor: Actor,
-  opts: { view?: WorklistView; deviceResourceId?: string; limit?: number } = {},
+  opts: { view?: WorklistView; deviceResourceId?: string; limit?: number; now?: Date } = {},
 ): Promise<WorklistRow[]> {
+  const now = opts.now ?? new Date();
   if (!(await hasPermission(db, actor.id, WORKLIST_READ, "hospital"))) {
     throw new RadiologyError("forbidden", `${actor.id} does not hold ${WORKLIST_READ}`);
   }
@@ -151,6 +166,9 @@ export async function worklist(
       name: patients.name,
       alias: patients.alias,
       isConfidential: patients.isConfidential,
+      uhid: patients.uhid,
+      sex: patients.sex,
+      dob: patients.dob,
     })
     .from(imagingStudies)
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
@@ -197,14 +215,14 @@ export async function worklist(
    * because `phi_access_log.patient_id` carries no foreign key.)
    *
    * DD11 declared `imaging.worklist` a PHI surface precisely so this read is answerable, and the
-   * only shape that answers it is one row per distinct patient. `recordPhiAccess` never throws (its
-   * own header) and the table is pruned at `PHI_ACCESS_RETAIN_DAYS`, so the volume is bounded.
+   * only shape that answers it is one row per distinct patient. #1076 / ruling 0098: once per reader,
+   * patient and surface per 30 minutes, in one statement (`recordPhiAccessMany`), so a screen polling
+   * every 30 s does not bury the answer under identical rows.
    */
   const reason = `radiology worklist (${opts.view ?? "floor"}), ${String(visible.length)} rows`;
-  for (const patientId of new Set(visible.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  await recordPhiAccessMany(db, { actor, patientIds: visible.map((r) => r.patientId), surface: "imaging.worklist", reason, now });
 
+  const nameOf = await studyTypeNameLookup(db);
   return visible.map((r) => ({
     studyId: r.studyId, accessionNo: r.accessionNo, status: r.status, priority: r.priority,
     studyTypeCode: r.studyTypeCode, scheduledAt: r.scheduledAt,
@@ -214,6 +232,10 @@ export async function worklist(
     ),
     formFRequired: r.formFRequired, restricted: r.restricted,
     createdAt: r.createdAt, checkedInAt: r.checkedInAt,
+    uhid: r.isConfidential && !clearance.canSeeConfidential ? "" : r.uhid,
+    ageYears: r.dob === null ? null : ageInYearsOn(r.dob, now),
+    sex: r.sex,
+    studyTypeName: nameOf(r.studyTypeCode),
   }));
 }
 
@@ -256,8 +278,15 @@ export type StudyView = WorklistRow & {
   reports: { id: string; version: number; status: string; publishedAt: Date | null; machineDrafted: boolean }[];
 };
 
-/** One study, for the console. Same two rules; `imaging.study` is its own surface. */
-export async function studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null> {
+/**
+ * ═══ THE STUDY READER'S DOOR — one study, read by the department, logged every time ═══
+ *
+ * `radiology.worklist.read` (F45: that permission IS the departmental clearance, so it is also the rule
+ * a restricted study follows here), a person and not an agent, the study must exist, and one
+ * `imaging.study` row per read with the reason the caller names. `studyView` and the contrast register
+ * (#1076) share it, so a read of the register cannot drift from a read of the study.
+ */
+async function openStudy(db: Db, actor: Actor, studyId: string, reason: (accessionNo: string) => string) {
   if (!(await hasPermission(db, actor.id, WORKLIST_READ, "hospital"))) {
     throw new RadiologyError("forbidden", `${actor.id} does not hold ${WORKLIST_READ}`);
   }
@@ -266,6 +295,7 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     .select({
       study: imagingStudies, restricted: orderItems.restricted,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
+      uhid: patients.uhid, sex: patients.sex, dob: patients.dob,
     })
     .from(imagingStudies)
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
@@ -282,8 +312,31 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
 
   await recordPhiAccess(db, {
     actor, patientId: row.study.patientId, surface: "imaging.study",
-    encounterId: row.study.encounterNo, reason: `study ${row.study.accessionNo}`,
+    encounterId: row.study.encounterNo, reason: reason(row.study.accessionNo),
   });
+  return { row, clearance };
+}
+
+/**
+ * #1076 — the contrast register of one study (administrations, oldest first), read through the study
+ * reader: the same permission, the same access row as opening the study. Null for an unknown study.
+ */
+export async function studyContrastAdministrations(db: Db, actor: Actor, studyId: string): Promise<ContrastAdministrationRow[] | null> {
+  const opened = await openStudy(db, actor, studyId, (acc) => `contrast register ${acc}`);
+  return opened === null ? null : await contrastAdministrationsFor(db, studyId);
+}
+
+/** #1076 — the study's contrast reactions, read through the study reader as above. */
+export async function studyContrastReactions(db: Db, actor: Actor, studyId: string): Promise<ContrastReactionRow[] | null> {
+  const opened = await openStudy(db, actor, studyId, (acc) => `contrast reactions ${acc}`);
+  return opened === null ? null : await contrastReactionsFor(db, studyId);
+}
+
+/** One study, for the console. Same two rules; `imaging.study` is its own surface. */
+export async function studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null> {
+  const opened = await openStudy(db, actor, studyId, (acc) => `study ${acc}`);
+  if (opened === null) return null;
+  const { row, clearance } = opened;
 
   const reports = await db
     .select({
@@ -306,6 +359,10 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     ),
     formFRequired: row.study.formFRequired, restricted: row.restricted,
     createdAt: row.study.createdAt, checkedInAt: row.study.checkedInAt,
+    uhid: row.isConfidential && !clearance.canSeeConfidential ? "" : row.uhid,
+    ageYears: row.dob === null ? null : ageInYearsOn(row.dob, new Date()),
+    sex: row.sex,
+    studyTypeName: (await studyTypeNameLookup(db))(row.study.studyTypeCode),
     laterality: row.study.laterality,
     ionising: row.study.ionising, contrastGiven: row.study.contrastGiven,
     bedsideLocation: row.study.bedsideLocation,

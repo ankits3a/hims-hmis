@@ -42,6 +42,8 @@ export type WireRoomView = {
   repeats: { reason: RepeatReason; at: string }[];
   /** 18-S RS12 — optional so a server before RS12 still types. */
   doseReport?: WireDoseReport | null;
+  /** #1076 — the contrast the prep bay recorded (agent, intravascular mL); null when none. Absent from older servers. */
+  recordedContrast?: { agent: string | null; volumeMl: number | null } | null;
 };
 
 export type WireRejects = {

@@ -4,7 +4,7 @@ import { orderItems } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { resources } from "../../kernel/db/schema/resources";
 import { roleAssignments, users } from "../../kernel/db/schema/auth";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccess, recordPhiAccessMany } from "../../kernel/phi/audit";
 import { displayName, guardiansWithAuthority, listAllergies } from "../patients";
 import { latestVerifiedCreatinine } from "../lab";
 import { lastActiveVitals } from "../opd";
@@ -21,7 +21,7 @@ import {
 import { gateOverrideRequests } from "./override-requests";
 import { clearanceOf } from "./read";
 import { RadiologyError } from "./errors";
-import { requireStudyType } from "./study-types";
+import { requireStudyType, studyTypeNameLookup } from "./study-types";
 import type { EgfrAssessment } from "./egfr";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -68,6 +68,8 @@ export type PrepBayRow = {
   studyId: string; accessionNo: string; priority: string; studyTypeCode: string;
   scheduledAt: Date | null; checkedInAt: Date | null; deviceCode: string | null;
   patientId: string; patientName: string; restricted: boolean;
+  /** #1076 — the full row every imaging list carries (`read.ts` `WorklistRow`'s names and rules). */
+  uhid: string; ageYears: number | null; sex: string; studyTypeName: string;
   /** Open gates the bay closes. */
   openPrep: string[];
   /** Open gates the console closes (identity, side) — shown, never acted on here. */
@@ -80,7 +82,7 @@ export type PrepBayRow = {
  * Checked-in studies with at least one open PREP gate, STAT first, then urgent, then by slot. A study
  * whose only open gates are the room's is not the bay's — it goes to the room.
  */
-export async function prepBayList(db: Db, actor: Actor): Promise<PrepBayRow[]> {
+export async function prepBayList(db: Db, actor: Actor, now: Date = new Date()): Promise<PrepBayRow[]> {
   const clearance = await clearanceOf(db, actor);
   const rows = await db
     .select({
@@ -88,7 +90,7 @@ export async function prepBayList(db: Db, actor: Actor): Promise<PrepBayRow[]> {
       studyTypeCode: imagingStudies.studyTypeCode, scheduledAt: imagingStudies.scheduledAt,
       checkedInAt: imagingStudies.checkedInAt, deviceCode: resources.code, patientId: imagingStudies.patientId,
       restricted: orderItems.restricted, name: patients.name, alias: patients.alias,
-      isConfidential: patients.isConfidential,
+      isConfidential: patients.isConfidential, uhid: patients.uhid, sex: patients.sex, dob: patients.dob,
     })
     .from(imagingStudies)
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
@@ -115,6 +117,7 @@ export async function prepBayList(db: Db, actor: Actor): Promise<PrepBayRow[]> {
        and subject_id in (${sql.join(gateRows.map((g) => sql`${g.gateId}`), sql`, `)})
   `)).rows.map((r) => (r as { gateId: string }).gateId));
 
+  const nameOf = await studyTypeNameLookup(db);
   const out: PrepBayRow[] = [];
   for (const r of rows) {
     const mine = gateRows.filter((g) => g.studyId === r.studyId && !isTerminal(g.state));
@@ -124,15 +127,17 @@ export async function prepBayList(db: Db, actor: Actor): Promise<PrepBayRow[]> {
       studyId: r.studyId, accessionNo: r.accessionNo, priority: r.priority, studyTypeCode: r.studyTypeCode,
       scheduledAt: r.scheduledAt, checkedInAt: r.checkedInAt, deviceCode: r.deviceCode, patientId: r.patientId,
       patientName: displayName({ name: r.name, alias: r.alias, isConfidential: r.isConfidential }, clearance.canSeeConfidential),
-      restricted: r.restricted, openPrep,
+      restricted: r.restricted,
+      uhid: r.isConfidential && !clearance.canSeeConfidential ? "" : r.uhid,
+      ageYears: r.dob === null ? null : ageInYearsOn(r.dob, now), sex: r.sex, studyTypeName: nameOf(r.studyTypeCode),
+      openPrep,
       openRoom: mine.filter((g) => isRoomGate(g.kind)).map((g) => g.kind).sort(),
       asked: mine.filter((g) => askedGateIds.has(g.gateId)).map((g) => g.kind).sort(),
     });
   }
+  /** #1076 / ruling 0098 — once per reader, patient and surface per 30 minutes, in one statement. */
   const reason = `imaging prep bay, ${String(out.length)} rows`;
-  for (const patientId of new Set(out.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  await recordPhiAccessMany(db, { actor, patientIds: out.map((r) => r.patientId), surface: "imaging.worklist", reason, now });
   return out;
 }
 

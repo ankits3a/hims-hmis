@@ -63,6 +63,8 @@ export { billsAliasRows } from "./bills-alias"; // #852
 export type { BillAliasRow } from "./bills-alias";
 export type { BillDepartment, PatientBillDetail, PatientBillRow } from "./patient-bills";
 export { settlementState } from "./settlement";
+/** #1076 — `invoiceSettlement` for many invoices at once (the imaging hand-over register's dues). Additive. */
+export { invoiceSettlements } from "./receipts";
 export type { Settlement, SettlementState } from "./settlement";
 export { runDailyClose, dayBook, gstr1Summary, chargeOrphans } from "./daily-close";
 /**

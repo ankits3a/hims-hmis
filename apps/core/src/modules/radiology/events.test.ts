@@ -18,7 +18,7 @@ import { radiologyManifest } from "./manifest";
  */
 describe("the radiology event catalogue (18a T2)", () => {
   it("declares fourteen events, every one in the radiology module's namespace", () => {
-    expect(RADIOLOGY_EVENTS).toHaveLength(27); // 18-S RS8c: +imaging.followup_overdue, +imaging.followup_booked, +imaging.overread_recorded; 18-S RS12b: +imaging.ir_coagulation_overridden, +imaging.ir_skin_dose_alert; (22 before)
+    expect(RADIOLOGY_EVENTS).toHaveLength(28); // #1076: +imaging.report_printed; 18-S RS8c: +imaging.followup_overdue, +imaging.followup_booked, +imaging.overread_recorded; 18-S RS12b: +imaging.ir_coagulation_overridden, +imaging.ir_skin_dose_alert; (22 before)
     for (const event of RADIOLOGY_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "radiology"]);
       expect(event.version).toBe(1);
@@ -67,6 +67,7 @@ describe("the radiology event catalogue (18a T2)", () => {
       "imaging.overread_recorded",
       "imaging.report_acted_upon",
       "imaging.report_handed_over",
+      "imaging.report_printed",
       "imaging.report_published",
       "imaging.report_released_unpaid",
       "imaging.report_unread",

@@ -11,6 +11,7 @@ import {
 } from "../lib/radiology-api";
 import type { WireCounterView, WireImagingDevice, WireWorklistRow } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
+import { PatientFacts } from "../components/radiology/patient-facts";
 import { ImagingDeskDoor } from "../components/radiology/imaging-desk-door";
 import {
   CounterBill, CounterChecks, CounterSlip, CounterSlot, CounterStudies, Refusal, statusWord, useNow,
@@ -309,9 +310,10 @@ export function RadiologyReception(): React.ReactElement {
                   <b className="min-w-0 truncate">{r.patientName}</b>
                   <span className="mo text-xs">{r.scheduledAt === null ? t("radiology.counter.state.toBook") : fmtIst(r.scheduledAt)}</span>
                 </span>
+                <PatientFacts row={r} />
                 <span className="block text-xs text-muted-foreground">
                   {r.priority === "stat" ? <b className="text-red-700">STAT · </b> : null}
-                  {r.studyTypeCode} · {statusWord(t, r)}
+                  {r.studyTypeName ?? r.studyTypeCode} · {statusWord(t, r)}
                 </span>
               </button>
             </li>

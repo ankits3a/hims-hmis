@@ -1,4 +1,4 @@
-import { isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { phiAccessLog, retentionLegalHolds } from "../db/schema";
 import { withTx } from "../db/client";
@@ -401,6 +401,76 @@ export async function recordPhiAccess(db: Db, input: RecordPhiAccessInput): Prom
     });
   } catch {
     // Deliberately swallowed — see the header. The read is the priority.
+  }
+}
+
+/** #1076 / ruling 0098 — a list screen logs each patient once per reader and surface in this window. */
+export const PHI_LIST_WINDOW_MINUTES = 30;
+
+export type RecordPhiAccessManyInput = {
+  actor: Actor;
+  /** The CANONICAL patient ids the list disclosed; duplicates are folded. */
+  patientIds: Iterable<string>;
+  surface: PhiSurface;
+  reason?: string | null;
+  /** The clock the window is measured on. Omit for the real one. */
+  now?: Date;
+  windowMinutes?: number;
+};
+
+/**
+ * ═══ #1076 / RULING 0098 — A LIST SCREEN, LOGGED ONCE PER READER, PATIENT AND SURFACE PER WINDOW ═══
+ *
+ * The imaging lists poll every 30 to 60 seconds, and each poll wrote one row per patient, awaited one by
+ * one: a day of polling buried "who saw this patient" under thousands of identical rows. The owner's
+ * ruling keeps DD11 and F42 whole — one row per patient DISCLOSED, never one row per read — and adds a
+ * window: a patient already logged for this reader on this surface inside the last `windowMinutes`
+ * (measured on `now`, so a test can hand it a clock) is not logged again. A patient new to the reader's
+ * list is logged at once. Every new row goes in ONE statement.
+ *
+ * Only list readers call this. Opening one study, report, print or image set still calls
+ * `recordPhiAccess`, which logs every time.
+ *
+ * Never throws, for the reason `recordPhiAccess` gives. A race between two polls by the same reader can
+ * write a duplicate row; it can never drop one.
+ */
+export async function recordPhiAccessMany(db: Db, input: RecordPhiAccessManyInput): Promise<void> {
+  const ids = [...new Set(input.patientIds)];
+  if (ids.length === 0) return;
+  const now = input.now ?? new Date();
+  const since = new Date(now.getTime() - (input.windowMinutes ?? PHI_LIST_WINDOW_MINUTES) * 60_000);
+  try {
+    const logged = await db
+      .select({ patientId: phiAccessLog.patientId })
+      .from(phiAccessLog)
+      .where(and(
+        eq(phiAccessLog.actorId, input.actor.id),
+        eq(phiAccessLog.surface, input.surface),
+        inArray(phiAccessLog.patientId, ids),
+        gt(phiAccessLog.at, since),
+        lte(phiAccessLog.at, now),
+      ));
+    const seen = new Set(logged.map((r) => r.patientId));
+    const fresh = ids.filter((id) => !seen.has(id));
+    if (fresh.length === 0) return;
+    const rows = [];
+    for (const patientId of fresh) {
+      rows.push({
+        id: newId(),
+        actorId: input.actor.id,
+        actorType: input.actor.type,
+        patientId,
+        surface: input.surface,
+        encounterId: null,
+        context: await resolveCareContext(db, input.actor, patientId, now),
+        sealed: false,
+        reason: input.reason ?? null,
+        at: now,
+      });
+    }
+    await db.insert(phiAccessLog).values(rows);
+  } catch {
+    // Deliberately swallowed — see `recordPhiAccess`. The read is the priority.
   }
 }
 

@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { WireReportPrint } from "./radiology-reading-api";
 
 /**
  * PLAN 18-S RS9 — the wire contract of `radiology-release.controller.ts`, transcribed (the
@@ -64,6 +65,8 @@ export type WireReleaseRow = {
   patientId: string;
   patientName: string;
   uhid: string;
+  /** #1076 — age, sex and the book's study name (absent from older servers). */
+  ageYears?: number | null; sex?: string; studyTypeName?: string;
   publishedAt: string;
   criticalCategory: string | null;
   bedsideLocation: string | null;
@@ -93,7 +96,12 @@ export type HandoverBody = {
   note?: string | null;
 };
 
-export const fetchReleaseRegister = () => api<{ rows: WireReleaseRow[] }>("GET", "/radiology/release");
+/** #1076 — with a query the server searches every released report (name, UHID or accession), past the 30-day register. */
+export const fetchReleaseRegister = (q = "") =>
+  api<{ rows: WireReleaseRow[] }>("GET", q.trim() === "" ? "/radiology/release" : `/radiology/release?q=${encodeURIComponent(q.trim())}`);
+/** #1076 — the hand-over desk's print of the report in hand (null when it is not the current released version). */
+export const fetchHandoverPrint = (reportId: string) =>
+  api<{ report: WireReportPrint | null }>("GET", `/radiology/release/reports/${encodeURIComponent(reportId)}/print`);
 export const requestImagingMedia = (studyId: string, body: { kind: "film" | "cd"; quantity?: number }) =>
   api<{ requestIds: string[]; included: boolean }>("POST", `/radiology/studies/${studyId}/media`, body);
 export const markMediaPrinted = (requestId: string) =>

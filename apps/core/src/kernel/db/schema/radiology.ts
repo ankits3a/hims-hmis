@@ -323,6 +323,8 @@ export const imagingStudies = pgTable(
       .where(sql`${t.studyInstanceUid} is not null`),
     index("imaging_studies_patient_idx").on(t.patientId),
     index("imaging_studies_order_idx").on(t.orderId),
+    /** #1076 — the treating-doctor join, the release register's visit join and the ABDM read all key on it. */
+    index("imaging_studies_encounter_no_idx").on(t.encounterNo),
     check("imaging_studies_status_ck", inList(t.status, IMAGING_STUDY_STATUSES)),
     check("imaging_studies_laterality_ck", inList(t.laterality, IMAGING_LATERALITIES)),
     check("imaging_studies_priority_ck", sql`${t.priority} in ('routine', 'urgent', 'stat')`),

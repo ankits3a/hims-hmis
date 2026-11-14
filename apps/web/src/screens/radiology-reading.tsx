@@ -20,6 +20,7 @@ import type { CodedSystem, FleischnerInputs, TiradsInputs } from "../lib/imaging
 import { SeatLink } from "../components/radiology/imaging-counter";
 import { ImagingReportPrint } from "../components/radiology/imaging-report-print";
 import { RadiologyStation } from "./radiology-station";
+import { PatientFacts } from "../components/radiology/patient-facts";
 import { FollowupsView, PeerView, TeleView } from "./radiology-reading-room";
 import { dateLocale } from "../lib/date-locale";
 
@@ -249,6 +250,7 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
                   <b className="min-w-0 truncate">{r.patientName}</b>
                   <span className={`mo shrink-0 text-xs ${c.tone === "over" ? "font-bold text-red-700" : c.tone === "warn" ? "text-amber-700" : ""}`}>{r.reportState === "signed" ? t("radiology.read.state.signed") : c.text}</span>
                 </span>
+                <PatientFacts row={r} />
                 <span className="block truncate text-xs text-muted-foreground">
                   {r.priority === "stat" ? <b className="text-red-700">STAT · </b> : null}
                   {t(`radiology.read.tat.${r.tatClass}`)} · {r.studyTypeName}

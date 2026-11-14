@@ -139,6 +139,20 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   useEffect(() => {
     if (v?.patient.weight !== null && v?.patient.weight !== undefined && weight === "") setWeight(String(v.patient.weight.kg));
   }, [v?.patient.weight, weight]);
+  /**
+   * #1076 — the contrast the prep bay recorded (agent and intravascular volume, from the administration
+   * register) arrives FILLED: the technologist confirms it rather than typing it again, and Send no longer
+   * overwrites the prep bay's record with blanks. Filled once per study (the console is keyed on it), so a
+   * field the technologist clears to retype stays clear.
+   */
+  const recorded = v?.recordedContrast ?? null;
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || recorded === null) return;
+    prefilled.current = true;
+    if (recorded.agent !== null) setAgent(recorded.agent);
+    if (recorded.volumeMl !== null) setVolume(String(recorded.volumeMl));
+  }, [recorded]);
 
   const refresh = (): void => {
     void qc.invalidateQueries({ queryKey: ["radiology", "room", studyId] });
@@ -180,7 +194,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   const anyDose = doseFields.some((f) => typed[f] !== null) || (doseReport !== null && doseFields.length > 0);
   const anyTyped = doseFields.some((f) => typed[f] !== null);
   const contrastApplies = v !== undefined && v.contrastOption !== "none";
-  const effectiveGiven = contrastGiven ?? (v?.contrastOption === "required");
+  const effectiveGiven = contrastGiven ?? (v?.contrastOption === "required" || recorded !== null);
 
   const body = (): AcquiredBody => {
     const b: AcquiredBody = { imageSource: source };
@@ -485,7 +499,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
                       {effectiveGiven
                         ? (
                           <div className="grid gap-2 pb-2 sm:grid-cols-2">
-                            <label className="text-sm">{t("radiology.room.contrast.agent")}<input className={field} value={agent} onChange={(e) => setAgent(e.target.value)} placeholder={protocol?.contrast?.agent ?? ""} /></label>
+                            <label className="text-sm">{t("radiology.room.contrast.agent")}<input className={field} value={agent} onChange={(e) => setAgent(e.target.value)} placeholder={protocol?.contrast?.agent ?? ""} data-testid="contrast-agent" /></label>
                             <label className="text-sm">{t("radiology.room.contrast.volume")}<input className={`${field} mo`} inputMode="decimal" value={volume} onChange={(e) => setVolume(e.target.value)} placeholder={suggestion === null ? "" : String(suggestion)} data-testid="contrast-volume" /></label>
                           </div>
                         )
