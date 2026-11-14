@@ -7,6 +7,7 @@ import { searchPatients } from "../../lib/patients-api";
 import { fmtIst } from "../../lib/format";
 import { ImagingDoorBody, VisitOrders, orderRefusalText } from "./imaging-order-kit";
 import { CreditChip } from "../patient-credit";
+import { ImagingWalkIn } from "./imaging-walk-in";
 
 /**
  * PLAN 18-S RS2 (18a-iv T2 + T3), #1078 — **THE IMAGING DESK'S DOOR: find the patient, open the visit,
@@ -28,6 +29,9 @@ import { CreditChip } from "../patient-credit";
  *   · **From an outside slip** (D5). A manual search over the active book, placed under
  *     `external_prescription` with the referrer's name and registration typed off the slip. The
  *     visit's doctor stays the answerable clinician — the kernel requires one on every imaging order.
+ *   · **An outside slip and no visit today** (#1079). The patient found has no visit: the same slip leg
+ *     (`imaging-walk-in.tsx`) sends through the desk's walk-in act, which opens an imaging visit under the
+ *     radiologist of record with the order — no consultation fee — and the door then opens that visit.
  *
  * The desk books and bills afterwards, at the counter; nothing here bills.
  */
@@ -93,6 +97,13 @@ export function ImagingDeskDoor({ onOpen }: {
     else if (VISIT_NO.test(v.toUpperCase())) setAsked({ visitNo: v.toUpperCase() });
     else setAsked({ q: v });
   };
+  /** #1079 — the walk-in opened (or rode) a visit: the door opens it, as if its number had been typed. */
+  const onWalkIn = (r: { encounterNo: string; orderNo: string }): void => {
+    setAsked({ visitNo: r.encounterNo });
+    setPlaced(r.orderNo);
+    void qc.invalidateQueries({ queryKey: ["radiology", "desk", "visits"] });
+    void qc.invalidateQueries({ queryKey: ["radiology", "worklist"] });
+  };
   const onPlaced = (orderNo: string): void => {
     setPlaced(orderNo);
     void qc.invalidateQueries({ queryKey: ["radiology", "door", visitNo ?? ""] });
@@ -145,6 +156,15 @@ export function ImagingDeskDoor({ onOpen }: {
           {patientId !== null && visits.isSuccess && visitList.length === 0 && (
             <p className="text-sm text-muted-foreground" data-testid="desk-door-no-visit">{t("imagingOrder.desk.noVisitToday")}</p>
           )}
+          {patientId !== null && visits.isSuccess && visitList.length === 0 && (() => {
+            const who = hitList.find((h) => h.id === patientId);
+            return who === undefined ? null : (
+              <ImagingWalkIn
+                key={who.id} onOpened={onWalkIn}
+                patient={{ id: who.id, name: who.name, uhid: who.uhid, administrativeGender: who.administrativeGender }}
+              />
+            );
+          })()}
           {visitList.length > 0 && (
             <ul className="m-0 flex list-none flex-wrap gap-1 p-0" data-testid="desk-door-visits" aria-label={t("imagingOrder.desk.visitsToday")}>
               {visitList.map((x) => (

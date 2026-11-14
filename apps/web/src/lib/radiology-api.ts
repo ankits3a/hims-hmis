@@ -1,7 +1,7 @@
 import { api } from "./api";
 import type {
-  ImagingAcquiredBody, ImagingContrastBody, ImagingDeskCollectBody, ImagingRescheduleBody, ImagingScheduleBody,
-  ImagingSignBody,
+  ImagingAcquiredBody, ImagingContrastBody, ImagingDeskCollectBody, ImagingDeskWalkInOrderBody, ImagingRescheduleBody,
+  ImagingScheduleBody, ImagingSignBody,
 } from "@hmis/contracts";
 import { messageText } from "./materials-api";
 
@@ -254,10 +254,23 @@ export type WireSlotProposal = { studyId: string; deviceResourceId: string; code
 export const fetchDeskProposal = (studyId: string) =>
   api<{ proposal: WireSlotProposal | null }>("GET", `/radiology/desk/studies/${studyId}/proposal`);
 
-/** `deskVisitsToday`: the patient's OPD visits of today (IST), for the desk door. */
+/** `deskVisitsToday`: the patient's OPD visits of today (IST) and (#1079) their imaging walk-in, for the desk door. */
 export type WireDeskVisit = { encounterNo: string; serviceDate: string; status: string; visitType: string; openedAt: string };
 export const fetchDeskVisits = (patientId: string) =>
   api<{ visits: WireDeskVisit[] }>("GET", `/radiology/desk/visits?patientId=${encodeURIComponent(patientId)}`);
+
+/* ── #1079 — an outside slip and no visit today: the imaging walk-in (`desk.ts` `placeWalkInOrder`) ── */
+
+/** `deskWalkInView`: the active book with prices, and the RAD department's radiologists (empty: not set up). */
+export type WireDeskRadiologist = { doctorId: string; displayName: string; userId: string };
+export type WireDeskWalkInView = { bookActive: boolean; book: WireImagingBookEntry[]; radiologists: WireDeskRadiologist[] };
+export const fetchDeskWalkIn = () => api<WireDeskWalkInView>("GET", "/radiology/desk/walk-in");
+
+/** `@hmis/contracts` `imagingDeskWalkInOrderBody`. The visit is opened (or today's reused) with the order. */
+export type DeskWalkInOrderBody = ImagingDeskWalkInOrderBody;
+export type WireDeskWalkInOrder = { encounterNo: string; visitOpened: boolean; orderId: string; orderNo: string; itemIds: string[] };
+export const deskWalkInOrder = (body: DeskWalkInOrderBody, idempotencyKey: string) =>
+  api<WireDeskWalkInOrder>("POST", "/radiology/desk/walk-in-order", body, idempotencyKey);
 
 /** `display.ts`'s `HallBoard`. */
 export type WireHallEntry = { token: string; name: string | null };

@@ -14770,7 +14770,7 @@
       "patients": "Patients found",
       "noPatient": "No patient matches. A new patient is registered at Registration.",
       "visitsToday": "Today's visits",
-      "noVisitToday": "No visit today. The front desk opens the visit."
+      "noVisitToday": "No visit today. A doctor here: the front desk opens the visit. An outside slip: order it below."
     },
     "outside": {
       "heading": "Outside prescription (walk-in slip)",
@@ -14778,6 +14778,15 @@
       "referrerName": "Referring doctor",
       "referrerReg": "Registration no.",
       "referrerRequired": "Type the referring doctor's name and registration number."
+    },
+    "walkIn": {
+      "heading": "Outside slip, no visit today",
+      "note": "The desk opens an imaging visit under the radiologist. No consultation fee.",
+      "loading": "Loading the imaging book…",
+      "under": "Under {{name}}",
+      "radiologist": "Radiologist who answers",
+      "pick": "Choose a radiologist",
+      "noRadiologist": "No radiologist is set up in the Radiology (RAD) department. Ask the administrator."
     }
   },
   "profile": {

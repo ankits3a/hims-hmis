@@ -89,6 +89,8 @@ export type StudyCardProps = {
   sendLabel: string;
   onPlaced: (orderNo: string) => void;
   onRemove?: () => void;
+  /** #1079 — where the order goes, when it is not `POST /radiology/orders` (the desk's walk-in act). */
+  place?: (body: PlaceImagingOrderBody, idempotencyKey: string) => Promise<{ orderNo: string }>;
 };
 
 export function StudyCard(p: StudyCardProps): React.ReactElement {
@@ -126,7 +128,7 @@ export function StudyCard(p: StudyCardProps): React.ReactElement {
           ? { authority: "external_prescription" as const, referrer: { name: refName.trim(), registrationNo: refReg.trim() } }
           : {}),
       };
-      return await placeImagingOrder(body, idemKey);
+      return await (p.place ?? placeImagingOrder)(body, idemKey);
     },
     onSuccess: (r) => { setError(null); p.onPlaced(r.orderNo); },
     onError: (e) => {
@@ -309,6 +311,8 @@ export type ImagingDoorBodyProps = {
    * did not advise is placed at the desk as an outside slip, never under the visit doctor's name.
    */
   advisedOnly?: boolean;
+  /** #1079 — handed to every card: the desk's walk-in sends through its own act. */
+  place?: StudyCardProps["place"];
 };
 
 export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
@@ -367,7 +371,7 @@ export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
                     view={p.view} serviceId={l.serviceId} name={l.name}
                     pricePaise={bookBy.get(l.serviceId)?.pricePaise ?? l.pricePaise}
                     orderable={l.orderable} clinicianUserId={p.clinicianUserId}
-                    sendLabel={p.sendLabel} onPlaced={p.onPlaced}
+                    sendLabel={p.sendLabel} onPlaced={p.onPlaced} place={p.place}
                   />
                   </div>
                 );
@@ -408,7 +412,7 @@ export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
               <StudyCard
                 key={id} view={p.view} serviceId={id} name={b.studyTypeName} pricePaise={b.pricePaise}
                 orderable={b} clinicianUserId={p.clinicianUserId} outside={p.outside}
-                sendLabel={p.sendLabel} onPlaced={placed(id)}
+                sendLabel={p.sendLabel} onPlaced={placed(id)} place={p.place}
                 onRemove={() => { setAdded((a) => a.filter((x) => x !== id)); }}
               />
             );

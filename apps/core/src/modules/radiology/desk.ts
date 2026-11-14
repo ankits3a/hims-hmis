@@ -3,13 +3,16 @@ import { newId } from "@hmis/contracts";
 import { imagingStudies } from "../../kernel/db/schema/radiology";
 import { invoiceLines, invoices } from "../../kernel/db/schema/billing";
 import { services } from "../../kernel/db/schema/tariff";
+import { opdDepartments, opdDoctors } from "../../kernel/db/schema/opd";
 import { withTx } from "../../kernel/db/client";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { BillingError, issueInvoice, previewInvoice, withIdempotency } from "../billing";
-import { listVisits } from "../opd";
+import { IMAGING_VISIT_TYPE, RAD_DEPARTMENT_CODE, listVisits, openImagingWalkinInTx } from "../opd";
+import { listMergedLoserIds, resolvePatientId } from "../patients";
+import { imagingBookWithPrices } from "./advised";
 import { checkIn } from "./checkin";
 import { CD_SERVICE_CODE, FILM_SERVICE_CODE } from "./counter";
 import { RadiologyError } from "./errors";
@@ -17,6 +20,10 @@ import { authorisationOf, encounterPayer, imagingFreeAt, linkInvoiceLine } from 
 import { istDayWindow } from "./mwl";
 import { autoSlotWalkIn, proposeFreeSlot } from "./schedule";
 import { requireStudyType } from "./study-types";
+import { placeImagingOrder } from "./place";
+import type { ImagingBookEntry } from "./advised";
+import type { ExternalReferrerInput, PlaceImagingOrderResult } from "./place";
+import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { SlotProposal } from "./schedule";
 import type { DerivedGateSet } from "./checkin";
 import type { ImagingGateKind } from "../../kernel/db/schema/radiology";
@@ -40,6 +47,9 @@ import type { Actor } from "@hmis/contracts";
  *   · `proposeSlot` — the first free quarter hour (`schedule.ts`'s `proposeFreeSlot`); it books nothing.
  *   · `deskVisitsToday` — the desk door's second read, after the patient search: this patient's visits
  *     of today, so the clerk can open the visit without the slip in hand.
+ *   · #1079 (IM2b) `placeWalkInOrder` — a patient with NO visit today and an outside doctor's slip: the
+ *     imaging walk-in visit (OPD's `openImagingWalkinInTx`, under the radiologist of record) and the order
+ *     on it, under `external_prescription`, in ONE transaction. `deskWalkInView` is its door's read.
  *
  * ═══ COLLECT IS RETRY-SAFE, NOT ONE TRANSACTION (spec, DECIDED) ═══
  *
@@ -63,6 +73,7 @@ import type { Actor } from "@hmis/contracts";
  */
 
 const SCHEDULE = "radiology.schedule";
+const ORDERS_PLACE = "radiology.orders.place";
 const CHECKIN = "radiology.checkin";
 const BILL_DECISIONS = "radiology.bill_decisions.manage";
 const INVOICE_ISSUE = "billing.invoice.issue";
@@ -70,6 +81,8 @@ const RECEIPT_RECORD = "billing.receipt.record";
 
 /** The idempotency scope's route: a constant, so no other route's key can replay this one. */
 export const DESK_COLLECT_ROUTE = "POST /radiology/desk/collect";
+/** #1079 — the walk-in's scope: a retried click replays the visit and the order rather than placing twice. */
+export const DESK_WALK_IN_ROUTE = "POST /radiology/desk/walk-in-order";
 
 /** The states a study can be paid for at the desk: not yet on the machine, and not closed. */
 const COLLECTABLE_STATUSES = ["scheduled", "checked_in", "ready"];
@@ -169,13 +182,18 @@ export async function proposeSlot(
 
 export type DeskVisit = { encounterNo: string; serviceDate: string; status: string; visitType: string; openedAt: Date };
 
-/** The patient's OPD visits of today (IST), oldest first — the door then reads each visit's advised imaging. */
+/**
+ * The patient's visits of today (IST) the desk can order on, oldest first — the door then reads each
+ * visit's advised imaging. OPD visits, and (#1079) the patient's imaging walk-in, which `listVisits`
+ * leaves out by default because it is not an OPD consultation; never a lab or pharmacy visit.
+ */
 export async function deskVisitsToday(
   db: Db, actor: Actor, input: { patientId: string; now?: Date },
 ): Promise<DeskVisit[]> {
   const now = input.now ?? new Date();
   await requirePermissions(db, actor, [SCHEDULE]);
-  const rows = await listVisits(db, { patientId: input.patientId, serviceDate: istDayString(now) }, 20);
+  const rows = (await listVisits(db, { patientId: input.patientId, serviceDate: istDayString(now), type: "any" }, 20))
+    .filter((r) => r.type === "opd" || r.type === IMAGING_VISIT_TYPE);
   if (rows.length > 0) {
     await recordPhiAccess(db, {
       actor, patientId: input.patientId, surface: "imaging.worklist", reason: "imaging desk: today's visits", now,
@@ -184,6 +202,119 @@ export async function deskVisitsToday(
   return rows.map((r) => ({
     encounterNo: r.visitNo, serviceDate: r.serviceDate, status: r.status, visitType: r.visitType, openedAt: r.openedAt,
   }));
+}
+
+/* ═══════════════════════════ the outside referral (#1079) ═══════════════════════════ */
+
+/**
+ * #1079 (IM2b) — **A PATIENT WITH NO VISIT TODAY AND AN OUTSIDE DOCTOR'S SLIP.** Spec
+ * docs/specs/1079-imaging-walk-in-visit.md.
+ *
+ * An imaging order hangs off a `V…` or `D…` encounter (`place.ts`) and names a doctor here who stays
+ * answerable (the kernel requires one on every imaging order). So, as the lab walk-in does
+ * (`lab/desk.ts` `deskWalkinOrder`), the desk opens the visit through the module that owns visits —
+ * OPD's `openImagingWalkinInTx`: a `V` visit of type `imaging` in `RAD`, under the radiologist of
+ * record, joining no OPD queue and on no OPD list — and places the order on it, in ONE transaction: a
+ * refused order (no referrer, an unknown study, a duplicate inside 24 hours) leaves no visit behind.
+ *
+ *   · **The radiologist of record is the ordering clinician**: the visit's doctor, as the desk door's
+ *     visit leg uses the visit's doctor. The referral itself is the outside doctor's, typed off the slip
+ *     — name AND registration number, both required (`place.ts` `resolveExternalReferrer`: the
+ *     registration is the radiation justification an AERB inspector reads and, for an ultrasound, the
+ *     PCPNDT referral). Imaging on the patient's own request stays refused (`selfOrderable: false`).
+ *   · **A second slip the same day rides the same visit** (D2) — `visitOpened: false` says so.
+ *   · **No consult fee, ever** (decision 0003 ruling 2). Nothing here bills; the desk's collect charges
+ *     the studies (and film / CD) and nothing else.
+ *
+ * The order goes through `placeImagingOrder` itself, on this transaction (`followups.ts`'s idiom), so
+ * every guard placement has — the encounter-status guard, PCPNDT applicability from the published
+ * book, the 24-hour duplicate window — is the one the visit leg meets, not a copy of it.
+ */
+export type DeskWalkInOrderInput = {
+  patientId: string;
+  /** The radiologist of record, when the department has more than one active. Ignored when the visit is reused. */
+  doctorId?: string;
+  priority?: "routine" | "urgent" | "stat";
+  indication: string;
+  items: { serviceId: string; duplicateOfItemId?: string | null; duplicateReason?: string | null }[];
+  /** Off the slip. Refused `referrer_required` when either is missing or blank. */
+  referrer: ExternalReferrerInput;
+};
+
+export type DeskWalkInOrderResult = PlaceImagingOrderResult & {
+  /** The visit the order hangs off: opened now, or the patient's open imaging walk-in of today. */
+  encounterNo: string;
+  visitOpened: boolean;
+};
+
+export async function placeWalkInOrder(
+  db: Db,
+  actor: Actor,
+  decls: readonly OrderKindDecl[],
+  input: DeskWalkInOrderInput,
+  idemKey?: string,
+  now: Date = new Date(),
+): Promise<DeskWalkInOrderResult> {
+  await requirePermissions(db, actor, [ORDERS_PLACE, SCHEDULE]);
+  return await withIdempotency(db, { actorId: actor.id, route: DESK_WALK_IN_ROUTE, key: idemKey }, input, async () =>
+    await withTx(db, async (tx): Promise<DeskWalkInOrderResult> => {
+      const canonical = await resolvePatientId(tx, input.patientId);
+      if (!canonical) {
+        throw new RadiologyError("unknown_patient", `no patient ${input.patientId} — a walk-in is registered first`, { patientId: input.patientId });
+      }
+      const chainIds = [canonical, ...(await listMergedLoserIds(tx, canonical))];
+      const referrerName = (input.referrer as ExternalReferrerInput | undefined)?.name?.trim() ?? "";
+      const { encounter, opened } = await openImagingWalkinInTx(tx, actor, {
+        patientId: canonical, chainIds, doctorId: input.doctorId,
+        referrerName: referrerName === "" ? undefined : referrerName,
+      }, now);
+      const [doctor] = encounter.doctorId === null ? [undefined]
+        : await tx.select({ userId: opdDoctors.userId }).from(opdDoctors).where(eq(opdDoctors.id, encounter.doctorId));
+      const placed = await placeImagingOrder(tx as unknown as Db, actor, decls, {
+        patientId: canonical,
+        encounterNo: encounter.visitNo,
+        serviceDate: istDayString(now),
+        orderingClinicianId: doctor?.userId ?? null,
+        priority: input.priority ?? "routine",
+        indication: input.indication,
+        /** F28 — the order's stamp reads the same clock as the duplicate window. */
+        placedAt: now,
+        items: input.items.map((i) => ({
+          serviceId: i.serviceId, duplicateOfItemId: i.duplicateOfItemId ?? null, duplicateReason: i.duplicateReason ?? null,
+        })),
+        authority: "external_prescription",
+        referrer: input.referrer,
+      }, undefined, now);
+      return { ...placed, encounterNo: encounter.visitNo, visitOpened: opened };
+    }), now);
+}
+
+export type DeskWalkInView = {
+  /** False when no study-type book is published: nothing can be ordered. */
+  bookActive: boolean;
+  book: ImagingBookEntry[];
+  /**
+   * The RAD department's active doctors — the radiologist of record is the sole one, or the one the desk
+   * names when there are several (`openImagingWalkinInTx` refuses to choose). Empty when the department
+   * or its radiologist is not set up yet (the go-live runbook's stand-up step).
+   */
+  radiologists: { doctorId: string; displayName: string; userId: string }[];
+};
+
+/** The walk-in door's read: the book with prices (the visit door's own, `imagingBookWithPrices`) and who can answer. */
+export async function deskWalkInView(
+  db: Db, actor: Actor, input: { now?: Date } = {},
+): Promise<DeskWalkInView> {
+  await requirePermissions(db, actor, [ORDERS_PLACE, SCHEDULE]);
+  const { types, book } = await imagingBookWithPrices(db, input.now ?? new Date());
+  const [dept] = await db.select({ id: opdDepartments.id, active: opdDepartments.active })
+    .from(opdDepartments).where(eq(opdDepartments.code, RAD_DEPARTMENT_CODE));
+  const radiologists = dept === undefined || !dept.active ? [] : await db
+    .select({ doctorId: opdDoctors.id, displayName: opdDoctors.displayName, userId: opdDoctors.userId })
+    .from(opdDoctors)
+    .where(and(eq(opdDoctors.departmentId, dept.id), eq(opdDoctors.active, true)))
+    .orderBy(asc(opdDoctors.id));
+  return { bookActive: types !== null, book, radiologists };
 }
 
 /* ═══════════════════════════════ money ═══════════════════════════════ */
