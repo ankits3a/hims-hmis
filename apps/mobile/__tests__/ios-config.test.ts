@@ -62,16 +62,16 @@ describe("app.config.ts — the iPhone half", () => {
   it("asks for the camera, the microphone, Face ID and location while in use in plain words — and for nothing else", () => {
     const plugins = (configFor({ APP_ENV: "production" }).plugins ?? []) as (string | [string, Record<string, unknown>])[];
     const of = (name: string): Record<string, unknown> => { const p = plugins.find((x) => Array.isArray(x) && x[0] === name); return Array.isArray(p) ? p[1] : {}; };
-    expect(of("expo-camera").cameraPermission).toBe("HMIS uses the camera to photograph prescription slips and scan patient codes.");
-    expect(of("expo-audio").microphonePermission).toBe("HMIS uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.");
-    expect(of("expo-local-authentication").faceIDPermission).toBe("HMIS uses Face ID to unlock the app.");
-    expect(of("expo-secure-store").faceIDPermission).toBe("HMIS uses Face ID to unlock the app.");
+    expect(of("expo-camera").cameraPermission).toBe("CRKMCH uses the camera to photograph prescription slips and scan patient codes.");
+    expect(of("expo-audio").microphonePermission).toBe("CRKMCH uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.");
+    expect(of("expo-local-authentication").faceIDPermission).toBe("CRKMCH uses Face ID to unlock the app.");
+    expect(of("expo-secure-store").faceIDPermission).toBe("CRKMCH uses Face ID to unlock the app.");
     expect(of("expo-audio")).toMatchObject({ enableBackgroundRecording: false, enableBackgroundPlayback: false });
     // Decision 0062: location once, at "Mark attendance", while the app is open — never Always, never background.
     expect(of("expo-location")).toMatchObject({
-      locationWhenInUsePermission: "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.",
+      locationWhenInUsePermission: "CRKMCH checks your location once when you mark attendance, to confirm you are on hospital premises.",
       locationAlwaysAndWhenInUsePermission: false, locationAlwaysPermission: false,
-      motionUsagePermission: "HMIS does not read motion or fitness data. This sentence is here because a location component in the app can.",
+      motionUsagePermission: "CRKMCH does not read motion or fitness data. This sentence is here because a location component in the app can.",
       isIosBackgroundLocationEnabled: false, isAndroidBackgroundLocationEnabled: false,
     });
     const all = JSON.stringify(configFor({ APP_ENV: "production" }));
@@ -79,8 +79,8 @@ describe("app.config.ts — the iPhone half", () => {
     // photo library is still never declared; its camera and microphone sentences are the app's own.
     expect(of("expo-image-picker")).toEqual({
       photosPermission: false,
-      cameraPermission: "HMIS uses the camera to photograph prescription slips and scan patient codes.",
-      microphonePermission: "HMIS uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.",
+      cameraPermission: "CRKMCH uses the camera to photograph prescription slips and scan patient codes.",
+      microphonePermission: "CRKMCH uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.",
     });
     for (const never of ["NSPhotoLibrary", "NSLocationAlways", "NSUserTracking", "UIBackgroundModes", "expo-media-library", "expo-tracking-transparency", "aps-environment"]) {
       expect(all).not.toContain(never);
@@ -109,11 +109,13 @@ describe("eas.json — the iPhone profiles, with Android's left as they were", (
     expect(eas.submit.production.android).toBeUndefined();
   });
 
-  it("production is a store build, preview a real-phone internal build, both on the repository's Node", () => {
+  it("production and preview are both store builds (preview stays in TestFlight, spec #1058), both on the repository's Node", () => {
     const major = readFileSync(join(__dirname, "../../../.nvmrc"), "utf8").trim().replace(/^v/, "").split(".")[0];
     expect(eas.build.production!.ios?.distribution).toBe("store");
     expect(eas.build.production!.ios?.resourceClass).toBeUndefined();
     expect(eas.build.preview!.ios?.simulator).toBe(false);
+    expect(eas.build.preview!.ios?.distribution).toBe("store");
+    // Android's preview line is untouched: its APKs are built on our server, never by EAS.
     expect(eas.build.preview!.distribution).toBe("internal");
     for (const p of ["preview", "production"]) expect(String(eas.build[p]!.ios?.node).split(".")[0]).toBe(major);
   });
@@ -124,7 +126,7 @@ describe("eas.json — the iPhone profiles, with Android's left as they were", (
   // Software Services LLP. Real values only — the app-specific password stays in a file, never here.
   it("names the production app and its real App Store Connect entry, so a submit can never fall on the staging id", () => {
     expect(eas.submit.production.ios).toEqual({
-      bundleIdentifier: "com.crkmch.hmis", appName: "HMIS Staff",
+      bundleIdentifier: "com.crkmch.hmis", appName: "CRKMCH",
       appleId: "ankit.sa3@gmail.com", ascAppId: "6820855786", appleTeamId: "J9YMW2253U",
     });
     expect(JSON.stringify(eas)).not.toMatch(/PLACEHOLDER|YOUR_|<[^>]+>|password/i);

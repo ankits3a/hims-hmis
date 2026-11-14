@@ -9,6 +9,9 @@ export const API_BASE: string = extra.apiBase ?? "https://stagehmis.crkmch.com/a
 export const APP_ENV: string = extra.appEnv ?? "development";
 export const IS_PRODUCTION = APP_ENV === "production";
 
+/** #629 — the staff app's privacy policy: a static page on this build's own server, open without sign-in. */
+export const PRIVACY_URL: string = `${API_BASE.replace(/\/api\/?$/, "")}/privacy.html`;
+
 /** This build, and where it asks whether a newer one exists (src/update.ts). */
 export const APP_VERSION: string = extra.version ?? "0.0.0";
 /**
