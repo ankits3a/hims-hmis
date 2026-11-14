@@ -1,6 +1,6 @@
 ---
 issue: 1079
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging-only walk-in visit for outside referrals (#1079)
@@ -35,3 +35,14 @@ Status: APPROVED 2026-11-14 by the owner ("go ahead"), from the imaging module r
 
 - **Files.** `modules/opd/encounters.ts`, `opd/index.ts` (additive export; `opd` is widely imported, coordinate) · radiology `desk.ts`, `place.ts` · web `imaging-desk-door.tsx` · locales (SHARED) · `docs/runbooks/radiology-go-live.md`.
 - **Migration** no. **Permissions** none. **Size** S–M. **Depends on** IM2; run after IM3 (both touch `place.ts`).
+
+## As built
+
+- **Acts.** opd `openImagingWalkinInTx` (exported from `opd/index.ts`, additive: `RAD_DEPARTMENT_CODE`, `IMAGING_VISIT_TYPE`); radiology `desk.ts` `placeWalkInOrder` (`POST /radiology/desk/walk-in-order`, optional `Idempotency-Key`) and `deskWalkInView` (`GET /radiology/desk/walk-in`: the priced book and the RAD radiologists). Contract `imagingDeskWalkInOrderBody`.
+- **DECIDED — the radiologist of record** is the lab's rule, shared: the sole active `opd_doctors` row in `RAD`, or the one the desk names; two or more and none named is refused. The lab and imaging walk-ins now use one `doctorOfRecordInTx`. The order's answerable clinician is that radiologist.
+- **DECIDED — reuse** reads the department AND `type = 'imaging'`, open (not completed or abandoned), same IST day, across the merge chain, under an advisory lock. A doctor named on a reused visit is ignored.
+- **DECIDED — permissions.** Route `radiology.orders.place`; the act also needs `radiology.schedule`, so only a desk seat opens a walk-in visit.
+- **DECIDED — `place.ts` unchanged.** The order goes through `placeImagingOrder` on the walk-in's transaction (the `followups.ts` idiom), so every placement guard is the one the visit leg meets.
+- The desk door's visits of today now include the patient's imaging walk-in (never a lab or pharmacy visit). OPD's refusals map to HTTP in `radiology-http.ts`, as `lab-http.ts` maps them.
+- Web: the door's "no visit today" carries the outside-slip leg (`imaging-walk-in.tsx`), reusing the door's study card with a `place` override; the door then opens the returned visit.
+- Runbook: `RAD` and its radiologist are precondition 8 in `docs/runbooks/radiology-go-live.md`.
