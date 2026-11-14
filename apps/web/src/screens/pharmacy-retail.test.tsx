@@ -479,3 +479,54 @@ describe("the walk-in counter after the 2026-11-13 walk", () => {
     expect(within(screen.getByTestId("bill-batch-0")).getByTestId("bill-batch-exp-0")).toHaveTextContent(/^R-1 · Exp\. 06\/27$/);
   });
 });
+
+/*
+  Spec #1064 — a cart line larger than the shelf holds: the `short_stock` refusal offers "Note as asked for" at the
+  quantity asked (editable). A refusal the shelf could meet by splitting the line across batches is not lost demand.
+*/
+describe("the walk-in counter's short line (spec #1064)", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const short = (available: number): Reply => ({ status: 409, body: {
+    statusCode: 409, code: "short_stock", message: "line 1: the earliest batch holds 5 of 15", detail: { lineIdx: 0, offered: [], available },
+  } });
+
+  it("offers 'Note as asked for' at the asked quantity, and notes it as counter_short", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/retail/shelf": { status: 200, body: { items: [CROCIN] } },
+      "POST /api/pharmacy/retail/preview": short(5),
+      "POST /api/pharmacy/retail/asked-for": { status: 201, body: { demand: { id: "dm1", itemId: "i-croc", typedName: null, qtyAskedBase: 10, source: "counter_short" }, shortBook: null } },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    await screen.findByRole("button", { name: "New customer" });
+    await addToCart(CROCIN, "15");
+    await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
+    const offer = await screen.findByTestId("retail-short-ask");
+    expect(offer).toHaveTextContent("Crocin 500 tablet");
+    const qty = within(offer).getByRole("textbox", { name: "Quantity asked for" });
+    expect(qty).toHaveValue("15");
+    await userEvent.clear(qty);
+    await userEvent.type(qty, "10");
+    await userEvent.click(within(offer).getByRole("button", { name: "Note as asked for" }));
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/retail/asked-for")).toEqual([{ source: "counter_short", itemId: "i-croc", medicineId: "m-croc", qtyBase: 10 }]));
+    expect(await screen.findByTestId("retail-short-noted")).toHaveTextContent("Crocin 500 tablet noted as asked for.");
+    expect(screen.queryByTestId("retail-short-ask")).toBeNull();
+  });
+
+  it("does not offer it when the shelf holds enough across its batches", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/retail/shelf": { status: 200, body: { items: [CROCIN] } },
+      "POST /api/pharmacy/retail/preview": short(40),
+    });
+    renderWithProviders(<PharmacyRetail />);
+    await screen.findByRole("button", { name: "New customer" });
+    await addToCart(CROCIN, "15");
+    await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
+    await screen.findByRole("alert");
+    expect(screen.queryByTestId("retail-short-ask")).toBeNull();
+  });
+});

@@ -122,6 +122,26 @@ describe("PharmacyReorder — the short book (parity P1)", () => {
     await waitFor(() => expect(screen.queryByTestId("short-sb1")).toBeNull());
   });
 
+  /** Spec #1064 — a row patients asked for says so, how often, and how much in all. */
+  it("a short-book row raised by patients asking shows the asked count and quantity", async () => {
+    const entries = [
+      { id: "sb3", storeResourceId: "s", itemId: "i1", drugName: "Calpol 500 tablet", qtyWanted: null, source: "counter", dispenseId: null, notedBy: "u1", notedAt: "2026-11-14T05:00:00.000Z", resolvedAt: null, resolvedBy: null, resolution: null, askedCount: 3, askedQtyBase: 35, notedByName: "Kavita Joshi" },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const raw = (typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url).split("?")[0]!;
+      const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (raw.endsWith("/api/auth/me")) return json({ actor: { type: "user", id: "u1" }, permissions: { hospital: ["pharmacy.dispense.read"], scoped: { department: {}, floor: {} } } });
+      if (raw.endsWith("/api/pharmacy/short-book")) return json({ entries });
+      if (raw.endsWith("/api/pharmacy/reorder")) return json({ asOf: "2026-11-14T06:00:00.000Z", window: { days: 30, minCoverDays: 3, targetCoverDays: 7, nearExpiryDays: 90 }, items: [], expiring: [], expiredOnShelf: [] });
+      return new Response("{}", { status: 404 });
+    }));
+    renderWithProviders(<PharmacyReorder />);
+    const row = await within(await screen.findByTestId("reorder-short-book")).findByTestId("short-sb3");
+    expect(row).toHaveTextContent("35");
+    expect(row).toHaveTextContent("patients asking");
+    expect(within(row).getByTestId("short-asked-sb3")).toHaveTextContent("asked 3 times");
+  });
+
   /** PARITY P2 — the levels are set in place by whoever raises orders, and the list says what is ordered and what to buy. */
   it("shows on-order and to-buy, and saves min / reorder / max on ⏎", async () => {
     const saved: unknown[] = [];

@@ -8638,10 +8638,13 @@
       "qty": "wanted",
       "from": "from",
       "notStocked": "not stocked",
+      "asked_one": "asked once",
+      "asked_other": "asked {{count}} times",
       "source": {
         "desk": "the desk",
         "agent": "agent draft",
-        "reorder": "this list"
+        "reorder": "this list",
+        "counter": "patients asking"
       },
       "ordered": "Ordered",
       "received": "Received",
@@ -9204,6 +9207,7 @@
       "collectedUntil_one": "holding one line until {{time}}",
       "collectedUntil_other": "holding {{count}} lines until {{time}}",
       "declined": "declined line {{line}}: {{reason}}",
+      "declinedAsked": "declined line {{line}}: {{reason}} — noted as asked for",
       "billed": "took {{amount}} by {{modes}}",
       "handedOver": "handed over to {{who}}",
       "draftClaimOnly": "saved as a draft — your claim stays",
@@ -9596,10 +9600,12 @@
       "note": "Note it",
       "noted": "{{name}} noted in the short book.",
       "already": "{{name}} was already in the short book.",
-      "alsoNote": "Also note {{name}} in the short book",
+      "alsoNote": "Not in stock — note {{name}} as asked for",
       "reason": {
-        "notStocked": "not stocked",
-        "outOfStock": "out of stock"
+        "notStocked": "not in stock",
+        "patientDeclined": "patient declined",
+        "cost": "cost too high",
+        "other": "other"
       },
       "draftTag": "draft",
       "draftBody": "Note {{name}} in the short book?",
@@ -11088,6 +11094,10 @@
     "find": "Find",
     "results": "On the walk-in shelf",
     "notOnShelf": "Not on the walk-in shelf.",
+    "askedQty": "Quantity asked for",
+    "askedNote": "Note as asked for",
+    "askedNoted": "{{name}} noted as asked for.",
+    "askedShort": "Short of what was asked:",
     "schedule": "Schedule {{flag}}",
     "available_one": "{{count}} {{unit}} available",
     "available_other": "{{count}} {{unit}} available",
@@ -13401,8 +13411,10 @@
       "accounts": {"when": "When", "type": "Document", "no": "Number", "party": "Patient / supplier", "amount": "Amount", "gst": "GST", "by": "By", "money": "Money", "againstInvoice": "Against invoice", "vendorNo": "Supplier's no.", "salesTitle": "Sales", "bills_one": "{{count}} bill", "bills_other": "{{count}} bills", "creditNotes_one": "Less {{count}} credit note", "creditNotes_other": "Less {{count}} credit notes", "netSales": "Net sales", "gstTitle": "GST", "gstOutput": "Output GST (sales less credit notes)", "gstInput": "Less input GST (purchases less returns)", "gstNet": "Net GST — estimate (see GSTR-3B)", "inTitle": "Money in (this period's bills)", "cash": "Cash", "upi": "UPI", "card": "Card", "inTotal": "Total received", "fromCredit": "Of the bills, paid from earlier credit", "owed": "Still owed by patients", "outTitle": "Money out (refunds paid)", "refundCash": "Refunds paid in cash", "refundBank": "Refunds paid by bank", "outTotal_one": "{{count}} refund paid", "outTotal_other": "{{count}} refunds paid", "creditTitle": "Pharmacy credit", "kept": "Kept from returns", "used": "Spent on bills", "heldNow": "Held by patients now", "buyTitle": "Purchases", "buyBills_one": "{{count}} supplier bill", "buyBills_other": "{{count}} supplier bills", "buyGst": "Input GST on them", "buyReturns": "Less returns to suppliers", "buyPaid": "Paid to suppliers", "buyDue": "Still due to suppliers", "note": "Every figure comes from the same books as the other reports. Credit spent on a bill is a payment, not a discount: its GST was reversed by the credit note it came from. Net GST here is an estimate; the GSTR-3B report applies the set-off rules.", "docsTitle": "Every money document", "all": "All", "exportAll": "Export all (Excel)", "exporting": "Preparing the workbook…", "section": "Section", "item": "Item", "period": "Period", "rate": "GST rate", "salesTaxable": "Sales taxable", "salesGst": "GST on sales", "returnsTaxable": "Returns taxable", "returnsGst": "GST on returns", "netGstCol": "Net GST", "sheet": {"summary": "Summary", "documents": "Documents", "gst": "GST by rate", "notes": "Credit notes", "sales": "Sales register", "purchases": "Purchases"}, "doc": {"bill": "Bill", "credit_note": "Credit note", "refund_paid": "Refund paid", "credit_kept": "Credit kept", "credit_used": "Credit spent", "purchase_bill": "Supplier bill", "debit_note": "Debit note"}},
       "books": {"ticket": "Ticket", "invoice": "Invoice", "gst": "GST", "bill": "Bill", "creditNotes": "Credit notes", "creditNote": "Credit note", "returned": "Returned", "final": "Final", "creditUsed": "Paid from earlier credit", "total": "Total", "noNotes": "No credit note against this bill.", "value": "Value", "bills_one": "{{count}} bill", "bills_other": "{{count}} bills", "source": {"dispense": "Desk ticket", "walk_in": "Walk-in sale", "downtime": "Paper sheet"}, "rate": "GST rate", "salesTaxable": "Sales taxable", "salesGst": "GST on sales", "returnsTaxable": "Returns taxable", "returnsGst": "GST on returns", "netTaxable": "Net taxable", "netGst": "Net GST", "gstOnSales": "GST on sales", "lessGstOnReturns": "Less GST reversed by credit notes", "gstPayable": "GST payable for the period", "byRate": "Rate by rate (GSTR-1 and 3B)", "notesTitle_one": "{{count}} credit note — with the invoice it reverses", "notesTitle_other": "{{count}} credit notes — each with the invoice it reverses", "againstInvoice": "Against invoice", "invoiceDate": "Invoice date", "moneyTitle": "Money check", "billed": "Billed in the period (with GST)", "paidFromCredit": "Paid from earlier credit notes", "stillOwed": "Still owed by patients", "collected": "Collected in cash, UPI and card", "moneyNote": "Earlier credit spent on a bill is a payment, like cash: it never lowers that bill's GST. The GST of the bill it came from was already reversed by its credit note, shown above — so GST is paid once, on what the patient kept."},
       "credit": {"no": "Credit note", "bill": "Against bill", "reason": "Reason", "value": "Value", "settled": "Money", "kept": "Kept as credit", "refund": "Refund", "count": "Credit notes", "total": "Total", "byPatient": "by patient", "view": "Show", "views": {"document": "Each credit note", "patient": "By patient"}, "summary_one": "{{count}} credit note", "summary_other": "{{count}} credit notes", "keptTotal": "Kept as pharmacy credit", "refundTotal": "Refund asked", "paidTotal": "Refund paid", "settlement": {"kept_as_credit": "Kept as pharmacy credit", "refund_paid": "Refund paid", "refund_approved": "Refund approved, not paid yet", "refund_requested": "Refund waiting for approval", "refund_refused": "Refund refused", "none": "—"}},
+      "missed": {"typedTitle": "Not in the catalogue — new item requests", "note": "Estimated value is the quantity at the latest batch MRP; blank when no batch has an MRP. Stock now and on order are for every pharmacy store."},
       "name": {
         "purchaseAnalysis": "Purchase analysis",
+        "missedSales": "Missed sales",
         "sales": "Sales register",
         "purchases": "Purchase register",
         "vendorDiscounts": "Vendor discounts",
@@ -13425,6 +13437,7 @@
       },
       "about": {
         "purchaseAnalysis": "Lines bought more than 2% above the last purchase or the contract rate, with the reason and the extra paid.",
+        "missedSales": "Medicines asked for and not supplied: times asked, quantity, estimated value, stock now and on order; names not in the catalogue apart.",
         "sales": "Every sale and refund, by bill, item, doctor, patient, pharmacist or tender.",
         "purchases": "Supplier bills, our debit notes and vendor credits, with input GST.",
         "vendorDiscounts": "Each vendor's trade discount on booked bills: gross, discount, taxable and GST.",
@@ -13453,6 +13466,13 @@
         "custom": "Custom"
       },
       "col": {
+        "timesAsked": "Times asked",
+        "estValue": "Estimated value",
+        "mrpUnit": "MRP ₹/unit",
+        "stockNow": "Stock now",
+        "onOrder": "On order",
+        "lastAsked": "Last asked",
+        "askedName": "Name as asked",
         "usualRate": "Usual ₹/unit",
         "paidRate": "Paid ₹/unit",
         "rise": "Rise",

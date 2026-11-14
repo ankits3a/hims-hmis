@@ -349,8 +349,10 @@ export type AddLineBody = {
 export async function addDispenseLine(id: string, body: AddLineBody, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/lines`, body, idempotencyKey);
 }
-export async function declineLine(id: string, lineIdx: number, reason: string): Promise<WireDispense> {
-  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/decline`, { reason });
+/** Spec #1064 — the desk's short reason list; `not_in_stock` records the lost demand and raises the short book on the server. */
+export type DeclineReasonCode = "not_in_stock" | "patient_declined" | "cost" | "other";
+export async function declineLine(id: string, lineIdx: number, reason: string, reasonCode?: DeclineReasonCode): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/decline`, { reason, ...(reasonCode === undefined ? {} : { reasonCode }) });
 }
 /** P5 — a paid dispense that cannot be collected: cancelled, credited, the refund requested. */
 export async function cancelBilledDispense(
@@ -807,8 +809,11 @@ export async function fetchDispensePaper(id: string, documents?: readonly Pharma
 
 export type WireShortBookEntry = {
   id: string; storeResourceId: string; itemId: string | null; drugName: string; qtyWanted: number | null;
-  source: "desk" | "agent" | "reorder"; dispenseId: string | null; notedBy: string; notedAt: string;
+  /** `counter` — raised by patients asking (spec #1064), not noted by hand. */
+  source: "desk" | "agent" | "reorder" | "counter"; dispenseId: string | null; notedBy: string; notedAt: string;
   resolvedAt: string | null; resolvedBy: string | null; resolution: string | null;
+  /** Spec #1064 — times asked for while open, and the quantity in all (base units). Absent from an older server. */
+  askedCount?: number; askedQtyBase?: number;
   /** On the list read only. */
   notedByName?: string | null;
 };
@@ -819,6 +824,21 @@ export async function noteShortBook(input: {
   itemId?: string; drugName: string; qtyWanted?: number; source: "desk" | "agent" | "reorder"; dispenseId?: string;
 }): Promise<{ entry: WireShortBookEntry; created: boolean }> {
   return api<{ entry: WireShortBookEntry; created: boolean }>("POST", "/pharmacy/short-book", input);
+}
+/**
+ * Spec #1064 — the walk-in counter's "Note as asked for": the shelf row's item (a search with no stock, or a short
+ * line), or the name as typed (a search that found nothing). The server records the demand and, for an item, raises
+ * the short book.
+ */
+export type AskedForBody = {
+  source: "counter_search" | "counter_short"; itemId?: string; medicineId?: string; typedName?: string; qtyBase: number;
+};
+export type WireAskedFor = {
+  demand: { id: string; itemId: string | null; typedName: string | null; qtyAskedBase: number; source: string };
+  shortBook: { created: boolean; entry: WireShortBookEntry } | null;
+};
+export async function noteAskedFor(body: AskedForBody): Promise<WireAskedFor> {
+  return api<WireAskedFor>("POST", "/pharmacy/retail/asked-for", body);
 }
 export async function resolveShortBook(id: string, resolution: "ordered" | "received" | "dismissed"): Promise<WireShortBookEntry> {
   return api<WireShortBookEntry>("POST", `/pharmacy/short-book/${id}/resolve`, { resolution });

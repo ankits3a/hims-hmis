@@ -51,6 +51,10 @@
 .d1 .rt-option { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 5px; font-size: 13px; cursor: pointer; flex-wrap: wrap; }
 .d1 .rt-option.sel { background: var(--green-soft); }
 .d1 .rt-option[aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
+/* Spec #1064 — "Note as asked for": the list's last row when nothing here can be sold, and the row under a short_stock refusal. */
+.d1 .rt-option.rt-ask { cursor: default; flex-wrap: nowrap; margin-top: 4px; border-top: 1px solid var(--line2); border-radius: 0 0 5px 5px; }
+.d1 .rt-ask .rt-askqty, .d1 .rt-row > .rt-askqty { flex: 0 0 64px; width: 64px; text-align: right; }
+.d1 .rt-ask .sec { white-space: nowrap; }
 
 .d1 .rt-tablewrap { overflow-x: auto; max-width: 100%; }
 .d1 .rt-table { width: 100%; border-collapse: collapse; font-size: 13px; }

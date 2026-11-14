@@ -267,8 +267,12 @@ function ShortBook(): React.ReactElement | null {
                 <tr key={r.id} data-testid={`short-${r.id}`}>
                   <td>{r.drugName}{r.itemId === null && <span className="ml-1 rounded bg-muted px-1 text-xs text-muted-foreground">{t("pharmacyReorder.short.notStocked")}</span>}</td>
                   <td>{IST_WHEN.format(new Date(r.notedAt))} · {r.notedByName ?? "—"}</td>
-                  <td>{r.qtyWanted ?? ""}</td>
-                  <td>{t(`pharmacyReorder.short.source.${r.source}`)}</td>
+                  {/* Spec #1064 — a row patients asked for carries how often and how much; a hand-noted row its wanted quantity. */}
+                  <td>{r.qtyWanted ?? ((r.askedQtyBase ?? 0) > 0 ? r.askedQtyBase : "")}</td>
+                  <td>
+                    {t(`pharmacyReorder.short.source.${r.source}`)}
+                    {(r.askedCount ?? 0) > 0 && <span className="ml-1 text-xs text-muted-foreground" data-testid={`short-asked-${r.id}`}>· {t("pharmacyReorder.short.asked", { count: r.askedCount })}</span>}
+                  </td>
                   {canResolve && (
                     <td className="whitespace-nowrap">
                       {(["ordered", "received", "dismissed"] as const).map((how) => (

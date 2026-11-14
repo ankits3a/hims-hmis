@@ -36,7 +36,7 @@ import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { addDispenseLine } from "./add-line";
 import { checkPickScan } from "./scan";
-import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
+import { DECLINE_REASON_CODES, cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { authorisationDetail, decideAuthorisation, requestAuthorisation } from "./authorisations";
 import { askSteward, stewardRequestDetail, stewardStates } from "./antimicrobial";
@@ -115,6 +115,8 @@ const verifyBody = z.object({
   })),
 });
 const reasonBody = z.object({ reason: z.string().min(1).max(240) });
+/** Spec #1064 — a decline's words, and (optional) its reason from the desk's short list; `not_in_stock` records lost demand. */
+const declineBody = reasonBody.extend({ reasonCode: z.enum(DECLINE_REASON_CODES).optional() });
 const refundBody = z.object({ reason: z.string().min(3).max(500), reasonClass: z.enum(["mistake", "genuine"]) });
 const returnBody = z.object({
   lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive() })).min(1).max(50),
@@ -731,9 +733,9 @@ export class PharmacyCounterController {
   @RequirePermission("pharmacy.dispense.place", "hospital")
   @Post("dispenses/:id/lines/:idx/decline")
   async decline(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string, @Body() body: unknown): Promise<DispenseView> {
-    const { reason } = parsed(reasonBody, body);
+    const { reason, reasonCode } = parsed(declineBody, body);
     try {
-      return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date());
+      return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date(), reasonCode === undefined ? {} : { reasonCode });
     } catch (e) {
       return toHttp(e);
     }

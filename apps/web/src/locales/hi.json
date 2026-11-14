@@ -8638,10 +8638,13 @@
       "qty": "चाहिए",
       "from": "कहाँ से",
       "notStocked": "स्टॉक में नहीं",
+      "asked_one": "एक बार माँगी",
+      "asked_other": "{{count}} बार माँगी",
       "source": {
         "desk": "डेस्क",
         "agent": "एजेंट ड्राफ़्ट",
-        "reorder": "यह सूची"
+        "reorder": "यह सूची",
+        "counter": "मरीज़ों की माँग"
       },
       "ordered": "ऑर्डर किया",
       "received": "मिल गया",
@@ -9204,6 +9207,7 @@
       "collectedUntil_one": "एक पंक्ति {{time}} तक रोकी गई",
       "collectedUntil_other": "{{count}} पंक्तियाँ {{time}} तक रोकी गईं",
       "declined": "पंक्ति {{line}} मना की: {{reason}}",
+      "declinedAsked": "पंक्ति {{line}} मना की: {{reason}} — माँगी गई दर्ज",
       "billed": "{{modes}} से {{amount}} लिए",
       "handedOver": "{{who}} को सौंपी",
       "draftClaimOnly": "ड्राफ़्ट सहेजा — आपका दावा बना है",
@@ -9596,10 +9600,12 @@
       "note": "दर्ज करें",
       "noted": "{{name}} शॉर्ट बुक में दर्ज।",
       "already": "{{name}} पहले से शॉर्ट बुक में था।",
-      "alsoNote": "{{name}} को शॉर्ट बुक में भी दर्ज करें",
+      "alsoNote": "स्टॉक में नहीं — {{name}} माँगी गई दर्ज करें",
       "reason": {
-        "notStocked": "स्टॉक में नहीं रखते",
-        "outOfStock": "स्टॉक ख़त्म"
+        "notStocked": "स्टॉक में नहीं",
+        "patientDeclined": "मरीज़ ने मना किया",
+        "cost": "बहुत महँगी",
+        "other": "अन्य"
       },
       "draftTag": "ड्राफ़्ट",
       "draftBody": "{{name}} शॉर्ट बुक में दर्ज करें?",
@@ -11088,6 +11094,10 @@
     "find": "खोजें",
     "results": "वॉक-इन शेल्फ़ पर",
     "notOnShelf": "वॉक-इन शेल्फ़ पर नहीं है।",
+    "askedQty": "माँगी गई मात्रा",
+    "askedNote": "माँगी गई दर्ज करें",
+    "askedNoted": "{{name}} माँगी गई दर्ज।",
+    "askedShort": "माँगी गई से कम:",
     "schedule": "शेड्यूल {{flag}}",
     "available_one": "{{count}} {{unit}} उपलब्ध",
     "available_other": "{{count}} {{unit}} उपलब्ध",
@@ -13401,8 +13411,10 @@
       "accounts": {"when": "कब", "type": "दस्तावेज़", "no": "नंबर", "party": "मरीज़ / सप्लायर", "amount": "राशि", "gst": "GST", "by": "किसने", "money": "पैसा", "againstInvoice": "किस इनवॉइस पर", "vendorNo": "सप्लायर नंबर", "salesTitle": "बिक्री", "bills_one": "{{count}} बिल", "bills_other": "{{count}} बिल", "creditNotes_one": "घटा {{count}} क्रेडिट नोट", "creditNotes_other": "घटा {{count}} क्रेडिट नोट", "netSales": "शुद्ध बिक्री", "gstTitle": "GST", "gstOutput": "आउटपुट GST (बिक्री घटा क्रेडिट नोट)", "gstInput": "घटा इनपुट GST (ख़रीद घटा वापसी)", "gstNet": "शुद्ध GST — अनुमान (GSTR-3B देखें)", "inTitle": "आया पैसा (इस अवधि के बिल)", "cash": "नकद", "upi": "UPI", "card": "कार्ड", "inTotal": "कुल मिला", "fromCredit": "बिलों में पुराने क्रेडिट से", "owed": "मरीज़ों पर बकाया", "outTitle": "गया पैसा (दिए गए रिफ़ंड)", "refundCash": "नकद रिफ़ंड", "refundBank": "बैंक से रिफ़ंड", "outTotal_one": "{{count}} रिफ़ंड दिया", "outTotal_other": "{{count}} रिफ़ंड दिए", "creditTitle": "फ़ार्मेसी क्रेडिट", "kept": "वापसी से रखा", "used": "बिलों में लगाया", "heldNow": "अभी मरीज़ों के पास", "buyTitle": "ख़रीद", "buyBills_one": "{{count}} सप्लायर बिल", "buyBills_other": "{{count}} सप्लायर बिल", "buyGst": "उन पर इनपुट GST", "buyReturns": "घटा सप्लायर को वापसी", "buyPaid": "सप्लायर को दिया", "buyDue": "सप्लायर का बकाया", "note": "हर आँकड़ा उन्हीं खातों से है जिनसे बाकी रिपोर्ट बनती हैं। बिल पर लगाया क्रेडिट भुगतान है, छूट नहीं: उसका GST उसके क्रेडिट नोट से उलट चुका है। यहाँ शुद्ध GST अनुमान है; GSTR-3B रिपोर्ट नियम लगाती है।", "docsTitle": "हर पैसे का दस्तावेज़", "all": "सभी", "exportAll": "सब एक्सपोर्ट करें (Excel)", "exporting": "वर्कबुक बन रही है…", "section": "भाग", "item": "मद", "period": "अवधि", "rate": "GST दर", "salesTaxable": "बिक्री कर-योग्य", "salesGst": "बिक्री पर GST", "returnsTaxable": "वापसी कर-योग्य", "returnsGst": "वापसी पर GST", "netGstCol": "शुद्ध GST", "sheet": {"summary": "सारांश", "documents": "दस्तावेज़", "gst": "दर अनुसार GST", "notes": "क्रेडिट नोट", "sales": "बिक्री रजिस्टर", "purchases": "ख़रीद"}, "doc": {"bill": "बिल", "credit_note": "क्रेडिट नोट", "refund_paid": "रिफ़ंड दिया", "credit_kept": "क्रेडिट रखा", "credit_used": "क्रेडिट लगाया", "purchase_bill": "सप्लायर बिल", "debit_note": "डेबिट नोट"}},
       "books": {"ticket": "टिकट", "invoice": "इनवॉइस", "gst": "GST", "bill": "बिल", "creditNotes": "क्रेडिट नोट", "creditNote": "क्रेडिट नोट", "returned": "वापस", "final": "अंतिम", "creditUsed": "पुराने क्रेडिट से दिया", "total": "कुल", "noNotes": "इस बिल पर कोई क्रेडिट नोट नहीं।", "value": "राशि", "bills_one": "{{count}} बिल", "bills_other": "{{count}} बिल", "source": {"dispense": "डेस्क टिकट", "walk_in": "वॉक-इन बिक्री", "downtime": "काग़ज़ी शीट"}, "rate": "GST दर", "salesTaxable": "बिक्री कर-योग्य", "salesGst": "बिक्री पर GST", "returnsTaxable": "वापसी कर-योग्य", "returnsGst": "वापसी पर GST", "netTaxable": "शुद्ध कर-योग्य", "netGst": "शुद्ध GST", "gstOnSales": "बिक्री पर GST", "lessGstOnReturns": "घटा क्रेडिट नोट से उलटा GST", "gstPayable": "इस अवधि का देय GST", "byRate": "दर के अनुसार (GSTR-1 और 3B)", "notesTitle_one": "{{count}} क्रेडिट नोट — जिस इनवॉइस को उलटता है उसके साथ", "notesTitle_other": "{{count}} क्रेडिट नोट — हर एक अपने इनवॉइस के साथ", "againstInvoice": "किस इनवॉइस पर", "invoiceDate": "इनवॉइस तारीख़", "moneyTitle": "पैसे का मिलान", "billed": "अवधि में बिल (GST सहित)", "paidFromCredit": "पुराने क्रेडिट नोट से दिया", "stillOwed": "मरीज़ों पर बकाया", "collected": "नकद, UPI और कार्ड में मिला", "moneyNote": "बिल पर लगाया पुराना क्रेडिट भुगतान है, नकद की तरह: उससे उस बिल का GST कम नहीं होता। जिस बिल से क्रेडिट आया उसका GST उसके क्रेडिट नोट से पहले ही उलट चुका है — इसलिए GST एक ही बार, मरीज़ ने जो रखा उस पर।"},
       "credit": {"no": "क्रेडिट नोट", "bill": "बिल", "reason": "कारण", "value": "राशि", "settled": "पैसा", "kept": "क्रेडिट में रखा", "refund": "रिफ़ंड", "count": "क्रेडिट नोट", "total": "कुल", "byPatient": "मरीज़ के अनुसार", "view": "दिखाएँ", "views": {"document": "हर क्रेडिट नोट", "patient": "मरीज़ के अनुसार"}, "summary_one": "{{count}} क्रेडिट नोट", "summary_other": "{{count}} क्रेडिट नोट", "keptTotal": "फ़ार्मेसी क्रेडिट में रखा", "refundTotal": "रिफ़ंड माँगा", "paidTotal": "रिफ़ंड दिया", "settlement": {"kept_as_credit": "फ़ार्मेसी क्रेडिट में रखा", "refund_paid": "रिफ़ंड दिया", "refund_approved": "रिफ़ंड मंज़ूर, अभी दिया नहीं", "refund_requested": "रिफ़ंड मंज़ूरी के इंतज़ार में", "refund_refused": "रिफ़ंड नामंज़ूर", "none": "—"}},
+      "missed": {"typedTitle": "कैटलॉग में नहीं — नई दवा के अनुरोध", "note": "अनुमानित मूल्य = मात्रा × नवीनतम बैच का MRP; किसी बैच पर MRP न हो तो खाली। अभी का स्टॉक और ऑर्डर पर सभी फ़ार्मेसी स्टोर के हैं।"},
       "name": {
         "purchaseAnalysis": "ख़रीद विश्लेषण",
+        "missedSales": "छूटी बिक्री",
         "sales": "बिक्री रजिस्टर",
         "purchases": "ख़रीद रजिस्टर",
         "vendorDiscounts": "विक्रेता छूट",
@@ -13425,6 +13437,7 @@
       },
       "about": {
         "purchaseAnalysis": "पिछली ख़रीद या अनुबंध दर से 2% से ज़्यादा पर ख़रीदी गई लाइनें, कारण और अतिरिक्त भुगतान के साथ।",
+        "missedSales": "माँगी गईं पर नहीं दी गईं दवाएँ: कितनी बार, मात्रा, अनुमानित मूल्य, अभी का स्टॉक और ऑर्डर पर; कैटलॉग में नहीं वाले नाम अलग।",
         "sales": "हर बिक्री और रिफ़ंड — बिल, आइटम, डॉक्टर, मरीज़, फ़ार्मासिस्ट या भुगतान के हिसाब से।",
         "purchases": "सप्लायर बिल, हमारे डेबिट नोट और वेंडर क्रेडिट, इनपुट GST के साथ।",
         "vendorDiscounts": "दर्ज बिलों पर हर विक्रेता की छूट: कुल, छूट, कर योग्य और GST।",
@@ -13453,6 +13466,13 @@
         "custom": "अपनी तारीख़ें"
       },
       "col": {
+        "timesAsked": "कितनी बार",
+        "estValue": "अनुमानित मूल्य",
+        "mrpUnit": "MRP ₹/इकाई",
+        "stockNow": "अभी स्टॉक",
+        "onOrder": "ऑर्डर पर",
+        "lastAsked": "आख़िरी बार",
+        "askedName": "जैसा माँगा",
         "usualRate": "सामान्य ₹/यूनिट",
         "paidRate": "दिया ₹/यूनिट",
         "rise": "बढ़त",
