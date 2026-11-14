@@ -1,5 +1,5 @@
 {
-  "id": "959eea15-928b-45aa-8c3a-b2e093d657fb",
+  "id": "46d2c72e-2738-43e9-b277-2ed57c23da6d",
   "prevId": "d6c5c9f0-872a-4448-beb6-39961b2884bb",
   "version": "7",
   "dialect": "postgresql",
@@ -20298,30 +20298,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "price_ref_paise_per_base": {
-          "name": "price_ref_paise_per_base",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "price_ref_kind": {
-          "name": "price_ref_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "price_reason_code": {
-          "name": "price_reason_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "price_reason_text": {
-          "name": "price_reason_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -20408,10 +20384,6 @@
         "grn_lines_qty_base_ck": {
           "name": "grn_lines_qty_base_ck",
           "value": "\"grn_lines\".\"qty_base\" > 0"
-        },
-        "grn_lines_price_check_ck": {
-          "name": "grn_lines_price_check_ck",
-          "value": "(\"grn_lines\".\"price_reason_code\" is null) = (\"grn_lines\".\"price_ref_paise_per_base\" is null)\n      and (\"grn_lines\".\"price_reason_code\" is null) = (\"grn_lines\".\"price_ref_kind\" is null)\n      and (\"grn_lines\".\"price_ref_kind\" is null or \"grn_lines\".\"price_ref_kind\" in ('last_receipt', 'contract'))\n      and (\"grn_lines\".\"price_reason_code\" is null or \"grn_lines\".\"price_reason_code\" in ('mrp_revised', 'scheme_changed', 'urgent_buy', 'other'))\n      and (\"grn_lines\".\"price_reason_code\" is distinct from 'other' or coalesce(btrim(\"grn_lines\".\"price_reason_text\"), '') <> '')"
         }
       },
       "isRLSEnabled": false
@@ -41035,6 +41007,42 @@
           "primaryKey": false,
           "notNull": false
         },
+        "added_reason": {
+          "name": "added_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_by": {
+          "name": "added_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_at": {
+          "name": "added_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_document_id": {
+          "name": "added_document_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_prescriber_name": {
+          "name": "added_prescriber_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_prescriber_reg_no": {
+          "name": "added_prescriber_reg_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -41257,6 +41265,10 @@
         "pharmacy_dispense_lines_declined_ck": {
           "name": "pharmacy_dispense_lines_declined_ck",
           "value": "\"pharmacy_dispense_lines\".\"status\" <> 'declined' or \"pharmacy_dispense_lines\".\"declined_reason\" is not null"
+        },
+        "pharmacy_dispense_lines_added_ck": {
+          "name": "pharmacy_dispense_lines_added_ck",
+          "value": "(\"pharmacy_dispense_lines\".\"added_reason\" is null and \"pharmacy_dispense_lines\".\"added_by\" is null and \"pharmacy_dispense_lines\".\"added_at\" is null and \"pharmacy_dispense_lines\".\"added_document_id\" is null and \"pharmacy_dispense_lines\".\"added_prescriber_name\" is null and \"pharmacy_dispense_lines\".\"added_prescriber_reg_no\" is null)\n        or (\"pharmacy_dispense_lines\".\"added_reason\" in ('not_prescribed', 'paper') and \"pharmacy_dispense_lines\".\"added_by\" is not null and \"pharmacy_dispense_lines\".\"added_at\" is not null\n          and (\"pharmacy_dispense_lines\".\"added_reason\" = 'paper' or (\"pharmacy_dispense_lines\".\"added_document_id\" is null and \"pharmacy_dispense_lines\".\"added_prescriber_name\" is null and \"pharmacy_dispense_lines\".\"added_prescriber_reg_no\" is null)))"
         }
       },
       "isRLSEnabled": false

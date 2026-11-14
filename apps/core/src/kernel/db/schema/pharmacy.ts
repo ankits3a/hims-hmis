@@ -222,6 +222,18 @@ export const pharmacyDispenseLines = pgTable(
      * every line the doctor's prescription laid, and on every line picked from one batch.
      */
     splitFromLineIdx: integer("split_from_line_idx"),
+    /**
+     * Spec #1055, ruling 0094 — a medicine the COUNTER added by hand (`add-line.ts`): why (`not_prescribed`, or `paper`
+     * — the doctor wrote it on paper only), who and when; for `paper`, the slip's photo (a patient document) and the
+     * prescriber as written (name and registration number, required for H1). Null on every line the prescription laid.
+     * A split of an added line (`split_from_line_idx`) carries the same marks, so the H1 register reads them per batch.
+     */
+    addedReason: text("added_reason"),
+    addedBy: text("added_by"),
+    addedAt: timestamp("added_at", { withTimezone: true }),
+    addedDocumentId: text("added_document_id"),
+    addedPrescriberName: text("added_prescriber_name"),
+    addedPrescriberRegNo: text("added_prescriber_reg_no"),
     status: text("status").notNull().default("open"),
     declinedReason: text("declined_reason"),
     declinedBy: text("declined_by"),
@@ -239,6 +251,12 @@ export const pharmacyDispenseLines = pgTable(
     check("pharmacy_dispense_lines_schedule_ck", sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'X', 'OTC')`),
     check("pharmacy_dispense_lines_ndps_ck", sql`${t.ndpsClass} is null or ${t.ndpsClass} in ('narcotic', 'psychotropic')`),
     check("pharmacy_dispense_lines_declined_ck", sql`${t.status} <> 'declined' or ${t.declinedReason} is not null`),
+    check(
+      "pharmacy_dispense_lines_added_ck",
+      sql`(${t.addedReason} is null and ${t.addedBy} is null and ${t.addedAt} is null and ${t.addedDocumentId} is null and ${t.addedPrescriberName} is null and ${t.addedPrescriberRegNo} is null)
+        or (${t.addedReason} in ('not_prescribed', 'paper') and ${t.addedBy} is not null and ${t.addedAt} is not null
+          and (${t.addedReason} = 'paper' or (${t.addedDocumentId} is null and ${t.addedPrescriberName} is null and ${t.addedPrescriberRegNo} is null)))`,
+    ),
   ],
 );
 

@@ -83,6 +83,21 @@ describe("the pharmacy schema (16c T1, migration 0056)", () => {
     await expect(db.insert(pharmacyDispenseLines).values(line({}))).rejects.toThrow(/pharmacy_dispense_lines_idx_ux/);
   });
 
+  it("spec #1055 — a line added at the counter names why, who and when; only a paper slip carries a photo or a prescriber", async () => {
+    const d = queued();
+    await db.insert(pharmacyDispenses).values(d);
+    let idx = 0;
+    const line = (over: Partial<typeof pharmacyDispenseLines.$inferInsert>): typeof pharmacyDispenseLines.$inferInsert =>
+      ({ id: newId(), dispenseId: d.id, lineIdx: idx++, rxLine: LINE, ...over });
+    const by = { addedBy: "u", addedAt: new Date("2026-11-13T05:00:00Z") };
+    await expect(db.insert(pharmacyDispenseLines).values(line({ addedReason: "paper" }))).rejects.toThrow(/pharmacy_dispense_lines_added_ck/);
+    await expect(db.insert(pharmacyDispenseLines).values(line({ addedReason: "otc", ...by }))).rejects.toThrow(/pharmacy_dispense_lines_added_ck/);
+    await expect(db.insert(pharmacyDispenseLines).values(line({ addedReason: "not_prescribed", ...by, addedPrescriberName: "Dr Rao" }))).rejects.toThrow(/pharmacy_dispense_lines_added_ck/);
+    await expect(db.insert(pharmacyDispenseLines).values(line({ addedBy: "u" }))).rejects.toThrow(/pharmacy_dispense_lines_added_ck/);
+    await db.insert(pharmacyDispenseLines).values(line({ addedReason: "not_prescribed", ...by }));
+    await db.insert(pharmacyDispenseLines).values(line({ addedReason: "paper", ...by, addedDocumentId: "doc", addedPrescriberName: "Dr Rao", addedPrescriberRegNo: "MMC-1" }));
+  });
+
   it("R-4 — the H1 register is append-only: UPDATE and DELETE both raise, in the database", async () => {
     const d = queued();
     await db.insert(pharmacyDispenses).values(d);

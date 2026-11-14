@@ -16,8 +16,8 @@ import "../pharmacy-office/pharmacy-office.css";
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import { SubstituteSheet } from "./substitute";
 import { BatchChip, BatchSheet } from "./batch";
-import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, packOf, pickBody, placeable, qtyLabels, qtyOf, routeScan, saltLabel, sigOf, substitutable, verifyBody } from "./work";
-import type { Tick } from "./work";
+import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, packOf, pickBody, placeable, qtyLabels, qtyOf, routeScan, saltLabel, shortSaid, sigOf, substitutable, verifyBody } from "./work";
+import type { ShortBy, Tick } from "./work";
 import type { PickLine, VerifyLine, WireAlternativeBlock, WireDispense, WireDispenseLine, WireLinePrecheck, WireStewardLine } from "../../lib/pharmacy-api";
 
 /**
@@ -32,8 +32,17 @@ import type { PickLine, VerifyLine, WireAlternativeBlock, WireDispense, WireDisp
 export type CollectResult = { ok: true } | { ok: false; lineErrors: Record<number, string>; message: string | null };
 
 export function LineList({
-  dispense, editable, busy, onCollect, onDecline, onFocusDrug, onLiveQty,
+  dispense, editable, busy, onCollect, onDecline, onFocusDrug, onLiveQty, onDraft = null, addRow = null, compact = false,
 }: {
+  /**
+   * Walk 2026-11-13 (#1055) — once paid the hand-over leads the work column (board "Handover") and the lines follow it,
+   * COMPACT: one tight row each — what is given, its batch and its amount — without the doctor's sig, salt or counselling.
+   */
+  compact?: boolean;
+  /** Spec #1055 — "Save draft", at the ticket's foot while the lines are collected. */
+  onDraft?: (() => void) | null;
+  /** Spec #1055 D5 — the "+ Add a medicine" row, drawn under the lines. */
+  addRow?: React.ReactNode;
   dispense: WireDispense;
   /** Claimed or verified, and this desk's to work. Everything else is drawn, not worked. */
   editable: boolean;
@@ -139,6 +148,12 @@ export function LineList({
     setErrors({}); setTicketError(null); setDeclining(null);
   }, [dispense.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Spec #1055 — a line that arrives on the SAME ticket (added by hand at the counter) starts fresh; the others keep their ticks. */
+  useEffect(() => {
+    const missing = dispense.lines.filter((l) => !(l.lineIdx in ticks));
+    if (missing.length > 0) setTicks((prev) => ({ ...prev, ...Object.fromEntries(missing.filter((l) => !(l.lineIdx in prev)).map((l) => [l.lineIdx, freshTick(l)])) }));
+  }, [dispense.lines]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     onLiveQty?.(dispense.id, Object.fromEntries(Object.entries(ticks).map(([idx, tk]) => [Number(idx), qtyOf(tk)])));
   }, [ticks, onLiveQty]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -239,19 +254,23 @@ export function LineList({
   const rows = dispense.lines.filter((l) => l.splitFromLineIdx == null);
   const partsOf = (idx: number): WireDispenseLine[] => dispense.lines.filter((l) => l.splitFromLineIdx === idx);
   const settledCount = rows.filter((l) => isSettled(l, ticks[l.lineIdx])).length;
+  /*
+    Spec #1055 D2 — while the lines are collected there is no bill column: the ticket's foot says how far it has come
+    and what it comes to so far, at today's shelf price over the quantities on the screen (`quoteAmountPaise` mirrors the
+    server's sum; the desk does no other arithmetic on money). A declined line is not in it.
+  */
+  const collecting = dispense.status === "claimed" || dispense.status === "verified";
+  const soFar = rows.reduce((n, l) => {
+    if (l.status !== "open" || l.quote == null) return n;
+    const tk = ticks[l.lineIdx];
+    const q = tk === undefined ? l.qtyBase : (qtyOf(tk) ?? null);
+    return q === null ? n : n + quoteAmountPaise(l.quote, q);
+  }, 0);
   /* The co-pilot speaks about the first line the shelf cannot fill as written (the board's `agchip`). */
   const helpLine = firstLineNeedingHelp(dispense.lines);
 
   return (
-    <div data-testid="desk-lines">
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 15 }}>
-        <div style={{ flexGrow: 1, height: 6, borderRadius: 3, background: "var(--line2)", overflow: "hidden" }}>
-          <span style={{ display: "block", width: `${String(rows.length === 0 ? 0 : (settledCount * 100) / rows.length)}%`, height: "100%", background: "var(--green)" }} />
-        </div>
-        <span className="mo" style={{ fontSize: 12, color: "var(--dim)" }} data-testid="desk-settled">
-          {t("pharmacyDesk.settled", { n: settledCount, of: rows.length })}
-        </span>
-      </div>
+    <div data-testid="desk-lines" className={compact ? "pd-lines compact" : "pd-lines"}>
       {/* ONE scan box for the ticket: a pack scanned here finds its own line (`routeScan`) and ticks it. */}
       {editable && dispense.lines.some((l) => l.status === "open" && l.pickedBatch == null) ? (
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 13 }}>
@@ -285,6 +304,7 @@ export function LineList({
           <LineRow
             key={l.lineIdx}
             line={l}
+            compact={compact}
             parts={partsOf(l.lineIdx)}
             tick={ticks[l.lineIdx]}
             editable={editable && l.status === "open" && l.pickedBatch == null}
@@ -312,6 +332,7 @@ export function LineList({
           />
         ))}
       </div>
+      {addRow}
       {editable && helpLine !== null ? (
         <CopilotOffer
           dispenseId={dispense.id}
@@ -400,6 +421,21 @@ export function LineList({
       {/* A refusal that landed on its lines is said there, once — not again under the list. */}
       {ticketError !== null && Object.keys(errors).length === 0
         ? <p role="alert" style={{ margin: "12px 0 0 0", fontSize: 12.5, color: "var(--red)" }}>{ticketError}</p> : null}
+      {collecting ? (
+        <div className="pd-foot" data-testid="desk-ticket-foot">
+          <div className="pd-foot-progress">
+            <div className="pd-foot-bar"><span style={{ width: `${String(rows.length === 0 ? 0 : (settledCount * 100) / rows.length)}%` }} /></div>
+            <span className="mo" style={{ fontSize: 12, color: "var(--dim)", whiteSpace: "nowrap" }} data-testid="desk-settled">
+              {t("pharmacyDesk.settled", { n: settledCount, of: rows.length })}
+            </span>
+          </div>
+          <span className="pd-foot-hint">{t("pharmacyDesk.foot.hint")}</span>
+          <span style={{ flexGrow: 1 }} />
+          <span className="tag">{t("pharmacyDesk.foot.soFar")}</span>
+          <strong className="mo" data-testid="desk-sofar" style={{ fontSize: 17, letterSpacing: "-.01em" }}>{rupees(soFar)}</strong>
+          {onDraft === null ? null : <button type="button" className="sec" onClick={onDraft}>{t("pharmacyDesk.bill.draft")}</button>}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -417,12 +453,14 @@ export function LineList({
  */
 type SheetKind = "qty" | "where" | "ask" | "steward";
 type StewardAsk = { indication: string; cultureSent: boolean; plannedDays: number };
-type Note = { text: string; tone: "red" | "gold" | "green" | "dim"; testId?: string; alert?: boolean };
+type Note = { text: string; tone: "red" | "gold" | "green" | "dim"; testId?: string; alert?: boolean; act?: { label: string; onClick: () => void } };
 
 function LineRow({
   line, parts = [], tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, steward, onAskSteward, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve, onOpenBatch, onFocusLine, onNearMiss, onReaction,
-  onAskSwap = null, droppable = false,
+  onAskSwap = null, droppable = false, compact = false,
 }: {
+  /** Walk 2026-11-13 — a paid ticket's lines under the hand-over: no sig, salt or counselling (`LineList` `compact`). */
+  compact?: boolean;
   /** 0093 / spec #1046 D7 — ask the prescriber to agree to this line's Schedule H/H1 brand swap; null for a reader who may not ask. */
   onAskSwap?: ((medicineId: string) => Promise<string | null>) | null;
   /** Spec #1046 D2 — a collected line, not yet billed: ⋯ offers "Drop this line" with a reason. */
@@ -576,10 +614,14 @@ function LineRow({
     if (advice?.kind === "first_short") return { text: t("pharmacyDesk.advice.firstShort", { batch: advice.batch.batchNo, n: advice.batch.available, qty: qty ?? 0 }), tone: "gold", testId: "advice" };
     if (advice?.kind === "short_all") return { text: t("pharmacyDesk.advice.shortAll", { n: advice.available, qty: qty ?? 0 }), tone: "gold", testId: "advice" };
     if (advice?.kind === "dies_in_course") return { text: t("pharmacyDesk.advice.diesInCourse", { batch: advice.batch.batchNo, expiry: advice.batch.expiryDate ?? "", days: rx.durationDays ?? 0 }), tone: "gold", testId: "advice" };
+    /*
+      Walk 2026-11-13 (#1055) — the hint sent the pharmacist to "⋯" for a reason that is not an item there (it is in the
+      quantity sheet). The hint carries its own "Say why": one tap to the reason and whose short it is.
+    */
     if (editable && partial) {
-      return (tick?.reason ?? "").trim() === ""
-        ? { text: t("pharmacyDesk.partialOwed", { n: qty ?? 0, of: line.qtyBase ?? 0 }), tone: "gold" }
-        : { text: t("pharmacyDesk.partialSaid", { n: qty ?? 0, of: line.qtyBase ?? 0, reason: tick?.reason.trim() ?? "" }), tone: "dim" };
+      return tick === undefined || !shortSaid(tick)
+        ? { text: t("pharmacyDesk.partialOwed", { n: qty ?? 0, of: line.qtyBase ?? 0 }), tone: "gold", testId: "partial", act: { label: t("pharmacyDesk.partialSayWhy"), onClick: () => setSheet("qty") } }
+        : { text: t("pharmacyDesk.partialSaid", { n: qty ?? 0, of: line.qtyBase ?? 0, reason: tick.reason.trim() }), tone: "dim", testId: "partial" };
     }
     if (editable && (sub ?? res) !== null) return { text: t("pharmacyDesk.sub.onShelf", { n: (sub ?? res)!.available }), tone: "dim" };
     /* DESK FIXES 2026-09-30 — the pick splits it across batches; said, so the two strips are no surprise. */
@@ -626,6 +668,12 @@ function LineRow({
   ];
 
   const closeSheet = (): void => { setSheet(null); setSheetError(null); };
+  /* The choice words the reason, unless the pharmacist has written their own. */
+  const chooseShort = (k: ShortBy): void => {
+    const phrases = [t("pharmacyDesk.partialBy.shelf"), t("pharmacyDesk.partialBy.patient")];
+    const typed = (tick?.reason ?? "").trim();
+    onEdit({ short: k, ...(typed === "" || phrases.includes(typed) ? { reason: t(`pharmacyDesk.partialBy.${k}`) } : {}) }, false);
+  };
   const savePlace = async (): Promise<void> => {
     if (onPlace === null) return;
     const err = await onPlace(placing);
@@ -649,7 +697,7 @@ function LineRow({
 
   return (
     <section data-testid={id} onFocusCapture={onFocusLine} onMouseDown={onFocusLine} style={{ borderTop: line.lineIdx === 0 ? "none" : "1px solid var(--line2)", boxShadow: `inset 3px 0 0 ${bar}` }}>
-      <div className="pd-lrow" style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 15px" }}>
+      <div className="pd-lrow" style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: compact ? "7px 15px" : "12px 15px" }}>
         <span style={{ width: 21, flexShrink: 0, paddingTop: 1 }}>
           {editable ? (
             <input
@@ -665,12 +713,23 @@ function LineRow({
 
         <span style={{ width: 206, flexShrink: 0 }}>
           <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{rx.drug}</span>
-          <span className="mo" style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
-            {sigOf(rx)}{rx.instructions === null || rx.instructions === "" ? "" : ` · ${rx.instructions}`}
-          </span>
-          {saltLabel(line.salt) === null && !rx.noSubstitution ? null : (
+          {compact ? null : (
+            <span className="mo" style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
+              {sigOf(rx)}{rx.instructions === null || rx.instructions === "" ? "" : ` · ${rx.instructions}`}
+            </span>
+          )}
+          {compact || (saltLabel(line.salt) === null && !rx.noSubstitution) ? null : (
             <span data-testid={`${id}-salt`} style={{ display: "block", fontSize: 10.5, color: "var(--dim)", marginTop: 1 }}>
               {[saltLabel(line.salt), rx.noSubstitution ? t("pharmacyDesk.noSubstitution") : null].filter((x) => x !== null).join(" · ")}
+            </span>
+          )}
+          {/* Spec #1055, ruling 0094 — not the doctor's line: the counter added it by hand, and says who and why. */}
+          {line.added == null ? null : (
+            <span className="pill gd pd-wrap" data-testid={`${id}-added`} style={{ marginTop: 5 }}>
+              {[
+                t("pharmacyDesk.added.mark", { name: line.added.byName ?? "—", reason: t(`pharmacyDesk.added.reason.${line.added.reason}`) }),
+                line.added.prescriberName,
+              ].filter((x) => x !== null && x !== "").join(" · ")}
             </span>
           )}
         </span>
@@ -731,7 +790,7 @@ function LineRow({
           ) : null}
 
           {/* OWNER 2026-10-02 — what to tell the patient, from the generic's REVIEWED monograph. Absent when there is none. */}
-          {line.counselling == null ? null : (
+          {compact || line.counselling == null ? null : (
             <span data-testid={`${id}-counselling`} style={{ display: "block", marginTop: 5, fontSize: 12, color: "var(--dim)" }}>
               <b>{t("pharmacyDesk.counselling.label")}</b> {line.counselling.en}
               {line.counselling.hi == null ? null : <span lang="hi" style={{ display: "block" }}>{line.counselling.hi}</span>}
@@ -739,7 +798,12 @@ function LineRow({
           )}
 
           {note === null ? null : (
-            <span role={note.alert === true ? "alert" : undefined} data-testid={note.testId === undefined ? undefined : `${id}-${note.testId}`} style={tone(note)}>{note.text}</span>
+            <span role={note.alert === true ? "alert" : undefined} data-testid={note.testId === undefined ? undefined : `${id}-${note.testId}`} style={tone(note)}>
+              {note.text}
+              {note.act === undefined ? null : (
+                <button type="button" className="pill" style={{ marginLeft: 8, height: 22, verticalAlign: "middle" }} disabled={busy} onClick={note.act.onClick}>{note.act.label}</button>
+              )}
+            </span>
           )}
         </span>
 
@@ -820,14 +884,33 @@ function LineRow({
           {partial ? (
             <div style={{ marginTop: 12 }}>
               <label className="tag" htmlFor={`why-short-${String(line.lineIdx)}`}>{t("pharmacyDesk.partialWhy", { n: qty ?? 0, of: line.qtyBase ?? 0 })}</label>
+              {/*
+                Walk 2026-11-13 (#1055) — WHOSE short it is decides the money: only a short the shelf caused owes the rest
+                (a balance ticket); a patient who asked for less is owed nothing. One tap says both, and words the reason.
+              */}
+              <span role="radiogroup" aria-label={t("pharmacyDesk.partialBy.label")} style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                {(["shelf", "patient"] as const).map((k) => (
+                  <button
+                    key={k} type="button" role="radio" aria-checked={tick?.short === k} data-testid={`${id}-short-${k}`}
+                    className={tick?.short === k ? "pill on" : "pill"} onClick={() => chooseShort(k)}
+                  >
+                    {t(`pharmacyDesk.partialBy.${k}`)}
+                  </button>
+                ))}
+              </span>
               <input
                 id={`why-short-${String(line.lineIdx)}`}
                 className="in"
-                style={{ height: 34, marginTop: 5, fontSize: 12.5 }}
+                style={{ height: 34, marginTop: 8, fontSize: 12.5 }}
                 value={tick?.reason ?? ""}
                 placeholder={t("pharmacyDesk.partialPlaceholder")}
                 onChange={(e) => onEdit({ reason: e.target.value }, false)}
               />
+              {tick?.short == null ? null : (
+                <p data-testid={`${id}-short-owes`} style={{ margin: "7px 0 0 0", fontSize: 12, color: "var(--dim)", lineHeight: "17px" }}>
+                  {tick.short === "shelf" ? t("pharmacyDesk.partialBy.owes", { n: (line.qtyBase ?? 0) - (qty ?? 0) }) : t("pharmacyDesk.partialBy.owesNothing")}
+                </p>
+              )}
             </div>
           ) : null}
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>

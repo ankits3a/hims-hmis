@@ -44,6 +44,12 @@ export function PharmacyBillAnnex({ label }: { label: WireLabel }): React.ReactE
               <td className="pr-2">
                 {[l.drug, strengthShown(l.strength), l.form].filter((x): x is string => x !== null && x !== "").join(" ")}
                 {l.substitutedFor !== null && ` ${t("pharmacyBill.substitutedFor", { brand: l.substitutedFor })}`}
+                {/* Spec #1055 — a medicine added at the counter by hand says so, and why. */}
+                {l.added == null ? null : (
+                  <span className="block text-[11px]" data-testid={`bill-added-${String(l.lineIdx)}`}>
+                    {t("pharmacyBill.added", { name: l.added.byName, reason: t(`pharmacyBill.addedReason.${l.added.reason}`) })}
+                  </span>
+                )}
               </td>
               {/* Walk 2026-11-13 — two bare columns printed "PCMW131108/28": the batch and its expiry, said apart in one cell. */}
               <td className="whitespace-nowrap pr-2" data-testid={`bill-batch-exp-${String(l.lineIdx)}`}>

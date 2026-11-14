@@ -50,7 +50,7 @@ of 2026-11-14.
 ## Built (2026-11-14)
 
 Built as specified; acceptance tests `spec #1061 D1`–`D8` in `apps/core/src/modules/pharmacy/acceptance/` and the
-web half of D1 and D7 in `apps/web/src/screens/acceptance/`. Migration `0231_grn_price_check` (additive: four nullable
+web half of D1 and D7 in `apps/web/src/screens/acceptance/`. Migration `0232_grn_price_check` (additive: four nullable
 `grn_lines.price_*` columns and a check). Where the build is more precise than the text above:
 
 - The check lives in `materials/price-check.ts` and runs inside `captureGrn`, so every path that captures a supplier

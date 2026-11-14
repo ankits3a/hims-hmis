@@ -384,6 +384,25 @@ describe("MaterialsGrn", () => {
     expect(table).toHaveClass("grn-lines");
   });
 
+  it("walk 2026-11-13 (#1055): an opening line with no rate says its cost is an estimate, as the grid did", async () => {
+    const base = grnWith(null);
+    const opening = { ...base, status: "gate_qc", qcBy: null, source: "opening_stock", lines: [
+      { ...base.lines[0]!, id: "l-1", estimatedCost: true },
+      { ...base.lines[0]!, id: "l-2", batchNo: "B-002", unitCostPaise: 650, estimatedCost: false },
+    ] };
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/materials/grns": { status: 200, body: { grns: [opening] } },
+      "GET /api/materials/grns/g-1": { status: 200, body: { grn: opening } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    await userEvent.click(await screen.findByRole("button", { name: "GRN2608270001" }));
+    const table = await screen.findByRole("table");
+    const [, first, second] = within(table).getAllByRole("row");
+    expect(within(first!).getByTestId("grn-line-estimated")).toHaveTextContent("estimated");
+    expect(within(second!).queryByTestId("grn-line-estimated")).toBeNull();
+  });
+
   it("walk 2026-11-13: each delivery in the list names its supplier, its invoice (else challan) number and its value", async () => {
     mockRoutes({
       ...baseRoutes(),

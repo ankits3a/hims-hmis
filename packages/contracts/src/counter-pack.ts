@@ -20,3 +20,14 @@ export function counterPackOf<U extends CounterPackUnit>(uoms: readonly U[]): U 
   const packs = uoms.filter((u) => u.toBaseMultiplier > 1).sort((a, b) => a.toBaseMultiplier - b.toBaseMultiplier);
   return packs.find((u) => u.isIssueUom === true) ?? packs[0] ?? null;
 }
+
+/**
+ * A pack unit's CODE as a patient's paper words it (walk 2026-11-13, #1055). The stock loader and the recount name a
+ * pack by its size (`strip15`, `box10`) so two sizes can stand side by side in the item master; the bill and the label
+ * said "1 strip15". On paper the size goes and the word stays: `strip15` → `strip`. A plain word (`strip`, `bottle`) and
+ * anything that is not a word followed by a number are left as they are. Internal screens keep the code.
+ */
+export function packWordOf(uom: string): string {
+  const m = /^([A-Za-z]+(?:[ _-][A-Za-z]+)*)[ _-]*\d+$/.exec(uom.trim());
+  return m === null ? uom : m[1]!;
+}

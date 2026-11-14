@@ -138,6 +138,31 @@ describe("counter go-live edges (spec #1046)", () => {
       await expect(openBalanceDispense(db, A, id, MON3)).rejects.toMatchObject({ code: "no_balance_owed" });
     });
 
+    /*
+     * Walk 2026-11-13 (#1055) — a line given short because the PATIENT asked for less recorded a balance, printed
+     * "Balance owed … collect by …" and offered a balance ticket. Only a short the shelf caused owes a balance.
+     */
+    it("a short the patient asked for owes nothing: no owed units, no balance, no balance ticket", async () => {
+      const { id } = await ticket([crocin()]);
+      await verifyDispense(db, A, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 20 }] }, MON2);
+      await pickDispense(db, A, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 10, pickNote: "patient asked for less", short: "patient" }] }, MON2);
+      const [row] = await db.select().from(pharmacyDispenseLines).where(eq(pharmacyDispenseLines.dispenseId, id));
+      expect(row!.owedQtyBase).toBeNull();
+      expect(row!.pickNote).toBe("patient asked for less");
+      await pay(id, MON2);
+      const done = await handOverDispense(db, A, fx.decls, id, {}, MON3);
+      expect(done.balanceOwed).toBeNull();
+      await expect(openBalanceDispense(db, A, id, MON3)).rejects.toMatchObject({ code: "no_balance_owed" });
+    });
+
+    it("a short the shelf caused, said so, owes the rest", async () => {
+      const { id } = await ticket([crocin()]);
+      await verifyDispense(db, A, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 20 }] }, MON2);
+      await pickDispense(db, A, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 10, pickNote: "only this much on the shelf", short: "shelf" }] }, MON2);
+      const [row] = await db.select().from(pharmacyDispenseLines).where(eq(pharmacyDispenseLines.dispenseId, id));
+      expect(row!.owedQtyBase).toBe(10);
+    });
+
     it("by name or UHID the next day, the desk is told a balance is owed", async () => {
       const { id } = await shortHandedOver();
       const found = await findAtCounter(db, testCfg, A, fx.patient.uhid, new Date(MON3.getTime() + DAY));

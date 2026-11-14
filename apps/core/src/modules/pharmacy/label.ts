@@ -1,4 +1,4 @@
-import { strengthShown } from "@hmis/contracts";
+import { packWordOf, strengthShown } from "@hmis/contracts";
 import { medicinesByIds } from "../formulary";
 import { fromBase, getBatch, itemUomRows, itemsByIds } from "../materials";
 import { EYE_TEXT } from "../opd";
@@ -7,7 +7,7 @@ import { billRowsForInvoice } from "./bill-rows";
 import { PharmacyError } from "./errors";
 import type { BillRow } from "./bill-rows";
 import { personName, registrationAt } from "./pharmacists";
-import { balanceOnPaper, getDispenseRow, linesOf } from "./queue";
+import { addedMarkOf, balanceOnPaper, getDispenseRow, linesOf, userNames } from "./queue";
 import { licenceOnBill } from "./retail";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -31,6 +31,8 @@ export type LabelLine = {
   manufacturer: string | null;
   /** The invoice line this dispense line was billed as (null before the bill): how the bill finds its batch. */
   invoiceLineId: string | null;
+  /** Spec #1055 — a medicine added at the counter by hand: the bill says "added at the counter by <name>" and why. */
+  added: { reason: "not_prescribed" | "paper"; byName: string } | null;
 };
 
 export type LabelData = {
@@ -78,6 +80,7 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string, now: Da
   const lines = all.filter((l) => l.status === "open");
   const medicines = await medicinesByIds(db, lines.flatMap((l) => [l.dispensedMedicineId, l.orderedMedicineId]).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
+  const adders = await userNames(db, lines.map((l) => l.addedBy));
   const out: LabelLine[] = [];
   for (const l of lines) {
     const rx = l.rxLine as RxLine;
@@ -89,7 +92,7 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string, now: Da
     if (item !== undefined && l.qtyBase !== null) {
       const uoms = await itemUomRows(db, item.id);
       const pack = uoms.filter((u) => u.toBaseMultiplier > 1).sort((a, b) => b.toBaseMultiplier - a.toBaseMultiplier)[0];
-      if (pack !== undefined && l.qtyBase % pack.toBaseMultiplier === 0) packs = `${String(fromBase(uoms, pack.uom, l.qtyBase).whole)} ${pack.uom}`;
+      if (pack !== undefined && l.qtyBase % pack.toBaseMultiplier === 0) packs = `${String(fromBase(uoms, pack.uom, l.qtyBase).whole)} ${packWordOf(pack.uom)}`;
     }
     out.push({
       lineIdx: l.lineIdx,
@@ -99,6 +102,7 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string, now: Da
       directions: labelDirections(rx),
       substitutedFor: l.substitutionType === "generic" && ordered !== undefined ? ordered.brandName : null,
       manufacturer: item?.manufacturer ?? null, invoiceLineId: l.invoiceLineId,
+      added: addedOnPaper(addedMarkOf(l, adders)),
     });
   }
   let pharmacist: LabelData["pharmacist"] = null;
@@ -124,4 +128,13 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string, now: Da
       }),
     },
   };
+}
+
+function addedOnPaper(mark: ReturnType<typeof addedMarkOf>): LabelLine["added"] {
+  return mark === null ? null : { reason: mark.reason, byName: mark.byName ?? mark.by };
+}
+
+/** Spec #1055 — the words a bill prints beside a medicine the counter added by hand. One sentence for the server's paper. */
+export function addedText(added: NonNullable<LabelLine["added"]>): string {
+  return `added at the counter by ${added.byName} · ${added.reason === "paper" ? "the doctor wrote it on paper" : "not prescribed"}`;
 }

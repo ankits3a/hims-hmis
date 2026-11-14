@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -8,7 +8,8 @@ import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, SELF_RELATION } from "../../lib/
 import { suggestAtCounter } from "../../lib/pharmacy-api";
 import { Closed } from "./closed";
 import { ControlledStep } from "./controlled";
-import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
+import { heldByAnother, initialsOf, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
+import { AddMedicineSheet } from "./add-medicine";
 import { TakeOver } from "./takeover";
 import { LineList } from "./lines";
 import { DonePaper } from "./paper";
@@ -34,9 +35,17 @@ function rxLinesOf(d: WireDispense): WireDispense["lines"] {
 
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, autoPrintBill = false, labelsOnly = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null,
-  quick = false, onOpenBalance = null,
+  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, labelsOnly = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null,
+  quick = false, onOpenBalance = null, onDraft = null, onAdded = null, onPaper = null, meName = null,
 }: {
+  /** Spec #1055 — "Save draft" sits at the ticket's foot while the lines are collected (the bill column is not open yet). */
+  onDraft?: (() => void) | null;
+  /** Spec #1055 — a medicine added by hand: the ticket as the server answered it. */
+  onAdded?: ((d: WireDispense) => void) | null;
+  /** Owner 2026-11-13 — the find stage's "no slip? · paper prescription" pill (Desk One's row), and key P. */
+  onPaper?: (() => void) | null;
+  /** Who is at this desk, for the add sheet's "added at the counter by <name>". */
+  meName?: string | null;
   /** Owner ruling 2026-10-02 — quick desk mode: no slip to see, none to confirm (`settings.ts` on the server). */
   quick?: boolean;
   inHand: WireDispense | null;
@@ -63,8 +72,6 @@ export function TicketPanel({
   onShowLine: () => void;
   /** PARITY P1 — the hand-over that just happened at this desk: its paper goes out by itself. */
   autoPrint?: boolean;
-  /** Spec #1046 D3 — the payment that just happened at this desk: its bill goes out by itself, before the hand-over. */
-  autoPrintBill?: boolean;
   /** Spec #1046 D3 — this desk already sent the bill at payment: the hand-over sends the labels alone. */
   labelsOnly?: boolean;
   /** Spec #1046 D6 — open the balance ticket of a handed-over ticket that still owes ("rest tomorrow"). */
@@ -101,8 +108,8 @@ export function TicketPanel({
 
   if (inHand === null) {
     return (
-      <div style={{ maxWidth: 660 }}>
-        <FindField onFind={onFind} />
+      <div style={{ maxWidth: 860 }}>
+        <FindField onFind={onFind} onPaper={onPaper} />
         {alerts}
         {paperDoor === null ? null : (
           <div className="box paper-rx-door" data-testid="desk-paper-door">
@@ -120,14 +127,13 @@ export function TicketPanel({
         )}
         <LineVerdict queue={queue} onShowLine={onShowLine} />
         {candidates !== null ? (
-          <div className="box" style={{ marginTop: 18 }} data-testid="desk-candidates">
-            <div style={{ padding: "12px 14px" }} className="tag">{t("pharmacyDesk.whichPatient")}</div>
-            {candidates.map((p) => (
-              <button key={p.id} className="drow" style={{ width: "100%" }} onClick={() => onFind(p.uhid)}>
-                <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 500 }}>{whoLabel(p)}</span>
-                <span className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.uhid}</span>
-              </button>
-            ))}
+          <div style={{ marginTop: 18 }} data-testid="desk-candidates">
+            <div className="tag" style={{ marginBottom: 8 }}>{t("pharmacyDesk.whichPatient")}</div>
+            <div className="pd-hits">
+              {candidates.map((p, i) => (
+                <HitCard key={p.id} first={i === 0} initials={initialsOf(p)} name={whoLabel(p)} hint={null} uhid={p.uhid} onTake={() => onFind(p.uhid)} />
+              ))}
+            </div>
           </div>
         ) : null}
       </div>
@@ -188,12 +194,14 @@ export function TicketPanel({
   const typed = inHand.transcribedBy != null;
   const slipOwed = !quick && typed && inHand.slipConfirmedBy == null;
   return (
-    <div data-testid="desk-ticket">
+    <div data-testid="desk-ticket" className="pd-ticket">
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>
           {label === null ? t("pharmacyDesk.ticketFor", { who }) : t("pharmacyDesk.ticket", { label })}
         </h1>
-        <span className="pill on">{inHand.status === "claimed" ? t("pharmacyDesk.claimedByYou") : t(`pharmacyDesk.status.${inHand.status}`)}</span>
+        <span className="pill on" data-testid="desk-ticket-state">
+          {inHand.status === "claimed" ? t("pharmacyDesk.claimedByYou") : inHand.status === "picked" ? t("pharmacyDesk.allSettled") : t(`pharmacyDesk.status.${inHand.status}`)}
+        </span>
         {h1Lines.length > 0 ? <span className="pill rd">{t("pharmacyDesk.h1On", { lines: h1Lines.join(", ") })}</span> : null}
         <span style={{ flexGrow: 1 }} />
         {/* While the cross-check is owed the banner carries this control; one control, not two. */}
@@ -217,26 +225,45 @@ export function TicketPanel({
           </span>
         </div>
       ) : null}
+      {/*
+        Walk 2026-11-13 (#1055) — once paid, the hand-over sat under every line, below the fold. The board ("Handover")
+        puts it at the top of the work column: the act that is left comes first, and the lines follow it, compact.
+        The bill prints when the money is taken (spec #1046 D3; spec #1055: its paper is said in the bill column); the
+        labels wait for the hand-over.
+      */}
+      {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       <LineList
         dispense={inHand}
+        compact={inHand.status === "billed"}
         editable={(inHand.status === "claimed" || inHand.status === "verified") && !slipOwed}
         busy={busy}
         onCollect={onCollect}
         onDecline={onDecline}
         onFocusDrug={onFocusDrug}
         onLiveQty={onLiveQty}
+        onDraft={onDraft}
+        addRow={onAdded === null || !ADDABLE.has(inHand.status) ? null : (
+          <AddMedicine dispense={inHand} label={label ?? who} quick={quick} me={meName ?? t("pharmacyDesk.thisDesk")} busy={busy} onAdded={onAdded} />
+        )}
       />
-      {/* Spec #1046 D3 — the bill prints when the money is taken; the labels wait for the hand-over. */}
-      {inHand.status === "billed" ? <DonePaper dispenseId={inHand.id} autoPrint={autoPrintBill} documents={["pharmacy_bill"]} /> : null}
-      {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       {error !== null || note !== null ? alerts : null}
     </div>
   );
 }
 
-function FindField({ onFind }: { onFind: (q: string) => void }): React.ReactElement {
+/**
+ * OWNER 2026-11-13 — "make sure the pharmacy screen patient search input box in the main panel resembles OPD counter's
+ * search box" and "match the border style of input box with what we have in OPD desk": Desk One's find stage
+ * (`desk-one/stages.tsx` `StageFind`) — one full-width `.in` field (1px line border at rest, the green border and ring
+ * only on focus), no separate button, and under it Desk One's row: a tag, a pill for the other door (here the paper
+ * prescription, key P) and the faint line saying what is searched. ⏎ runs the find as before (a scan IS the find; a
+ * name never auto-selects, the server's rule); the suggestions are Desk One's hit cards.
+ */
+function FindField({ onFind, onPaper }: { onFind: (q: string) => void; onPaper: (() => void) | null }): React.ReactElement {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
+  const [paperNote, setPaperNote] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
   /*
     2026-10-01 (owner) — WHO THE WORDS COULD BE, AS THEY ARE TYPED. The field answered only on Enter,
     so a registered patient looked absent. A tap runs the ordinary find on that UHID; a QR or a token
@@ -250,45 +277,108 @@ function FindField({ onFind }: { onFind: (q: string) => void }): React.ReactElem
     retry: false,
   });
   const hits = q.trim().length >= 2 && typed === q.trim() ? suggest.data ?? null : null;
+  const paper = (): void => {
+    if (onPaper !== null) { onPaper(); return; }
+    setPaperNote(true);
+    field.current?.focus();
+  };
   return (
     <form style={{ position: "relative" }} onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") { onFind(q.trim()); setQ(""); } }}>
       <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{t("pharmacyDesk.idleTitle")}</h1>
-      <p style={{ margin: "6px 0 16px 0", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.idleHint")}</p>
-      <label htmlFor="desk-find" className="tag">{t("pharmacyDesk.findLabel")}</label>
-      <div style={{ display: "flex", gap: 9, marginTop: 7 }}>
-        <input
-          id="desk-find"
-          className="in"
-          autoFocus
-          autoComplete="off"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t("pharmacyDesk.findPlaceholder")}
-          style={{ height: 52, fontSize: 16 }}
-        />
-        <button type="submit" className="pri" style={{ height: 52, flexShrink: 0 }}>
-          {t("pharmacyDesk.find.button")} <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>⏎</span>
+      <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>{t("pharmacyDesk.idleHint")}</div>
+      <input
+        id="desk-find"
+        ref={field}
+        className="in"
+        autoFocus
+        autoComplete="off"
+        aria-label={t("pharmacyDesk.findLabel")}
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setPaperNote(false); }}
+        placeholder={t("pharmacyDesk.findPlaceholder")}
+        style={{ height: 52, marginTop: 16, fontSize: 16 }}
+      />
+      <div style={{ display: "flex", gap: 7, marginTop: 11, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="tag">{t("pharmacyDesk.find.noSlip")}</span>
+        <button type="button" className="pill" data-testid="desk-paper-pill" style={{ borderColor: "var(--green)", color: "var(--green)", fontWeight: 700 }} onClick={paper}>
+          {t("pharmacyDesk.find.paperPill")} <span className="kb">P</span>
         </button>
+        <span style={{ fontSize: 11, color: "var(--faint)" }}>{t("pharmacyDesk.find.lanes")}</span>
       </div>
+      {paperNote ? <p role="status" data-testid="desk-paper-first" style={{ margin: "8px 0 0 0", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.find.paperFirst")}</p> : null}
       {hits === null ? null : hits.length === 0 ? (
-        <p role="status" data-testid="desk-suggest-none" style={{ margin: "8px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
+        <div role="status" data-testid="desk-suggest-none" className="box" style={{ marginTop: 18, padding: 22, textAlign: "center", color: "var(--dim)", borderStyle: "dashed", fontSize: 12.5 }}>
           {t("pharmacyDesk.find.suggestNone")}
-        </p>
+        </div>
       ) : (
-        <div className="box" data-testid="desk-suggest" style={{ marginTop: 6 }}>
-          {hits.map((p) => (
-            <button
-              key={p.id} type="button" className="drow" style={{ width: "100%" }} data-testid={`desk-suggest-${p.uhid}`}
-              onClick={() => { onFind(p.uhid); setQ(""); }}
-            >
-              <span style={{ flexGrow: 1, textAlign: "left", fontSize: 13, fontWeight: 500 }}>{whoLabel(p)}</span>
-              {p.hint === null ? null : <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.hint}</span>}
-              <span className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.uhid}</span>
-            </button>
+        <div className="pd-hits" data-testid="desk-suggest" style={{ marginTop: 18 }}>
+          {hits.map((p, i) => (
+            <HitCard
+              key={p.id} testId={`desk-suggest-${p.uhid}`} first={i === 0} initials={initialsOf(p)} name={whoLabel(p)}
+              hint={p.hint} uhid={p.uhid} onTake={() => { onFind(p.uhid); setQ(""); }}
+            />
           ))}
         </div>
       )}
     </form>
+  );
+}
+
+/** Desk One's hit card (`desk-one/stages.tsx`): initials, who, a quiet hint, the UHID, and "this is them". The card is the act. */
+function HitCard({ testId, first, initials, name, hint, uhid, onTake }: {
+  testId?: string; first: boolean; initials: string; name: string; hint: string | null; uhid: string; onTake: () => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <button type="button" className={first ? "box pd-hit first" : "box pd-hit"} data-testid={testId} onClick={onTake}>
+      <span className="pd-hit-av" aria-hidden="true">{initials === "" ? "—" : initials}</span>
+      <span className="pd-hit-who">
+        <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>{name}</span>
+        {hint === null ? null : <span style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 1 }}>{hint}</span>}
+      </span>
+      <span className="mo pd-hit-uhid">{uhid}</span>
+      <span className={first ? "sec grn pd-hit-go" : "sec pd-hit-go"}>{t("pharmacyDesk.find.thisIsThem")}{first ? <span className="kb">⏎</span> : null}</span>
+    </button>
+  );
+}
+
+/**
+ * Spec #1055 D5, ruling 0094 — "+ Add a medicine" (key A) under the lines, while the ticket is claimed, checked or
+ * collected (never after the bill): the sheet adds one by hand, not prescribed or written on the doctor's paper.
+ */
+const ADDABLE = new Set(["claimed", "verified", "picked"]);
+function AddMedicine({ dispense, label, quick, me, busy, onAdded }: {
+  dispense: WireDispense; label: string; quick: boolean; me: string; busy: boolean; onAdded: (d: WireDispense) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setOpen(false); }, [dispense.id]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "a" && e.key !== "A") return;
+      const el = e.target as HTMLElement | null;
+      if (el !== null && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || busy || document.querySelector("[role=dialog]") !== null) return;
+      e.preventDefault();
+      setOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy]);
+  return (
+    <div className="pd-addrow" data-testid="desk-add-row">
+      <button type="button" className="sec" disabled={busy} onClick={() => setOpen(true)} data-testid="desk-add-medicine">
+        {t("pharmacyDesk.add.open")} <span className="kb">A</span>
+      </button>
+      <span style={{ fontSize: 12, color: "var(--dim)" }}>{dispense.status === "picked" ? t("pharmacyDesk.add.hintAtBill") : t("pharmacyDesk.add.hint")}</span>
+      {open ? (
+        <AddMedicineSheet
+          dispense={dispense} ticketLabel={label} quick={quick} me={me}
+          onClose={() => setOpen(false)}
+          onDone={(d) => { setOpen(false); onAdded(d); }}
+        />
+      ) : null}
+    </div>
   );
 }
 

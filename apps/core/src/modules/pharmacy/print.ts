@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { gstCodeKind, newId } from "@hmis/contracts";
+import { gstCodeKind, newId, packWordOf } from "@hmis/contracts";
 import { printJobs } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
@@ -10,7 +10,7 @@ import { saleDiscountReason } from "./discount";
 import { loadOpdConfig } from "../opd";
 import { closingFor } from "./closing";
 import { PharmacyError } from "./errors";
-import { labelFor } from "./label";
+import { addedText, labelFor } from "./label";
 import { getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -84,10 +84,18 @@ function ticketLabel(dispenseNo: string | null): string {
   return m === null ? dispenseNo : `${m[1]!}-${String(Number(m[2]!))}`;
 }
 
-function qtyText(row: BillRow): string {
+/** "1 strip + 5 tablet": the pack in plain words (`packWordOf` — the patient's paper never prints the code `strip15`). */
+export function qtyText(row: Pick<BillRow, "qty" | "pack">): string {
   const p = row.pack;
   if (p === null || p.packs === 0) return `× ${String(row.qty)}`;
-  return p.loose === 0 ? `${String(p.packs)} ${p.uom}` : `${String(p.packs)} ${p.uom} + ${String(p.loose)} ${p.baseUom}`;
+  const pack = packWordOf(p.uom);
+  return p.loose === 0 ? `${String(p.packs)} ${pack}` : `${String(p.packs)} ${pack} + ${String(p.loose)} ${p.baseUom}`;
+}
+
+/** "₹150.00/strip" — what one full pack cost on the row, or null when the row has no whole pack or no whole-paise rate. */
+export function packRateText(row: Pick<BillRow, "pack">): string | null {
+  const p = row.pack;
+  return p === null || p.packs === 0 || p.packPaise === null ? null : `${rupees(p.packPaise)}/${packWordOf(p.uom)}`;
 }
 
 /** CGST Rules r.46 / r.49 / r.46A — the same rule as the web invoice's `documentTitleKey`. */
@@ -167,10 +175,12 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
     const code = [
       ...(kind === null ? [] : [`${kind} ${esc(r.sacCode ?? "")}`]),
       ...(r.exempt === true ? ["exempt"] : r.rateBps === null ? [] : [`GST ${String(r.rateBps / 100)}%`]),
-      ...(r.pack !== null && r.pack.packs > 0 && r.pack.packPaise !== null ? [`${esc(rupees(r.pack.packPaise))}/${esc(r.pack.uom)}`] : []),
+      ...(packRateText(r) === null ? [] : [esc(packRateText(r)!)]),
     ].join(" · ");
+    /* Spec #1055 — a medicine added at the counter by hand says so, and why, on the patient's bill. */
+    const added = p?.added == null ? "" : `<div class="sub">${esc(addedText(p.added))}</div>`;
     return `
-      <tr><td>${esc(r.serviceName)}${batch === "" ? "" : `<div class="sub">${batch}</div>`}${code === "" ? "" : `<div class="sub">${code}</div>`}</td>
+      <tr><td>${esc(r.serviceName)}${batch === "" ? "" : `<div class="sub">${batch}</div>`}${code === "" ? "" : `<div class="sub">${code}</div>`}${added}</td>
       <td class="r">${esc(qtyText(r))}</td><td class="r">${esc(rupees(r.netPaise))}</td></tr>`;
   }).join("");
   /* Spec #1046 D6, walk 2026-11-13 — what is still owed, in one line, so the patient's paper says so too. */
