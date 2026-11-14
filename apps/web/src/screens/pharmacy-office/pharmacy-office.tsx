@@ -26,6 +26,7 @@ import { DeskSettingsView } from "./desk-settings";
 import { PayView } from "./pay";
 import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
+import { ExpiringView } from "./expiring";
 import { Sheet } from "./sheet";
 import { StockEntryView } from "./stock-entry";
 import { TodayDesk, money0 } from "./today";
@@ -130,6 +131,8 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "rates": return <VendorRatesView />;
     case "bills": return <PayView key={`pay-${String(seed.n)}`} {...(seed.pay === undefined ? {} : { initialOpen: seed.pay })} />;
     case "returns": return <ReturnsView key={`ret-${String(seed.n)}`} {...(seed.returns === undefined ? {} : { initialOpen: seed.returns })} />;
+    // #1063 — a document a row shows, or the write-off sheet, opens on the returns page.
+    case "expiring": return <ExpiringView onOpen={(open) => go({ to: "view", view: "returns", page: "returns", open })} />;
     case "grn": return <MaterialsGrn />;
     // 2026-09-29 — the shelf entered on screen, row by row (the CSV upload folded inside it).
     case "opening": return <StockEntryView />;

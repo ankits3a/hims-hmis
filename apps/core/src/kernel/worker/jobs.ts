@@ -27,7 +27,7 @@ import { sweepOverdueApprovals } from "../approvals/overdue";
 import { collectDeskProviders } from "../desk/registry";
 import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
-import { runRefillReminders, sweepExpiredPicks } from "../../modules/pharmacy";
+import { EXPIRY_ACTIONS_IST, runRefillReminders, runWeeklyExpiryActions, sweepExpiredPicks } from "../../modules/pharmacy";
 import {
   sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
@@ -645,6 +645,17 @@ export function registerAllJobs(
     name: "runRefillReminders",
     dailyIst: REFILL_REMINDERS_IST,
     run: async (now) => { await runRefillReminders(db, now); },
+  });
+  /**
+   * #1063 — THE WEEKLY EXPIRY ACTION LIST, Monday 07:00 IST. Registered DAILY at 07:00 (no weekly cadence; the
+   * monthly proposals are the precedent): a tick runs only when no run happened since the latest Monday 07:00, so a
+   * worker down on Monday catches up the next morning and a Run now that week stands. It drafts at most one open
+   * agent return per supplier and never approves, dispatches or writes off (`modules/pharmacy/expiry-actions.ts`).
+   */
+  scheduler.register({
+    name: "runExpiryActions",
+    dailyIst: EXPIRY_ACTIONS_IST,
+    run: async (now) => { await runWeeklyExpiryActions(db, now); },
   });
   /**
    * 18-S RS11 T3 — THE OVERDUE-QA SWEEP. A machine whose QA is past due (the record's next-due

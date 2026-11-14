@@ -243,7 +243,7 @@ export async function officeReturns(db: Db, actor: Actor, now: Date = new Date()
 }
 
 /** The hospital's GSTIN state (the letterhead's), so an out-of-state vendor's debit note reverses IGST. */
-async function hospitalStateCode(db: Db): Promise<string | null> {
+export async function hospitalStateCode(db: Db): Promise<string | null> {
   const gstin = (await loadOpdConfig(db)).letterhead.gstin;
   return gstin === undefined ? null : gstin.slice(0, 2);
 }

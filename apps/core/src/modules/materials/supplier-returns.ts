@@ -226,6 +226,8 @@ type StockRow = {
   itemId: string; itemCode: string; itemName: string; baseUom: string; hsnCode: string | null; itemGstRateBps: number | null;
   batchId: string; batchNo: string; expiryDate: string | null; mrpPaise: number | null; mrpUom: string | null; landedCostPaise: number;
   ownership: string; recalled: boolean; grnLineId: string | null;
+  /** #1063 — an opening batch whose rate was left blank carries an ESTIMATED cost (ruling 0093); the cabinet keys on the item's class. */
+  estimatedCost: boolean; storageClass: string;
   vendorId: string | null; vendorCode: string | null; vendorName: string | null; vendorGstin: string | null; vendorReturnDays: number | null;
   onHand: number; reserved: number; frozen: number;
 };
@@ -257,6 +259,7 @@ async function stockRows(
     batchId: stockBatches.id, batchNo: stockBatches.batchNo, expiryDate: stockBatches.expiryDate, mrpPaise: stockBatches.mrpPaise,
     mrpUom: stockBatches.mrpUom, landedCostPaise: stockBatches.landedCostPaise, ownership: stockBatches.ownership,
     recallStatus: stockBatches.recallStatus, grnLineId: stockBatches.grnLineId,
+    estimatedCost: stockBatches.estimatedCost, storageClass: items.storageClass,
     vendorId: stockBatches.vendorId, vendorCode: vendors.code, vendorName: sql<string | null>`coalesce(${vendors.tradeName}, ${vendors.legalName})`,
     vendorGstin: vendors.gstin, vendorReturnDays: vendors.expiryReturnDays,
     onHand: stockBalances.qtyOnHand, reserved: stockBalances.qtyReserved, frozen: stockBalances.qtyFrozen,
@@ -542,6 +545,69 @@ export async function planSupplierReturns(db: Db | Tx, now: Date = new Date(), o
   return { asOf: today, groups: ordered, toDestroy, alreadyHeld, taxablePaise: ordered.reduce((s, g) => s + g.taxablePaise, 0) };
 }
 
+// ═══════════════════════════════════ #1063 — the pharmacy's weekly expiry action list ═══════════════════════════════════
+
+export type ExpiryCandidate = {
+  storeResourceId: string; storeCode: string; storeName: string;
+  itemId: string; itemCode: string; itemName: string; baseUom: string; storageClass: string; pack: { uom: string; multiplier: number } | null;
+  batchId: string; batchNo: string; expiryDate: string; landedCostPaise: number; estimatedCost: boolean; ownership: string; recalled: boolean;
+  vendorId: string | null; vendorName: string; supplierKind: SupplierKind;
+  onHand: number;
+  /** What a document may still take: on hand, less reserved, less frozen unless recalled, less what live documents hold. */
+  free: number;
+  /** What live documents (draft or approved returns, write-offs awaiting approval) already hold of this store's batch. */
+  held: number;
+  verdict: ReturnVerdict;
+  /** The live document holding this store's batch, the newest first: a return, else a write-off. */
+  document: { kind: "return" | "write_off"; id: string; no: string; status: string } | null;
+};
+
+/**
+ * #1063 — every owned (or donated) batch with stock at the named stores that has expired or expires on or before
+ * `expiryTo`, with what may still leave (`free`), what live documents hold, its return verdict against its vendor's
+ * window, and the live document holding it. Writes nothing; `pharmacy/expiry-actions.ts` decides each batch's action.
+ */
+export async function expiryCandidates(
+  db: Db | Tx, now: Date, opts: { storeResourceIds: readonly string[]; expiryTo: string },
+): Promise<ExpiryCandidate[]> {
+  const today = istDay(now);
+  const rows: StockRow[] = [];
+  for (const id of [...new Set(opts.storeResourceIds)]) rows.push(...await stockRows(db, { expiryTo: opts.expiryTo, storeResourceId: id }));
+  const mine = rows.filter((r) => r.ownership === "owned" || r.ownership === "donated");
+  const batchIds = [...new Set(mine.map((r) => r.batchId))];
+  if (batchIds.length === 0) return [];
+  const committed = await committedByPair(db, batchIds);
+  const packs = await packsOf(db, mine.map((r) => r.itemId));
+  const onReturns = await db.select({
+    store: supplierReturnLines.storeResourceId, batch: supplierReturnLines.batchId, id: supplierReturns.id, no: supplierReturns.returnNo, status: supplierReturns.status,
+  }).from(supplierReturnLines).innerJoin(supplierReturns, eq(supplierReturns.id, supplierReturnLines.returnId))
+    .where(and(inArray(supplierReturnLines.batchId, batchIds), inArray(supplierReturns.status, [...LIVE_RETURN])))
+    .orderBy(desc(supplierReturns.createdAt));
+  const onWriteOffs = await db.select({
+    store: stockWriteOffs.storeResourceId, batch: stockWriteOffLines.batchId, id: stockWriteOffs.id, no: stockWriteOffs.writeOffNo, status: stockWriteOffs.status,
+  }).from(stockWriteOffLines).innerJoin(stockWriteOffs, eq(stockWriteOffs.id, stockWriteOffLines.writeOffId))
+    .where(and(inArray(stockWriteOffLines.batchId, batchIds), eq(stockWriteOffs.status, "requested")))
+    .orderBy(desc(stockWriteOffs.requestedAt));
+  return mine.map((r) => {
+    const held = committed.get(pairKey(r.storeResourceId, r.batchId)) ?? 0;
+    const ret = onReturns.find((x) => x.store === r.storeResourceId && x.batch === r.batchId);
+    const wo = onWriteOffs.find((x) => x.store === r.storeResourceId && x.batch === r.batchId);
+    return {
+      storeResourceId: r.storeResourceId, storeCode: r.storeCode, storeName: r.storeName,
+      itemId: r.itemId, itemCode: r.itemCode, itemName: r.itemName, baseUom: r.baseUom, storageClass: r.storageClass, pack: packs.get(r.itemId) ?? null,
+      batchId: r.batchId, batchNo: r.batchNo, expiryDate: r.expiryDate!, landedCostPaise: r.landedCostPaise, estimatedCost: r.estimatedCost,
+      ownership: r.ownership, recalled: r.recalled,
+      vendorId: r.vendorId, vendorName: r.vendorName ?? "—", supplierKind: supplierKindOf(r.vendorCode === null ? null : { code: r.vendorCode }),
+      onHand: r.onHand,
+      free: Math.max(0, exitAvailable({ qtyOnHand: r.onHand, qtyReserved: r.reserved, qtyFrozen: r.frozen }, r.recalled) - held),
+      held,
+      verdict: returnVerdict({ expiryDate: r.expiryDate, windowDays: returnWindowDays({ expiryReturnDays: r.vendorReturnDays }), recalled: r.recalled, today }),
+      document: ret !== undefined ? { kind: "return", id: ret.id, no: ret.no, status: ret.status }
+        : wo !== undefined ? { kind: "write_off", id: wo.id, no: wo.no, status: wo.status } : null,
+    };
+  });
+}
+
 // ═══════════════════════════════════ A5 — what a person may put on a manual return ═══════════════════════════════════
 
 export type ReturnableVendor = { vendorId: string; vendorCode: string; vendorName: string; gstin: string | null; batches: number; windowDays: number };
@@ -756,6 +822,14 @@ export async function createSupplierReturn(
   opts: { source?: ReturnSource; recallId?: string | null; now?: Date; hospitalStateCode?: string | null } = {},
 ): Promise<ReturnView> {
   await requirePerm(db, actor, RETURNS_MANAGE, "drafting a return to a supplier");
+  return writeNewReturn(db, actor, input, opts);
+}
+
+/** The draft's writer, after the caller's grant was asked (`createSupplierReturn`, `topUpAgentReturns`). */
+async function writeNewReturn(
+  db: Db, actor: Actor, input: ReturnInput,
+  opts: { source?: ReturnSource; recallId?: string | null; now?: Date; hospitalStateCode?: string | null },
+): Promise<ReturnView> {
   const now = opts.now ?? new Date();
   const today = istDay(now);
   const vendor = await returnableVendor(db, input.vendorId);
@@ -803,6 +877,69 @@ export async function draftSupplierReturns(
   return made;
 }
 
+/** #1063 — one line the weekly expiry run wants on its vendor's draft. */
+export type AgentReturnLine = ReturnLineInput & { vendorId: string };
+
+export type AgentReturnsResult = {
+  created: ReturnView[];
+  extended: ReturnView[];
+  linesAdded: number;
+  /** A vendor whose lines no longer resolve (sold since the read, a window that closed): nothing written for it. */
+  skipped: { vendorId: string; code: string; message: string }[];
+};
+
+/**
+ * #1063 — THE WEEKLY EXPIRY RUN'S DRAFTS: at most ONE open agent draft per supplier. A vendor that already has a
+ * DRAFT the agent made gets the new lines ADDED to it (a store's batch already on it stays as the draft says — a
+ * person may have changed it); a vendor with none gets a new draft, source `agent`. Nothing is approved, dispatched
+ * or written off. Every line is checked again by `resolveLines`, inside the draft's own transaction.
+ *
+ * Who may: a person holding `materials.returns.manage` ("Run now"), or the Monday run itself, a SYSTEM actor. Only
+ * the worker constructs one — `kernel/auth/guards.ts` refuses every non-user actor at the HTTP door — the trust the
+ * pick sweep's `cancelDispense` already has. An agent or patient actor is refused like any caller without the grant.
+ * A vendor whose lines no longer resolve is skipped with its refusal, never half-drafted.
+ */
+export async function topUpAgentReturns(
+  db: Db, actor: Actor, now: Date, input: { lines: readonly AgentReturnLine[]; hospitalStateCode?: string | null },
+): Promise<AgentReturnsResult> {
+  if (actor.type !== "system") await requirePerm(db, actor, RETURNS_MANAGE, "drafting returns to suppliers");
+  const byVendor = new Map<string, ReturnLineInput[]>();
+  for (const { vendorId, ...line } of input.lines) byVendor.set(vendorId, [...(byVendor.get(vendorId) ?? []), line]);
+  const out: AgentReturnsResult = { created: [], extended: [], linesAdded: 0, skipped: [] };
+  for (const [vendorId, lines] of [...byVendor.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    try {
+      const [open] = await db.select().from(supplierReturns)
+        .where(and(eq(supplierReturns.vendorId, vendorId), eq(supplierReturns.status, "draft"), eq(supplierReturns.source, "agent")))
+        .orderBy(desc(supplierReturns.createdAt), desc(supplierReturns.id)).limit(1);
+      if (open === undefined) {
+        out.created.push(await writeNewReturn(db, actor, {
+          vendorId, note: `Drafted by the weekly expiry run (${istDay(now)})`, lines,
+        }, { source: "agent", now, hospitalStateCode: input.hospitalStateCode ?? null }));
+        out.linesAdded += lines.length;
+        continue;
+      }
+      const existing = await db.select().from(supplierReturnLines).where(eq(supplierReturnLines.returnId, open.id));
+      const have = new Set(existing.map((l) => pairKey(l.storeResourceId, l.batchId)));
+      const fresh = lines.filter((l) => !have.has(pairKey(l.storeResourceId, l.batchId)));
+      if (fresh.length === 0) continue;
+      out.extended.push(await rewriteReturn(db, actor, open.id, {
+        lines: [
+          ...existing.map((l) => ({
+            batchId: l.batchId, storeResourceId: l.storeResourceId, qtyBase: l.qtyBase, reason: l.reason as ReturnLineReason,
+            ratePaise: l.ratePaise, gstRateBps: l.gstRateBps, note: l.note,
+          })),
+          ...fresh,
+        ],
+      }, now));
+      out.linesAdded += fresh.length;
+    } catch (e) {
+      if (!(e instanceof MaterialsError)) throw e;
+      out.skipped.push({ vendorId, code: e.code, message: e.message });
+    }
+  }
+  return out;
+}
+
 /**
  * ONE TAP FROM A RECALL: a draft return to the batch's supplier of everything every store still
  * holds of it (less what is reserved or already on a live document). The recall stays open until
@@ -836,6 +973,13 @@ export async function updateSupplierReturn(
   db: Db, actor: Actor, returnId: string, patch: { lines?: ReturnLineInput[]; note?: string | null; interState?: boolean }, now: Date = new Date(),
 ): Promise<ReturnView> {
   await requirePerm(db, actor, RETURNS_MANAGE, "editing a return to a supplier");
+  return rewriteReturn(db, actor, returnId, patch, now);
+}
+
+/** The draft's editor, after the caller's grant was asked (`updateSupplierReturn`, `topUpAgentReturns`). */
+async function rewriteReturn(
+  db: Db, actor: Actor, returnId: string, patch: { lines?: ReturnLineInput[]; note?: string | null; interState?: boolean }, now: Date,
+): Promise<ReturnView> {
   await withTx(db, async (tx) => {
     const r = await lockReturn(tx, returnId);
     if (r.status !== "draft") throw wrongStatus(r, "editing", ["draft"]);

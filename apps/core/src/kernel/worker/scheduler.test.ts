@@ -26,6 +26,7 @@ import * as rosterBoardPrintMod from "../../modules/roster/board-print";
 import * as rosterStaffNoticesMod from "../../modules/roster/staff-notices";
 import * as opdQueueNudgesMod from "../../modules/opd/queue-nudges";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
+import * as pharmacyExpiryActionsMod from "../../modules/pharmacy/expiry-actions";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
@@ -413,6 +414,11 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("runRefillReminders");
       return { held: null, enqueued: [] };
     }),
+    /** #1063 — the weekly expiry run, stubbed on `modules/pharmacy/expiry-actions`; asserted in its own acceptance test. */
+    jest.spyOn(pharmacyExpiryActionsMod, "runWeeklyExpiryActions").mockImplementation(async () => {
+      invoked.push("runExpiryActions");
+      return { ran: false, trigger: "schedule", asOf: "", batchesChecked: 0, returnsCreated: 0, returnsExtended: 0, linesAdded: 0, returnIds: [], skipped: [] };
+    }),
     /**
      * 18-S RS11 T3 — stubbed on `modules/aerb/qa`, the module the index re-exports FROM (the
      * eleventh's rule). Its behaviour is asserted in `modules/aerb/qa-overdue.test.ts`.
@@ -537,6 +543,8 @@ const THE_EIGHTEEN = [
   // PHARMACY P6 (patient messages) — the TWENTY-SECOND, `dailyIst("10:00")`: opt-in refill reminders.
   // Already past at the pin's 17:30 IST with no heartbeat, so it fires on the first tick, like 01:30 and 02:10.
   "runRefillReminders",
+  // #1063 — `dailyIst("07:00")`: the weekly expiry action list; it acts on a Monday (or the first tick after a missed one).
+  "runExpiryActions",
   // 18-S RS11 T3 — the TWENTY-THIRD, `every(3_600_000)`: the overdue-QA sweep (aerb).
   "sweepOverdueQa",
   // 18-S RS10 T2 — the TWENTY-FOURTH, `every(60_000)`: the HOD's escalations on the obligation spine.
