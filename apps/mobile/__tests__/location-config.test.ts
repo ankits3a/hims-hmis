@@ -14,7 +14,7 @@ type Introspected = {
   _internal: { modResults: { ios: { infoPlist: Record<string, unknown> }; android: { manifest: { manifest: { "uses-permission"?: Perm[] } } } } };
 };
 const ROOT = join(__dirname, "..");
-const SENTENCE = "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.";
+const SENTENCE = "CRKMCH checks your location once when you mark attendance, to confirm you are on hospital premises.";
 
 function introspect(appEnv: string): Introspected {
   const out = execFileSync(process.execPath, [require.resolve("expo/bin/cli"), "config", "--type", "introspect", "--json"], {
@@ -31,7 +31,7 @@ describe.each(["production", "preview"])("the %s build's location permissions", 
     const plist = c._internal.modResults.ios.infoPlist;
     const keys = Object.keys(plist).filter((k) => /Location|Motion/.test(k));
     expect(keys.sort()).toEqual(["NSLocationWhenInUseUsageDescription", "NSMotionUsageDescription"]);
-    expect(plist.NSMotionUsageDescription).toMatch(/^HMIS does not read motion/);
+    expect(plist.NSMotionUsageDescription).toMatch(/^CRKMCH does not read motion/);
     expect(plist.NSLocationWhenInUseUsageDescription).toBe(SENTENCE);
     expect(JSON.stringify(plist.UIBackgroundModes ?? [])).not.toContain("location");
   });

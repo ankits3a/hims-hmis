@@ -175,7 +175,7 @@ export function SeatHome() {
 
   const push = useNotifications();
   /*
-    THE UPDATE OFFER (no app store, owner 2026-10-05). Asked once when this screen opens, quietly:
+    THE UPDATE OFFER (phones from the download link; never on iPhone or Google Play, spec #1058). Asked once when this screen opens, quietly:
     "unknown" — no signal, or the feed is not served — shows nothing at all. Asked again by hand
     from the row at the foot, and THAT answer is always said, whichever it is.
   */

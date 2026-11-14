@@ -16,7 +16,7 @@ import hi from "../../src/locales/hi.json";
  * and Google Play, named CRKMCH; the staging iPhone app stays in TestFlight.
  */
 let mockFromPlay = false;
-jest.mock("../../src/install-source", () => ({ installedFromPlay: () => mockFromPlay }), { virtual: true });
+jest.mock("../../src/install-source", () => ({ installedFromPlay: () => mockFromPlay }));
 const mockStore = new Map<string, string>([["hmis.session", JSON.stringify({ token: "t1", username: "asha.devi" })]]);
 jest.mock("expo-secure-store", () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 0,
@@ -177,8 +177,9 @@ it("spec #1058 D5: the app is named CRKMCH (CRKMCH Staging on staging); every iP
 });
 
 it("spec #1058 D6: no phone string that sends a person to the phone's own lists still says HMIS (English and Hindi)", () => {
-  // The account password is the hospital system's; the push line quotes the server's sentence until it changes.
-  const KEEP = new Set(["home.sheet.password", "mobile.push.promise"]);
+  // The account password is the hospital system's; the push line quotes the server's sentence until it changes
+  // (#1059); "app.title" is the web's own title, which the phone no longer shows (it shows mobile.brand).
+  const KEEP = new Set(["home.sheet.password", "mobile.push.promise", "app.title"]);
   const walk = (o: Record<string, unknown>, at: string, out: string[]): string[] => {
     for (const [k, v] of Object.entries(o)) {
       const path = at ? `${at}.${k}` : k;
@@ -189,7 +190,8 @@ it("spec #1058 D6: no phone string that sends a person to the phone's own lists 
   };
   expect(walk(en, "", [])).toEqual([]);
   expect(walk(hi, "", [])).toEqual([]);
-  expect((en as { app: { title: string } }).app.title).toBe("CRKMCH");
+  expect((en as { mobile: { brand: string } }).mobile.brand).toBe("CRKMCH");
+  expect((hi as { mobile: { brand: string } }).mobile.brand).toBe("CRKMCH");
   expect((en as { home: { sheet: { password: string } } }).home.sheet.password).toMatch(/HMIS/);
 });
 

@@ -60,7 +60,8 @@ export function Band({ right, scan = true, copilot = true }: { right?: ReactNode
     <View style={[s.band, { paddingTop: insets.top + space.md }]}>
       <View style={s.row}>
         <View style={s.mark} />
-        <Text style={s.brand}>{t("app.title")}</Text>
+        {/* The app's own name (spec #1058); "app.title" is the web's, and stays HMIS. */}
+        <Text style={s.brand}>{t("mobile.brand")}</Text>
         {right === undefined && <Text style={s.product} numberOfLines={1}>{t("login.product")}</Text>}
         <View style={{ flex: 1 }} />
         {showScan && (

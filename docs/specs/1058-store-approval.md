@@ -1,6 +1,6 @@
 ---
 issue: 1058
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — The staff app on the App Store and Google Play, named CRKMCH (#1058) — APPROVED by owner 2026-11-14
@@ -37,7 +37,7 @@ to the App Store.
    stays `com.crkmch.hmis`, so installed phones update in place. The privacy page is titled "CRKMCH staff app".
    The owner renames the App Store Connect entry to CRKMCH. DECIDED: the server's notification sentences ("Open
    HMIS to see it") change only after the renamed builds are on the phones, so a phone still named HMIS never
-   reads "Open CRKMCH"; until then the Settings line that quotes them keeps "open HMIS" (follow-up issue).
+   reads "Open CRKMCH"; until then the Settings line that quotes them keeps "open HMIS" (#1059).
 9. **Staging stays in TestFlight** (owner 2026-11-14). The `preview` iPhone build is an App Store Connect build of
    `com.crkmch.hmis.staging`, sent to TestFlight by its own submit profile and never sent for App Review. It can
    never fall on the production app.
@@ -60,3 +60,12 @@ Not in scope: the Hindi privacy page, iPhone notifications, keeping DEMO rows ou
   says HMIS.
 - **D7** The `preview` iPhone build is a store build of `com.crkmch.hmis.staging`, and its submit profile names
   that id and never the production one. The production submit profile still names `com.crkmch.hmis`.
+
+## Built (2026-11-14)
+- D1–D7: `apps/mobile/__tests__/acceptance/store-approval-1058.test.tsx`. D2 and D3 pass on main by design: they
+  guard the phones that must not change.
+- Checked on a real release bundle built in the lane (debug-signed, not for upload): target SDK 36, no banned
+  permission, all 27 64-bit native libraries aligned to 16 KB, the installer module compiled into the bundle.
+- Changed against the spec: the server's notification sentences and the Settings line that quotes them move to
+  #1059; the privacy page also gives the date of this change. The header on every phone screen reads a
+  phone-only key, `mobile.brand` (CRKMCH): `app.title` is shared with the web app, which stays HMIS.
