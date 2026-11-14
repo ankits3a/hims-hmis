@@ -11,6 +11,7 @@ import {
 } from "../lib/radiology-api";
 import type { DeskCollectBody, WireCounterView, WireImagingDevice, WireWorklistRow } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingCopilot } from "../components/radiology/imaging-copilot";
 import { PatientFacts } from "../components/radiology/patient-facts";
 import { ImagingDeskDoor } from "../components/radiology/imaging-desk-door";
 import {
@@ -380,6 +381,7 @@ export function RadiologyReception(): React.ReactElement {
       list={queue}
       inHand={hand !== null}
       closeListOn={hand === null ? null : `${hand.patientId}:${hand.encounterNo}`}
+      copilot={<ImagingCopilot subject={patient.uhid === "" ? null : patient.uhid} patientName={patient.name} />}
       clocks={clocks}
       clocksAlert={clocksAlert}
       clocksSummary={clocksAlert ? t("radiology.counter.clocksSummary", { count: waitingToBook.length + notReady.length }) : t("radiology.counter.clocksNone")}

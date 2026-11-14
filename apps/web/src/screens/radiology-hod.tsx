@@ -14,6 +14,7 @@ import {
 import type { WireApproval, WireEscalation, WireFloor, WireQuality } from "../lib/radiology-hod-api";
 import { Refusal, SeatLink } from "../components/radiology/imaging-counter";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingCopilot } from "../components/radiology/imaging-copilot";
 
 /**
  * PLAN 18-S RS10 T5 — **THE SUPERVISOR & HOD STATION** (board: `st-hod`). One route,
@@ -482,6 +483,7 @@ function EscalationsView({ item }: { item: string | null }): React.ReactElement 
         { label: t("radiology.hod.stat.unanswered"), value: rows.filter((e) => e.myAlert !== null && e.myAlert.ackKind === null).length, tone: "waiting" },
       ]}
       lane={lane} list={list} inHand={inHand !== null} closeListOn={sel}
+      copilot={<ImagingCopilot subject={inHand?.accessionNo ?? null} />}
     >
       {centre}
     </RadiologyStation>
@@ -554,7 +556,7 @@ function ApprovalsView(): React.ReactElement {
         { label: t("radiology.hod.stat.approvals"), value: rows.length, tone: rows.length > 0 ? "waiting" : "plain" },
         { label: t("radiology.hod.stat.bills"), value: bills.length },
       ]}
-      list={list} inHand={inHand !== null} closeListOn={sel}
+      list={list} inHand={inHand !== null} closeListOn={sel} copilot={<ImagingCopilot />}
       lane={inHand === null ? undefined : (
         <div className="mt-4 space-y-1 border-t pt-3 text-sm">
           <b className="block">{t(`radiology.hod.approvalType.${inHand.typeKey}`, { defaultValue: inHand.typeKey })}</b>

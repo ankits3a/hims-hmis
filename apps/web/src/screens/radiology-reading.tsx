@@ -22,6 +22,7 @@ import type { CodedSystem, FleischnerInputs, TiradsInputs } from "../lib/imaging
 import { SeatLink } from "../components/radiology/imaging-counter";
 import { ImagingReportPrint } from "../components/radiology/imaging-report-print";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingCopilot } from "../components/radiology/imaging-copilot";
 import { PatientFacts } from "../components/radiology/patient-facts";
 import { FollowupsView, PeerView, TeleView } from "./radiology-reading-room";
 import { dateLocale } from "../lib/date-locale";
@@ -336,6 +337,7 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
       listSummary={t("radiology.read.listSummary", { count: toRead.length, next: toRead.find((r) => r.studyId !== studyId)?.patientName ?? "—" })}
       inHand={ctx !== null}
       closeListOn={studyId}
+      copilot={<ImagingCopilot subject={ctx?.accessionNo ?? null} patientName={ctx?.patient.name ?? null} />}
       clocks={clocks}
       clocksAlert={overdue.length > 0}
       clocksSummary={overdue.length > 0 ? t("radiology.read.clocksSummary", { count: overdue.length }) : t("radiology.read.clocksNone")}

@@ -12,6 +12,7 @@ import { ImagingReportPrint } from "../components/radiology/imaging-report-print
 import { PatientFacts } from "../components/radiology/patient-facts";
 import type { CollectorKind, HandoverBody, WireReleaseRow } from "../lib/radiology-release-api";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingCopilot } from "../components/radiology/imaging-copilot";
 import { Refusal, SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
 
@@ -416,6 +417,7 @@ export function RadiologyReports(): React.ReactElement {
       list={list}
       inHand={inHand !== null}
       closeListOn={sel}
+      copilot={<ImagingCopilot subject={inHand?.accessionNo ?? null} patientName={inHand?.patientName ?? null} />}
       clocks={clocks ?? undefined}
       clocksSummary={t("radiology.release.clocks", { count: abnormal.length })}
       clocksAlert={abnormal.length > 0}
