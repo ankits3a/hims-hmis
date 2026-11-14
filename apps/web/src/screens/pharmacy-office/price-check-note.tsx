@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { dateLocale } from "../../lib/date-locale";
 import { PRICE_REASONS } from "../../lib/stock-entry-api";
 import type { PriceReasonCode, WirePriceCheck } from "../../lib/stock-entry-api";
 
@@ -12,7 +13,7 @@ const rupees = (paise: number): string => `₹${(paise / 100).toFixed(2)}`;
 const pct = (bps: number): string => String(Math.round(bps / 10) / 10);
 const shortDay = (iso: string): string => {
   const d = new Date(`${iso}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(dateLocale(), { day: "2-digit", month: "short" });
 };
 
 /** Does the row's reason answer an amber price? A code, and words for `other`. */
