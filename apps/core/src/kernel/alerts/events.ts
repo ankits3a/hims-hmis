@@ -19,6 +19,12 @@ export const alertRaised = defineEvent(
     refType: z.string(),
     refId: z.string(),
     sourceEventId: z.string(),
+    /**
+     * #1065 — TWO NUMBERS a clock notice may carry for the phone's sentence ("Pharmacy: 7 exceptions yesterday,
+     * ₹3,240"): a count and an amount in paise, integers by schema, so no text can travel here. Absent on every
+     * other alert. The phone relay formats them from its own fixed table (`kernel/push/phone-push.ts`).
+     */
+    figures: z.object({ count: z.number().int().nonnegative(), paise: z.number().int().nonnegative() }).optional(),
   }),
 );
 

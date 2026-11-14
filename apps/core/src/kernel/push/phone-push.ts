@@ -90,7 +90,7 @@ export const PUSH_RESERVED_FOR_ASKS = 4;
 const CLOCK_DRIVEN: readonly PushCategory[] = ["queue", "reminder"];
 
 /** Which screen a tap opens. Closed vocabulary; the app maps a word it knows and goes home on one it does not. */
-export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals", "attendance", "attendanceRequests", "reminders", "myLeave"] as const;
+export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals", "attendance", "attendanceRequests", "reminders", "myLeave", "pharmacyExceptions"] as const;
 export type PushLink = (typeof PUSH_LINKS)[number];
 
 /** R9's cousin: a phone that buzzes all hour gets muted, and then the one that mattered is silent. */
@@ -129,6 +129,9 @@ const BY_ALERT_KIND: Record<string, { category: PushCategory; link: PushLink }> 
   // E2.2 — a leave waiting opens the decider's list; the answer opens the person's own. Both on My leave.
   roster_leave_requested: { category: "roster", link: "myLeave" },
   roster_leave_decided: { category: "roster", link: "myLeave" },
+  // #1065 (ruling 0097) — the owner's 08:00 digest of yesterday's pharmacy exceptions: a clock-driven notice
+  // like a duty reminder, so it rides `reminder` (app >= 0.10.0) and its budget; a tap opens the day's page.
+  pharmacy_exception_digest: { category: "reminder", link: "pharmacyExceptions" },
 };
 export function routeOfAlertKind(kind: string): { category: PushCategory; link: PushLink } {
   return BY_ALERT_KIND[kind] ?? { category: "alert", link: "home" };
@@ -158,7 +161,30 @@ const SENTENCES: Record<PushCategory | "test", Record<"en" | "hi", string>> = {
  */
 const KIND_SENTENCES: Record<string, Record<"en" | "hi", string>> = {
   lab_critical: { en: "Critical lab result waiting", hi: "क्रिटिकल लैब रिपोर्ट प्रतीक्षा में" },
+  pharmacy_exception_digest: { en: "Pharmacy exceptions of yesterday", hi: "फ़ार्मेसी: कल के अपवाद" },
 };
+
+/**
+ * #1065 — the few kinds whose sentence carries FIGURES: a count and an amount, integers by the event's schema
+ * (`alertRaised.figures`), formatted here. Still a table keyed by the kind word, still nothing from the alert's
+ * title, body or ref: two integers cannot carry a name. One line on a 390 px phone.
+ */
+export type AlertFigures = { count: number; paise: number };
+const inRupees = (paise: number): string => `₹${Math.round(paise / 100).toLocaleString("en-IN")}`;
+const FIGURE_SENTENCES: Record<string, Record<"en" | "hi", (f: AlertFigures) => string>> = {
+  pharmacy_exception_digest: {
+    en: (f) => `Pharmacy: ${String(f.count)} ${f.count === 1 ? "exception" : "exceptions"} yesterday, ${inRupees(f.paise)}`,
+    hi: (f) => `फ़ार्मेसी: कल ${String(f.count)} अपवाद, ${inRupees(f.paise)}`,
+  },
+};
+
+/** The kind's sentence with its figures, or null when the kind takes none or none came (the kind's plain sentence stands). */
+export function figureSentence(kind: string, figures: AlertFigures | undefined, language: string): string | null {
+  const said = FIGURE_SENTENCES[kind]?.[language === "hi" ? "hi" : "en"];
+  if (said === undefined || figures === undefined) return null;
+  if (!Number.isSafeInteger(figures.count) || !Number.isSafeInteger(figures.paise) || figures.count < 0 || figures.paise < 0) return null;
+  return said(figures);
+}
 /** The kind's own sentence, or null when the kind has none and its category's sentence stands. */
 export function kindSentence(kind: string, language: string): string | null {
   return KIND_SENTENCES[kind]?.[language === "hi" ? "hi" : "en"] ?? null;
@@ -167,10 +193,10 @@ export function phoneMessage(category: PushCategory | "test", link: PushLink, la
   const lang = language === "hi" ? "hi" : "en";
   return { title: "HMIS", body: SENTENCES[category][lang], data: { category: category === "test" ? "alert" : category, link } };
 }
-/** One alert's message: its category's, with the kind's own sentence when the kind has one. */
-function alertMessage(category: PushCategory, link: PushLink, language: string, kind: string): PhoneMessage {
+/** One alert's message: its category's, with the kind's own sentence when the kind has one (its figures' first). */
+function alertMessage(category: PushCategory, link: PushLink, language: string, kind: string, figures?: AlertFigures): PhoneMessage {
   const message = phoneMessage(category, link, language);
-  const said = kindSentence(kind, language);
+  const said = figureSentence(kind, figures, language) ?? kindSentence(kind, language);
   return said === null ? message : { ...message, body: said };
 }
 
@@ -262,7 +288,7 @@ export type RelayResult = { sent: number; gone: number; skipped: number; limited
  * backoff is the retry (`events/dispatcher.ts`, five attempts), and this function adds none of its own.
  */
 export async function relayAlertToPhones(
-  db: Db, sender: PhonePushSender, alert: { id: string; userId: string; kind: string }, now: Date = new Date(),
+  db: Db, sender: PhonePushSender, alert: { id: string; userId: string; kind: string; figures?: AlertFigures }, now: Date = new Date(),
 ): Promise<RelayResult> {
   const { category, link } = routeOfAlertKind(alert.kind);
   const phones = (await livePhonesOf(db, alert.userId, now)).filter((p) => NEVER_MUTED.includes(category) || !p.muted.includes(category));
@@ -275,7 +301,7 @@ export async function relayAlertToPhones(
     if (done.some((d) => d.deviceRowId === phone.deviceRowId)) { result.skipped += 1; continue; }
     if (budget <= 0) { result.limited = true; result.skipped += 1; continue; }
     try {
-      const outcome = await sender.send(phone.token, alertMessage(category, link, phone.language, alert.kind));
+      const outcome = await sender.send(phone.token, alertMessage(category, link, phone.language, alert.kind, alert.figures));
       if (outcome === "gone") {
         await clearPushToken(db, phone.deviceRowId);
         result.gone += 1;

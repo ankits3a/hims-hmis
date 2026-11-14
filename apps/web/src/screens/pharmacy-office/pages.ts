@@ -58,6 +58,8 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "law", key: "adr", perms: ["pharmacy.adr.record", "pharmacy.adr.manage"], was: null },
   { side: "law", key: "incidents", perms: ["pharmacy.incidents.record", "pharmacy.incidents.review"], was: null },
   { side: "reports", key: "reports", perms: ["pharmacy.reports.read"], was: null },
+  // #1065 (ruling 0097) — the day's exceptions, biggest first: the owner's alone. The 08:00 digest opens it.
+  { side: "reports", key: "exceptions", perms: ["pharmacy.exceptions.view"], was: null },
 ];
 
 /**

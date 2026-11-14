@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { focusHome } from "./home/focus";
 import type { NeedKind } from "./home/rules";
-import { AppState, Platform, Pressable, StyleSheet, View } from "react-native";
+import { AppState, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError } from "./api";
+import { API_BASE } from "./config";
 import { deviceClaim, type DeviceClaim } from "./device";
 import { useI18n } from "./i18n";
 import { devicePush, type PushNote, type PushPermission, type PushPhone } from "./push-phone";
@@ -42,7 +43,13 @@ export const PUSH_LINK_SEAT: Record<string, Seat["key"] | null> = { home: null, 
 /** A link that lands on a CARD of the home screen rather than on a screen of its own. */
 export const PUSH_LINK_CARD: Record<string, NeedKind> = { approvals: "approval" };
 /** STAFF ATTENDANCE — a link that opens one of the attendance screens: the committee's requests list, or a person's own attendance. E1.2 — `reminders`: the person's own Reminders screen. */
-export const PUSH_LINK_ROUTE: Record<string, "requests" | "mine" | "reminders" | "myLeave"> = { attendanceRequests: "requests", attendance: "mine", reminders: "reminders", myLeave: "myLeave" };
+export const PUSH_LINK_ROUTE: Record<string, "requests" | "mine" | "reminders" | "myLeave" | "pharmacyExceptions"> = { attendanceRequests: "requests", attendance: "mine", reminders: "reminders", myLeave: "myLeave", pharmacyExceptions: "pharmacyExceptions" };
+/**
+ * #1065 (ruling 0097) — the owner's 08:00 pharmacy digest opens the office's Exceptions page in the browser: the
+ * app has no screen for it, and the web serves the same origin as the API. The page opens on yesterday, the
+ * digest's own day.
+ */
+export const PHARMACY_EXCEPTIONS_PAGE = `${API_BASE.replace(/\/api\/?$/, "")}/pharmacy/office?view=reports&page=exceptions`;
 
 export type PushStatus = "unknown" | "notInBuild" | "unreachable" | "serverError" | "notLinked" | "serverOff" | "off" | "denied" | "on";
 type ServerState = {
@@ -274,6 +281,7 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
     if (att === "reminders") { router.push("/reminders"); return; }
     /* E2.2 — a leave waiting for my decision, or the answer to mine: My leave. */
     if (att === "myLeave") { router.push("/my-leave"); return; }
+    if (att === "pharmacyExceptions") { void Linking.openURL(PHARMACY_EXCEPTIONS_PAGE).catch(() => router.push("/")); return; }
     const seat = PUSH_LINK_SEAT[link] ?? null;
     const allowed = seat !== null && permissions !== null && seatsFor(permissions).some((s) => s.key === seat);
     if (allowed) router.push({ pathname: "/seat/[key]", params: { key: seat } });

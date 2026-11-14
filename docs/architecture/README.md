@@ -141,7 +141,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 
 | subsystem | used by modules | depends on kernel | serves HTTP |
 |---|---|---|---|
-| `alerts` | attendance, doctor-desk, lab, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
+| `alerts` | attendance, doctor-desk, lab, opd, pharmacy, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
 | `approvals` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
 | `auth` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, ratelimit, tokens | yes |
 | `config` | abdm, attendance, billing, formulary, lab, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
