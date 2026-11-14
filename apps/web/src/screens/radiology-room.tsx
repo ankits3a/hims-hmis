@@ -15,6 +15,7 @@ import { RoomConsole, RoomRefusal } from "../components/radiology/room-console";
 import { SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
 import { RadiologyStation } from "./radiology-station";
+import { PatientFacts } from "../components/radiology/patient-facts";
 import { PacsInboxView } from "./radiology-pacs-inbox";
 import { IrSuiteView } from "./radiology-ir";
 import { CreditChip } from "../components/patient-credit";
@@ -199,9 +200,10 @@ function ConsoleView({ views, picker, machine, studyId, devicesError }: {
                 <b className="min-w-0 truncate">{r.patientName}</b>
                 <span className="mo shrink-0 text-xs">{r.scheduledAt === null ? "—" : fmtIst(r.scheduledAt)}</span>
               </span>
+              <PatientFacts row={r} />
               <span className="block text-xs text-muted-foreground">
                 {r.priority === "stat" ? <b className="text-red-700">STAT · </b> : null}
-                {r.studyTypeCode} · <span className={r.status === "ready" ? "text-green-800" : ""}>{t(`radiology.room.state.${r.status}`, { defaultValue: r.status })}</span>
+                {r.studyTypeName ?? r.studyTypeCode} · <span className={r.status === "ready" ? "text-green-800" : ""}>{t(`radiology.room.state.${r.status}`, { defaultValue: r.status })}</span>
               </span>
             </button>
           </li>

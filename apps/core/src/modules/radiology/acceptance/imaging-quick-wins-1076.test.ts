@@ -265,7 +265,8 @@ describe("imaging quick wins (spec #1076)", () => {
     expect(view?.reportId).toBe(r.reportId);
     const printed = await db.select().from(events).where(eq(events.name, "imaging.report_printed"));
     expect(printed).toHaveLength(1);
-    expect(printed[0]!.payload).toEqual(expect.objectContaining({ reportId: r.reportId, version: 1 }));
+    /** The version printed: signing writes a new version row, so a first signature is not always v1. */
+    expect(printed[0]!.payload).toEqual(expect.objectContaining({ reportId: r.reportId, version: view!.version }));
   });
 
   /* ─────────────────────────────── the read-back ─────────────────────────────── */

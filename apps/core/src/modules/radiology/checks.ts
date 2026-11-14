@@ -230,6 +230,122 @@ export const CRITICAL_TERMS = [
 ] as const;
 
 /**
+ * ═══ #1076 — THE SAME TERMS AS A HINDI SPEAKER WRITES THEM, IN DEVANAGARI ═══
+ *
+ * A clinician reading a finding back on the phone often types it in Devanagari. The report is in English,
+ * so these are TRANSLITERATIONS of the English terms (DECIDED in the spec), not Hindi medical words: a
+ * doctor who heard "pneumothorax" writes न्यूमोथोरैक्स. Each form maps to the English term it names.
+ * Spelling varies (long or short vowels, ै or े, ॉ or ो, a nukta or none), so the forms here and the text
+ * they are matched against both pass through `foldDevanagari` first.
+ */
+const DEVANAGARI_PARTS = {
+  pneumothorax: ["न्यूमोथोरैक्स", "न्यूमोथोराक्स", "निमोथोरैक्स", "न्यूमोथोरेक्स"],
+  tension: ["टेंशन", "टेन्शन"],
+  intracranial: ["इंट्राक्रेनियल", "इन्ट्राक्रेनियल", "इंट्राक्रैनियल"],
+  subarachnoid: ["सबएरेक्नॉइड", "सबअरेक्नॉइड", "सबएरैक्नॉयड", "सबअरैक्नॉइड"],
+  haemorrhage: ["हेमरेज", "हेमोरेज", "हैमरेज"],
+  haematoma: ["हेमाटोमा", "हीमैटोमा", "हेमेटोमा"],
+  subdural: ["सबड्यूरल"],
+  extradural: ["एक्स्ट्राड्यूरल", "एक्सट्राड्यूरल"],
+  epidural: ["एपिड्यूरल"],
+  aortic: ["एओर्टिक", "अओर्टिक", "ऑर्टिक"],
+  dissection: ["डिसेक्शन", "डाइसेक्शन"],
+  pulmonary: ["पल्मोनरी", "पल्मोनेरी"],
+  embolism: ["एम्बोलिज्म", "एम्बोलिज़्म", "एम्बोलिस्म", "एंबोलिज्म"],
+  embolus: ["एम्बोलस", "एंबोलस"],
+  pneumoperitoneum: ["न्यूमोपेरिटोनियम"],
+  ectopic: ["एक्टोपिक"],
+  pregnancy: ["प्रेगनेंसी", "प्रेग्नेंसी", "प्रेगनेन्सी"],
+  testicular: ["टेस्टिकुलर"],
+  ovarian: ["ओवेरियन", "ओवरियन"],
+  torsion: ["टॉर्शन"],
+  cord: ["कॉर्ड"],
+  compression: ["कम्प्रेशन", "कंप्रेशन"],
+  acute: ["एक्यूट"],
+  infarct: ["इन्फार्क्ट", "इंफार्क्ट"],
+  bowel: ["बाउल", "बॉवेल"],
+  perforation: ["परफोरेशन", "पर्फोरेशन"],
+  ruptured: ["रप्चर्ड"],
+  aneurysm: ["एन्यूरिज्म", "एन्यूरिस्म"],
+  active: ["एक्टिव"],
+  extravasation: ["एक्स्ट्रावेसेशन", "एक्सट्रावेसेशन"],
+} as const;
+
+type CriticalTerm = (typeof CRITICAL_TERMS)[number];
+const P = DEVANAGARI_PARTS;
+/** Every spelling of a two-word term: each first word with each second word. */
+const pairs = (a: readonly string[], b: readonly string[]): string[] => a.flatMap((x) => b.map((y) => `${x} ${y}`));
+
+export const CRITICAL_TERMS_DEVANAGARI: readonly (readonly [string, CriticalTerm])[] = ([
+  ...pairs(P.tension, P.pneumothorax).map((f) => [f, "tension pneumothorax"]),
+  ...P.pneumothorax.map((f) => [f, "pneumothorax"]),
+  ...pairs(P.intracranial, P.haemorrhage).map((f) => [f, "intracranial haemorrhage"]),
+  ...pairs(P.subarachnoid, P.haemorrhage).map((f) => [f, "subarachnoid haemorrhage"]),
+  ...pairs(P.subdural, P.haematoma).map((f) => [f, "subdural haematoma"]),
+  ...pairs(P.extradural, P.haematoma).map((f) => [f, "extradural haematoma"]),
+  ...pairs(P.epidural, P.haematoma).map((f) => [f, "epidural haematoma"]),
+  ...pairs(P.aortic, P.dissection).map((f) => [f, "aortic dissection"]),
+  ...pairs(P.pulmonary, P.embolism).map((f) => [f, "pulmonary embolism"]),
+  ...pairs(P.pulmonary, P.embolus).map((f) => [f, "pulmonary embolus"]),
+  ["फ्री एयर", "free air"], ["फ्री एअर", "free air"],
+  ...P.pneumoperitoneum.map((f) => [f, "pneumoperitoneum"]),
+  ...pairs(P.ectopic, P.pregnancy).map((f) => [f, "ectopic pregnancy"]),
+  ...pairs(P.testicular, P.torsion).map((f) => [f, "testicular torsion"]),
+  ...pairs(P.ovarian, P.torsion).map((f) => [f, "ovarian torsion"]),
+  ...pairs(P.cord, P.compression).map((f) => [f, "cord compression"]),
+  ...pairs(P.acute, P.infarct).map((f) => [f, "acute infarct"]),
+  ["मिडलाइन शिफ्ट", "midline shift"],
+  ...pairs(P.bowel, P.perforation).map((f) => [f, "bowel perforation"]),
+  ...pairs(P.ruptured, P.aneurysm).map((f) => [f, "ruptured aneurysm"]),
+  ...pairs(P.active, P.extravasation).map((f) => [f, "active extravasation"]),
+] as [string, CriticalTerm][]);
+
+/**
+ * One spelling for the variants a typed Devanagari word takes: NFC, no nukta, short for long vowel signs,
+ * े for ै, ो for ॉ, ं for ँ. Applied to the lexicon and to the text alike.
+ */
+export function foldDevanagari(text: string): string {
+  return text.normalize("NFC").normalize("NFD").replace(/\u093C/g, "").normalize("NFC")
+    .replace(/\u0940/g, "\u093F").replace(/\u0942/g, "\u0941")
+    .replace(/[\u0948\u0945]/g, "\u0947").replace(/\u0949/g, "\u094B")
+    .replace(/\u0901/g, "\u0902").replace(/\u0911/g, "\u0913").replace(/\u0910/g, "\u090F")
+    .replace(/\u0908/g, "\u0907").replace(/\u090A/g, "\u0909");
+}
+
+const FOLDED_DEVANAGARI = CRITICAL_TERMS_DEVANAGARI.map(([form, term]) => [foldDevanagari(form), term] as const)
+  .sort((a, b) => b[0].length - a[0].length);
+/** A Devanagari or English negator as its own word (folded, as the text is): नहीं, नही, ना, न, बिना, मत; no, not, without. */
+const DEVANAGARI_NEGATOR = new RegExp(
+  `(?:^|[^\\p{L}\\p{M}])(?:${["नहीं", "नही", "ना", "न", "बिना", "मत", "no", "not", "without"].map(foldDevanagari).join("|")})(?![\\p{L}\\p{M}])`,
+  "iu",
+);
+const DEVANAGARI_CLAUSE_BREAK = /[.;!?\n\u0964\u0965]|(?:^|\s)(?:लेकिन|पर|मगर|किंतु|but|however)(?=\s|$)/iu;
+
+/**
+ * The English critical terms a Devanagari text names: `said` where its clause carries no negator, `negated`
+ * where it does ("न्यूमोथोरैक्स नहीं है"). A longer form shadows a shorter one inside it. Judged per clause,
+ * as `criticalTermsIn` judges English.
+ */
+export function devanagariCriticalTermsIn(text: string): { said: CriticalTerm[]; negated: CriticalTerm[] } {
+  const said: CriticalTerm[] = [];
+  const negated: CriticalTerm[] = [];
+  for (const raw of foldDevanagari(text).split(DEVANAGARI_CLAUSE_BREAK)) {
+    if (raw === undefined || raw.trim() === "") continue;
+    let clause = raw;
+    const found: CriticalTerm[] = [];
+    for (const [form, term] of FOLDED_DEVANAGARI) {
+      const re = new RegExp(`(?<![\\p{L}\\p{M}])${form.replace(/ /g, "\\s+")}(?![\\p{L}\\p{M}])`, "u");
+      if (!re.test(clause)) continue;
+      found.push(term);
+      clause = clause.replace(re, " ");
+    }
+    if (found.length === 0) continue;
+    (DEVANAGARI_NEGATOR.test(raw) ? negated : said).push(...found);
+  }
+  return { said, negated };
+}
+
+/**
  * A negator before the term, inside its clause, no more than eight words back — "no evidence of
  * pneumothorax, haemorrhage or free air" negates all three, which is how a normal-study sentence
  * is written and why the scope crosses commas (NegEx's rule). The clause ends at a sentence mark

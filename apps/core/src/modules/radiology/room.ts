@@ -16,6 +16,7 @@ import { clearanceOf } from "./read";
 import { activeDoseReferenceLevels, requireStudyType } from "./study-types";
 import { mintStudyInstanceUid } from "./uid";
 import { pendingDoseFor } from "./pacs";
+import { contrastAdministrationsFor, summariseContrast } from "./contrast";
 import type { ImagingDeviceRow } from "./devices";
 import type { DoseReferenceLevel, ImagingProtocol } from "./definitions";
 import type { RepeatReasonCode } from "./events";
@@ -83,6 +84,12 @@ export type RoomView = {
    * console then shows it and asks for no typing: Send records these numbers (`dose_sr`).
    */
   doseReport: { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null; kar?: number | null } | null;
+  /**
+   * #1076 — the contrast the prep bay already recorded on this study (its administration register,
+   * summarised by `summariseContrast`: every agent, the intravascular volume). The console shows it filled
+   * instead of asking again; null when nothing is recorded.
+   */
+  recordedContrast: { agent: string | null; volumeMl: number | null } | null;
 };
 
 /** Whole years between a date of birth and `now`, or null when the master holds no DOB. */
@@ -215,7 +222,13 @@ export async function roomView(db: Db, actor: Actor, studyId: string, now: Date 
     renal,
     repeats,
     doseReport: (await pendingDoseFor(db, study.id, { lock: false }))?.latest ?? null,
+    recordedContrast: recordedContrastOf(summariseContrast(await contrastAdministrationsFor(db, study.id))),
   };
+}
+
+function recordedContrastOf(s: ReturnType<typeof summariseContrast>): RoomView["recordedContrast"] {
+  if (!s.contrastGiven) return null;
+  return { agent: s.contrastAgent, volumeMl: s.contrastVolumeMl === null ? null : Number(s.contrastVolumeMl) };
 }
 
 /**

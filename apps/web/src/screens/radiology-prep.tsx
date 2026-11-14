@@ -12,6 +12,7 @@ import { ContrastPanel } from "../components/radiology/contrast-panel";
 import { Refusal } from "../components/radiology/imaging-counter";
 import type { WirePrepGate, WirePrepRow, WirePrepStudy } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
+import { PatientFacts } from "../components/radiology/patient-facts";
 
 /**
  * PLAN 18-S RS5 T3 — **THE PREP & SAFETY BAY.** The approved board's `st-prep`: the bay closes the
@@ -262,9 +263,10 @@ function PrepListRow({ row, inHand, onOpen }: { row: WirePrepRow; inHand: boolea
           <b className="min-w-0 truncate">{row.patientName}</b>
           <span className="mo shrink-0 text-xs">{row.scheduledAt === null ? "—" : fmtIst(row.scheduledAt)}</span>
         </span>
+        <PatientFacts row={row} />
         <span className="block text-xs text-muted-foreground">
           {row.priority === "stat" ? <b className="text-red-700">STAT · </b> : null}
-          {row.studyTypeCode}{row.deviceCode === null ? "" : ` · ${row.deviceCode}`}
+          {row.studyTypeName ?? row.studyTypeCode}{row.deviceCode === null ? "" : ` · ${row.deviceCode}`}
         </span>
         <span className="block text-xs">
           {row.openPrep.map((k) => t(`radiology.gate.${k}`, { defaultValue: k }) + (row.asked.includes(k) ? ` (${t("radiology.bay.askedShort")})` : "")).join(" · ")}

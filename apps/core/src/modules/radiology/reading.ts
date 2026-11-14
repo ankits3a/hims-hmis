@@ -1,6 +1,9 @@
 import { and, desc, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccess, recordPhiAccessMany } from "../../kernel/phi/audit";
+import { withTx } from "../../kernel/db/client";
+import { appendEvent } from "../../kernel/events/append";
+import { imagingReportPrinted } from "./events";
 import {
   imagingImageViews, imagingReports, imagingStudies,
 } from "../../kernel/db/schema/radiology";
@@ -79,6 +82,10 @@ export type ReadingRow = {
   patientName: string;
   patientSex: string;
   patientAge: number | null;
+  /** #1076 — the full row every imaging list carries (the worklist's names and rules). */
+  uhid: string;
+  ageYears: number | null;
+  sex: string;
   restricted: boolean;
   formFRequired: boolean;
   acquiredAt: Date | null;
@@ -109,7 +116,7 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
     .select({
       study: imagingStudies, restricted: orderItems.restricted,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
-      sex: patients.sex, dob: patients.dob,
+      sex: patients.sex, dob: patients.dob, uhid: patients.uhid,
     })
     .from(imagingStudies)
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
@@ -168,6 +175,8 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
       patientId: r.study.patientId,
       patientName: displayName({ name: r.name, alias: r.alias, isConfidential: r.isConfidential }, clearance.canSeeConfidential),
       patientSex: r.sex, patientAge: r.dob === null ? null : ageInYearsOn(r.dob, now),
+      uhid: r.isConfidential && !clearance.canSeeConfidential ? "" : r.uhid,
+      ageYears: r.dob === null ? null : ageInYearsOn(r.dob, now), sex: r.sex,
       restricted: r.restricted, formFRequired: r.study.formFRequired,
       acquiredAt: r.study.acquiredAt, tatClass, targetMinutes,
       dueAt: r.study.acquiredAt === null ? null : new Date(r.study.acquiredAt.getTime() + targetMinutes * 60_000),
@@ -183,10 +192,9 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
   out.sort((a, b) => sortKey(a, consultant) - sortKey(b, consultant) || (PRIORITY_RANK[a.priority] ?? 2) - (PRIORITY_RANK[b.priority] ?? 2)
     || (a.dueAt?.getTime() ?? Infinity) - (b.dueAt?.getTime() ?? Infinity));
 
+  /** #1076 / ruling 0098 — once per reader, patient and surface per 30 minutes, in one statement. */
   const reason = `reading worklist, ${String(out.length)} rows`;
-  for (const patientId of new Set(out.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  await recordPhiAccessMany(db, { actor, patientIds: out.map((r) => r.patientId), surface: "imaging.worklist", reason, now });
   return out;
 }
 
@@ -454,6 +462,18 @@ export async function reportPrintView(db: Db, actor: Actor, reportId: string, no
   if (actor.type !== "user" || !(await hasPermission(db, actor.id, "radiology.reports.read", "hospital"))) {
     throw new RadiologyError("forbidden", `${actor.id} does not hold radiology.reports.read`);
   }
+  return printViewUnchecked(db, actor, reportId, now);
+}
+
+/**
+ * The print itself, AFTER the caller's own permission check — it checks none, hence the name. Two doors
+ * call it: `reportPrintView` (the report's reader) and the hand-over desk's `handoverPrintView`
+ * (`release.ts`, which adds its own released-and-not-held rule). Not exported from the module's index.
+ *
+ * #1076 — **each print appends `imaging.report_printed`** (report, study, version): a reprint is an act a
+ * records enquiry asks about, and the access row alone cannot tell a print from a screen read.
+ */
+export async function printViewUnchecked(db: Db, actor: Actor, reportId: string, now: Date): Promise<ReportPrintView | null> {
   const clearance = await clearanceOf(db, actor);
   const [row] = await db
     .select({
@@ -484,6 +504,10 @@ export async function reportPrintView(db: Db, actor: Actor, reportId: string, no
     actor, patientId: row.study.patientId, surface: "imaging.report",
     encounterId: row.study.encounterNo, reason: `print v${String(row.report.version)} of ${row.study.accessionNo}`,
   });
+  await withTx(db, (tx) => appendEvent(tx, imagingReportPrinted.make({
+    actor, patientId: row.study.patientId,
+    payload: { reportId: row.report.id, studyId: row.study.id, version: row.report.version },
+  })));
 
   const body = (row.report.body ?? {}) as Record<string, unknown>;
   const sections = Object.entries(body)

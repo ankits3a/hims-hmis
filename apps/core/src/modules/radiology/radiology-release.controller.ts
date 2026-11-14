@@ -7,7 +7,7 @@ import { istDayString } from "../../kernel/approvals/cumulative";
 import { IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_ID_TYPES, IMAGING_COLLECTOR_KINDS, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
 import { doctorReadBack, doctorResultsInbox, markActedUpon } from "./closed-loop";
 import { northStar } from "./north-star";
-import { handOverReport, markMediaPrinted, releaseRegister, requestMedia } from "./release";
+import { handOverReport, handoverPrintView, markMediaPrinted, releaseRegister, requestMedia } from "./release";
 import { requestUnpaidRelease } from "./held";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
@@ -52,6 +52,8 @@ const handoverBody = z.object({
 }).strict();
 const releaseUnpaidBody = z.object({ reason: z.string().max(500) }).strict();
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** #1076 — the hand-over desk's search: a name, a UHID or an accession. */
+const releaseQuery = z.string().trim().max(80).optional();
 
 @Controller("radiology")
 export class RadiologyReleaseController {
@@ -100,9 +102,22 @@ export class RadiologyReleaseController {
 
   @Get("release")
   @RequirePermission("radiology.schedule", "hospital")
-  async release(@CurrentActor() actor: Actor): Promise<unknown> {
+  async release(@CurrentActor() actor: Actor, @Query("q") q?: string): Promise<unknown> {
+    const query = parsed(releaseQuery, q);
     try {
-      return { rows: await releaseRegister(this.db, actor) };
+      return { rows: await releaseRegister(this.db, actor, new Date(), query === undefined ? {} : { q: query }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * #1076 — the hand-over desk prints the report in hand: the current released version, never a copy
+   * held for dues (`handoverPrintView`). Null for anything else; each print is recorded.
+   */
+  @Get("release/reports/:reportId/print")
+  @RequirePermission("radiology.schedule", "hospital")
+  async handoverPrint(@CurrentActor() actor: Actor, @Param("reportId") reportId: string): Promise<unknown> {
+    try {
+      return { report: await handoverPrintView(this.db, actor, parsed(idSchema, reportId)) };
     } catch (e) { toHttp(e); }
   }
 

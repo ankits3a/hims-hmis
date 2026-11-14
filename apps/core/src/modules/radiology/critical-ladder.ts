@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccessMany } from "../../kernel/phi/audit";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import {
   IMAGING_CRITICAL_RUNGS, imagingCriticalCallAttempts, imagingCriticalFindings, imagingReports, imagingStudies,
@@ -13,7 +13,7 @@ import { resolverEnabled, whoIsOn } from "../roster";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { RadiologyError } from "./errors";
 import { clearanceOf } from "./read";
-import { CRITICAL_TERMS, criticalTermsIn } from "./checks";
+import { CRITICAL_TERMS, criticalTermsIn, devanagariCriticalTermsIn } from "./checks";
 import { activeStudyTypes } from "./study-types";
 import type { ImagingCriticalRung } from "../../kernel/db/schema/radiology";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -78,9 +78,13 @@ function normaliseSpelling(text: string): string {
   return text.toLowerCase().replace(/ae/g, "e").replace(/oe/g, "e");
 }
 
+/**
+ * #1076 — the words of a text in any script: Unicode letters and their marks (a Devanagari vowel sign is
+ * a mark, not a separator). `[^a-z]+` split a Devanagari read-back into nothing at all.
+ */
 function contentWords(text: string): Set<string> {
   const out = new Set<string>();
-  for (const raw of normaliseSpelling(text).split(/[^a-z]+/)) {
+  for (const raw of normaliseSpelling(text).split(/[^\p{L}\p{M}]+/u)) {
     if (raw.length < 4 || NOT_THE_FINDING.has(raw)) continue;
     out.add(raw.length > 4 && raw.endsWith("s") ? raw.slice(0, -1) : raw);
   }
@@ -100,8 +104,13 @@ export function readBackNamesFinding(
 
   const reportTerms = criticalTermsIn(`${impression}\n${findings}`).map(normaliseSpelling);
   if (reportTerms.length > 0) {
-    const said = criticalTermsIn(readBack).map(normaliseSpelling);
-    if (said.some((t) => reportTerms.some((r) => r.includes(t) || t.includes(r)))) return true;
+    /** #1076 — a read-back typed in Devanagari names the English term it transliterates (`checks.ts`). */
+    const hindi = devanagariCriticalTermsIn(readBack);
+    const names = (t: string) => reportTerms.some((r) => r.includes(t) || t.includes(r));
+    const said = [...criticalTermsIn(readBack), ...hindi.said].map(normaliseSpelling);
+    if (said.some(names)) return true;
+    /** "न्यूमोथोरैक्स नहीं" — the Devanagari form of the negated read-back below, refused the same way. */
+    if (hindi.negated.map(normaliseSpelling).some(names)) return false;
     /**
      * The read-back MENTIONS the report's critical term but negates it ("no pneumothorax") — the
      * clinician heard the opposite of the finding, which is the one read-back that must never close
@@ -353,8 +362,7 @@ export async function criticalCallBoard(
   };
 
   const reason = `critical calls, ${String(openRows.length)} open`;
-  for (const patientId of new Set(all.map((r) => r.study.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  /** #1076 / ruling 0098 — a list: once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(db, { actor, patientIds: all.map((r) => r.study.patientId), surface: "imaging.worklist", reason, now });
   return { open: openRows.map(toView), acknowledged: doneRows.map(toView) };
 }

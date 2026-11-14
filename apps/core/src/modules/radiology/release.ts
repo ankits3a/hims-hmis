@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccessMany } from "../../kernel/phi/audit";
 import {
   IMAGING_COLLECTOR_ID_TYPES, IMAGING_COLLECTOR_KINDS, IMAGING_MEDIA_KINDS,
   imagingMediaRequests, imagingReportDelivery, imagingReportHandovers, imagingReports, imagingStudies,
@@ -15,11 +15,14 @@ import { notifications } from "../../kernel/db/schema/notifications";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
 import { imagingMediaRequested, imagingReportHandedOver, imagingReportReleasedUnpaid } from "./events";
-import { assertPatientCopyReleasable, patientCopyHold } from "./held";
+import { assertPatientCopyReleasable, patientCopyHold, patientCopyHolds, rupees } from "./held";
 import type { HoldRelease } from "./held";
 import { requireReleased, stampFirstRead, treatingDoctorsOf } from "./closed-loop";
 import { CD_SERVICE_CODE, FILM_SERVICE_CODE } from "./counter";
-import { activeStudyTypes } from "./study-types";
+import { activeStudyTypes, studyTypeNameLookup } from "./study-types";
+import { ageInYearsOn } from "./applicability";
+import { printViewUnchecked } from "./reading";
+import type { ReportPrintView } from "./reading";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -50,6 +53,8 @@ import type { Db, Tx } from "../../kernel/db/client";
 export const RELEASE_WINDOW_DAYS = 30;
 export const RELEASE_LIMIT = 300;
 export const ABNORMAL_UNCOLLECTED_HOURS = 24;
+/** #1076 — a search answers at most this many released reports, newest first. */
+export const RELEASE_SEARCH_LIMIT = 50;
 
 export type ReleaseNeed =
   | "abnormal_uncollected" | "amended_after_handover" | "held_for_dues" | "media_to_print" | "media_to_hand" | "notice_not_sent" | "not_collected";
@@ -75,6 +80,10 @@ export type ReleaseRow = {
   patientId: string;
   patientName: string;
   uhid: string;
+  /** #1076 — the full row every imaging list carries: age in whole years on `now`, sex, the book's study name. */
+  ageYears: number | null;
+  sex: string;
+  studyTypeName: string;
   publishedAt: string;
   criticalCategory: string | null;
   bedsideLocation: string | null;
@@ -114,16 +123,45 @@ async function tariffMediaCodes(db: Db | Tx): Promise<Set<string>> {
   return new Set(rows.map((r) => r.code));
 }
 
-export async function releaseRegister(db: Db, actor: Actor, now: Date = new Date()): Promise<ReleaseRow[]> {
+/** `%` and `_` typed at the window are letters, not wildcards. */
+const likeEscaped = (q: string): string => q.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/**
+ * #1076 — the desk's one search box: a UHID or an accession (from its start), or a name (anywhere in it).
+ * A confidential patient is found by the name this reader is shown — the alias without clearance — so a
+ * search can never confirm a real name the register would not print.
+ */
+function releaseSearch(q: string, canSeeConfidential: boolean) {
+  const prefix = `${likeEscaped(q)}%`;
+  const anywhere = `%${likeEscaped(q)}%`;
+  const byName = canSeeConfidential
+    ? ilike(patients.name, anywhere)
+    : or(
+      and(eq(patients.isConfidential, false), ilike(patients.name, anywhere)),
+      and(eq(patients.isConfidential, true), ilike(patients.alias, anywhere)),
+    );
+  return or(ilike(patients.uhid, prefix), ilike(imagingStudies.accessionNo, prefix), byName);
+}
+
+/**
+ * The register: the last `RELEASE_WINDOW_DAYS` of released reports, at most `RELEASE_LIMIT`. With a query
+ * (#1076) the SERVER searches every released report — past the window and the cap — and answers at most
+ * `RELEASE_SEARCH_LIMIT`, so the patient at the window with a report from March is found.
+ */
+export async function releaseRegister(
+  db: Db, actor: Actor, now: Date = new Date(), opts: { q?: string } = {},
+): Promise<ReleaseRow[]> {
   if (actor.type !== "user") throw new RadiologyError("user_actor_required", "the release register is read by a person");
   const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
   const since = new Date(now.getTime() - RELEASE_WINDOW_DAYS * 86_400_000);
+  const q = opts.q?.trim() ?? "";
 
   const rows = await db
     .select({
       report: imagingReports, study: imagingStudies, studyName: services.name,
       authority: orders.authority, orderingClinicianId: orders.orderingClinicianId, visitDoctorUserId: opdDoctors.userId,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential, uhid: patients.uhid,
+      sex: patients.sex, dob: patients.dob,
       delivery: imagingReportDelivery,
     })
     .from(imagingReports)
@@ -134,9 +172,12 @@ export async function releaseRegister(db: Db, actor: Actor, now: Date = new Date
     .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
     .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .leftJoin(imagingReportDelivery, eq(imagingReportDelivery.reportId, imagingReports.id))
-    .where(and(eq(imagingReports.status, "signed"), isNotNull(imagingReports.publishedAt), gte(imagingReports.publishedAt, since)))
+    .where(and(
+      eq(imagingReports.status, "signed"), isNotNull(imagingReports.publishedAt),
+      q === "" ? gte(imagingReports.publishedAt, since) : releaseSearch(q, canSeeConfidential),
+    ))
     .orderBy(desc(imagingReports.publishedAt))
-    .limit(RELEASE_LIMIT);
+    .limit(q === "" ? RELEASE_LIMIT : RELEASE_SEARCH_LIMIT);
   if (rows.length === 0) return [];
 
   const studyIds = rows.map((r) => r.study.id);
@@ -153,28 +194,28 @@ export async function releaseRegister(db: Db, actor: Actor, now: Date = new Date
   const versionOf = new Map(versionRows.map((v) => [v.id, v.version]));
   const noticeOf = new Map(noticeRows.map((n) => [n.dedupeKey, n.status]));
 
-  const seen = new Set<string>();
-  for (const r of rows) {
-    if (seen.has(r.study.patientId)) continue;
-    seen.add(r.study.patientId);
-    await recordPhiAccess(db, {
-      actor, patientId: r.study.patientId, surface: "imaging.worklist",
-      reason: "report hand-over at the imaging desk", now,
-    });
-  }
+  /** #1076 / ruling 0098 — once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(db, {
+    actor, patientIds: rows.map((r) => r.study.patientId), surface: "imaging.worklist",
+    reason: q === "" ? "report hand-over at the imaging desk" : "report hand-over search at the imaging desk", now,
+  });
 
   /**
    * 18-S RS9b — the hold, asked only of rows the desk still has something to hand over for (the
    * current version not yet handed, or printed film/CD waiting): a finished row holds nothing.
+   * #1076 — asked of all of them at once (`patientCopyHolds`), not one ledger read per row.
    */
-  const holdOf = new Map<string, ReleaseRow["hold"]>();
-  for (const r of rows) {
+  const asked = rows.filter((r) => {
     const handedCurrent = handRows.some((h) => h.reportId === r.report.id);
     const mediaWaiting = mediaRows.some((m) => m.studyId === r.study.id && m.handoverId === null);
-    if (handedCurrent && !mediaWaiting) continue;
-    const hold = await patientCopyHold(db, r.study);
-    if (hold.held) holdOf.set(r.study.id, { outstandingPaise: hold.outstandingPaise, invoiceNo: hold.invoiceNo, release: hold.release });
+    return !handedCurrent || mediaWaiting;
+  });
+  const holds = await patientCopyHolds(db, asked.map((r) => r.study));
+  const holdOf = new Map<string, ReleaseRow["hold"]>();
+  for (const [studyId, hold] of holds) {
+    if (hold.held) holdOf.set(studyId, { outstandingPaise: hold.outstandingPaise, invoiceNo: hold.invoiceNo, release: hold.release });
   }
+  const nameOf = await studyTypeNameLookup(db);
 
   const out = rows.map((r): ReleaseRow => {
     const modality = modalityOf(r.study.studyTypeCode);
@@ -202,7 +243,9 @@ export async function releaseRegister(db: Db, actor: Actor, now: Date = new Date
       studyName: r.studyName, modality,
       patientId: r.study.patientId,
       patientName: displayName({ name: r.name, alias: r.alias, isConfidential: r.isConfidential }, canSeeConfidential),
-      uhid: r.uhid, publishedAt: publishedAt.toISOString(), criticalCategory: r.report.criticalCategory,
+      uhid: r.uhid, ageYears: r.dob === null ? null : ageInYearsOn(r.dob, now), sex: r.sex,
+      studyTypeName: nameOf(r.study.studyTypeCode),
+      publishedAt: publishedAt.toISOString(), criticalCategory: r.report.criticalCategory,
       bedsideLocation: r.study.bedsideLocation, hold, doctor, notice,
       filmIncluded: modality === "xray",
       handovers: hands.map((h) => ({
@@ -225,6 +268,36 @@ export async function releaseRegister(db: Db, actor: Actor, now: Date = new Date
 
   const top = (row: ReleaseRow): number => Math.min(...row.needs.map((n) => NEED_RANK[n]), 99);
   return out.sort((a, b) => top(a) - top(b) || b.publishedAt.localeCompare(a.publishedAt));
+}
+
+/**
+ * ═══ #1076 — THE HAND-OVER DESK PRINTS THE REPORT IN HAND ═══
+ *
+ * The desk's grant is `radiology.schedule` (it is the only role on this screen, and it does not hold
+ * `radiology.reports.read`), so the desk prints through its own door with the register's own two rules:
+ * only the CURRENT released version (signed and published — what the register lists and the hand-over
+ * gives), and never a patient's copy held for dues unless the owner released it (`held.ts`): printing the
+ * copy is handing it over. Then the same print as the reading room — the same restricted rule, the same
+ * `imaging.report` access row, the same `imaging.report_printed` event.
+ */
+export async function handoverPrintView(db: Db, actor: Actor, reportId: string, now: Date = new Date()): Promise<ReportPrintView | null> {
+  if (actor.type !== "user" || !(await hasPermission(db, actor.id, "radiology.schedule", "hospital"))) {
+    throw new RadiologyError("forbidden", `${actor.id} does not hold radiology.schedule`);
+  }
+  const [row] = await db.select({ report: imagingReports, study: imagingStudies })
+    .from(imagingReports).innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
+    .where(eq(imagingReports.id, reportId));
+  if (!row || row.report.status !== "signed" || row.report.publishedAt === null) return null;
+  const hold = await patientCopyHold(db, row.study);
+  if (hold.held && hold.release.state !== "granted") {
+    throw new RadiologyError(
+      "report_held_for_dues",
+      `${rupees(hold.outstandingPaise)} is due on bill ${hold.invoiceNo} for ${row.study.accessionNo}. The patient's copy `
+      + "prints once it is paid at billing, or once the owner releases it unpaid.",
+      { outstandingPaise: hold.outstandingPaise, invoiceNo: hold.invoiceNo, studyId: row.study.id },
+    );
+  }
+  return printViewUnchecked(db, actor, reportId, now);
 }
 
 /**

@@ -276,6 +276,13 @@ export const imagingReportHandedOver = defineEvent("imaging.report_handed_over",
   collectorKind: z.enum(IMAGING_COLLECTOR_KINDS),
   filmSheets: z.number().int().nonnegative(), cd: z.boolean(),
 }));
+/**
+ * #1076 — a released report was printed (the reading room's print, or the hand-over desk's reprint).
+ * Ids and the version only; the actor is the person who printed it.
+ */
+export const imagingReportPrinted = defineEvent("imaging.report_printed", MODULE, z.object({
+  reportId: id, studyId: id, version: z.number().int().positive(),
+}));
 export const imagingMediaRequested = defineEvent("imaging.media_requested", MODULE, z.object({
   requestId: id, studyId: id, kind: z.enum(IMAGING_MEDIA_KINDS), quantity: z.number().int().positive(), included: z.boolean(),
 }));
@@ -359,4 +366,5 @@ export const RADIOLOGY_EVENTS = [
   imagingFollowupOverdue,
   imagingFollowupBooked,
   imagingOverreadRecorded,
+  imagingReportPrinted,
 ] as const;

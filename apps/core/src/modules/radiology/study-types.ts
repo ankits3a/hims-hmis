@@ -134,6 +134,19 @@ export async function activeStudyTypes(exec: Db | Tx): Promise<StudyType[]> {
 }
 
 /**
+ * #1076 — the study's name for a list row, from the active book. A list must still render when the
+ * book is missing or unreadable, so the code stands in for the name rather than the list failing.
+ */
+export async function studyTypeNameLookup(exec: Db | Tx): Promise<(code: string) => string> {
+  try {
+    const by = new Map((await activeStudyTypes(exec)).map((t) => [t.code, t.name]));
+    return (code) => by.get(code) ?? code;
+  } catch {
+    return (code) => code;
+  }
+}
+
+/**
  * `serviceId` → the ONE study type that names it.
  *
  * `studyTypesBodySchema` refuses a duplicate `service_id` at DRAFT and again at PUBLISH, so an
