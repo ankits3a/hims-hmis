@@ -58,12 +58,17 @@ export {
 
 // ── T4 — readiness: the gates, the consents, the list ──
 export {
-  ADULT_AGE_YEARS, CLINICALLY_OVERRIDABLE_KINDS, NPO_CLEAR_FLUIDS_HOURS, NPO_SOLIDS_HOURS,
-  TERMINAL_GATE_STATES, caseGates, evaluateReadiness, gateState, overrideGate, satisfyGate, waiveGate,
+  CLINICALLY_OVERRIDABLE_KINDS, TERMINAL_GATE_STATES, caseGates, evaluateReadiness, gateState, overrideGate,
+  satisfyGate, waiveGate,
 } from "./gates";
 export type { GateRow } from "./gates";
-export { CONSENT_KINDS, consentEvidence, consentSchema, validateConsent } from "./consents";
-export type { ConsentEvidence, ConsentKind } from "./consents";
+export { CONSENT_KINDS, validateConsent } from "./consents";
+export type { ConsentKind } from "./consents";
+// #1086 — the consent shape, the fasting hours and the adult age are the kernel's; the same objects, same names.
+export {
+  ADULT_AGE_YEARS, NPO_CLEAR_FLUIDS_HOURS, NPO_SOLIDS_HOURS, consentEvidence, consentSchema,
+} from "../../kernel/consent";
+export type { ConsentEvidence } from "../../kernel/consent";
 export {
   SURGEON_LATE_RUNGS_MINUTES, flagLateSurgeons, listForDay, printPack, publishList, resequence,
 } from "./lists";
