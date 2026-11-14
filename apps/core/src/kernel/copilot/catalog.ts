@@ -68,8 +68,12 @@ export function collectCopilotTools(
       person then reviews; the draft halt stops tools declared `kind: "draft"`. A `draft_*` tool left
       untagged answers straight through a draft halt, and a tagged tool not named `draft_*` hides
       from whoever reads the phrasebook.
+
+      #1082 — a MODULE intent is `<key>.<name>` (#598), so the rule reads the name after the key:
+      `radiology.draft_report` drafts exactly as the kernel's `draft_*` do. A kernel intent has no dot
+      and reads as before.
     */
-    if (t.intent.startsWith("draft_") !== (t.kind === "draft")) {
+    if (t.intent.slice(t.intent.indexOf(".") + 1).startsWith("draft_") !== (t.kind === "draft")) {
       throw new CopilotError(
         "draft_undeclared",
         `copilot tool "${t.intent}" must be named draft_* and declare kind "draft" together — ` +
