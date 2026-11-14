@@ -123,6 +123,16 @@ H1 row, `retail.sold`. Returns: sealed pack, 7 days, at least 30 days of shelf l
   `postGrn` refuses `mrp_revision_unapproved` until granted, then `findOrCreateBatch` reprices the batch and emits
   `batch.mrp_revised`. `materials/supplier-returns.ts` `recordStandaloneCredit` (rate_difference, scheme, breakage,
   other) sets off in the payment run like a return credit.
+- Price check (#1061, 0096): `materials/price-check.ts`. `captureGrn` judges every paid line of a `challan` or
+  `consignment_challan` GRN from a real supplier, per base unit, against the item's last paid receipt (any supplier,
+  `purchaseHistoryByItem`: posted, accepted, not free, not opening stock or donation) and this supplier's contract
+  (`contractRatesFor`). More than 2% above either (`PRICE_CHECK_THRESHOLD_BPS`; 1 paisa per unit is rounding) refuses
+  `price_reason_required` with `detail.lines[{ index, check }]` until the line carries `priceReason` (mrp_revised,
+  scheme_changed, urgent_buy, other + words); the reference and reason go on `grn_lines.price_*` and
+  `grn.price_above_reference` is emitted. `planSupplierInvoice` returns each row's `priceCheck` and the supplier's
+  `unusedCreditPaise` (`vendorCredits`). Office report `GET /pharmacy/office/reports/purchase-analysis` (margin right)
+  lists the amber lines with extra rupees. Web: `apps/web/src/screens/pharmacy-office/price-check-note.tsx` under the
+  grid row and on `apps/web/src/screens/materials-grn.tsx`.
 - Estimated cost (0093): a blank opening rate costs `estimatedPackCostPaise` = MRP / (1 + GST) x 0.80, flagged
   `estimated_cost` on the GRN line and the batch; `materials/reports.ts` `stockValuationAt` reports known and
   estimated value apart. An explicit 0 stays zero cost.
@@ -206,7 +216,7 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
 ## 8. Constants worth knowing
 `config.ts`: `PICK_RESERVATION_MINUTES` 30, `SCHEDULED_FLAGS` H/H1, `REGISTER_FLAGS` H1, `REFUSED_FLAGS` X,
 `DOWNTIME_BACKFILL_DAYS` 7. `materials/config.ts`: near-expiry 6 months / 75% of shelf life, PO head limit Rs 50k,
-receipt tolerance 2%, bill tolerance 1% / Rs 10, MSME 45 days. `opening-stock.ts`: `OPENING_MAX_ROWS` 2000.
+receipt tolerance 2%, bill tolerance 1% / Rs 10, purchase price check 2% (0096), MSME 45 days. `opening-stock.ts`: `OPENING_MAX_ROWS` 2000.
 `scripts/standup-check.ts` holds the pharmacy readiness rows. `pharmacist_council_number` is red while every current
 registration is a TRIAL placeholder (`pharmacists.ts` `isTrialRegistration`, shared with `office-needs.ts`);
 `pharmacist_registration_not_lapsing` still counts a TRIAL registration as current.

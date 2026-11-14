@@ -262,6 +262,18 @@ export type WireVendorDiscounts = {
   totals: Omit<WireVendorDiscountRow, "vendorId" | "vendorCode" | "vendorName" | "gstin">;
 };
 export const fetchVendorDiscounts = (r: RangeInput): Promise<WireVendorDiscounts> => api("GET", `${BASE}/vendor-discounts${query(r)}`);
+/** #1061 — the period's GRN lines bought more than 2% above the last purchase or the contract, with reasons (margin right). */
+export type WirePurchaseAnalysisRow = {
+  grnId: string; grnLineId: string; grnNo: string; capturedOn: string; capturedBy: string; capturedByName: string | null; status: string;
+  vendorId: string; vendorName: string; itemId: string; itemCode: string; itemName: string; qtyBase: number;
+  paidPaisePerBase: number; refPaisePerBase: number; refKind: string; riseBps: number; extraPaise: number;
+  reasonCode: string; reasonText: string | null;
+};
+export type WirePurchaseAnalysis = {
+  from: string; to: string; preset: string; rows: WirePurchaseAnalysisRow[];
+  byVendor: { vendorId: string; vendorName: string; lines: number; extraPaise: number }[]; totalExtraPaise: number;
+};
+export const fetchPurchaseAnalysis = (r: RangeInput): Promise<WirePurchaseAnalysis> => api("GET", `${BASE}/purchase-analysis${query(r)}`);
 export const fetchValuation = (asOf: string, store: string): Promise<WireValuation> => api("GET", `${BASE}/valuation${query({ asOf, store })}`);
 export const fetchNonMoving = (days: number, store: string): Promise<WireNonMoving> => api("GET", `${BASE}/non-moving${query({ days, store })}`);
 export const reconcileGstr2b = (input: { format: "json" | "csv"; content: string; preset: ReportPreset; from: string; to: string }): Promise<WireGstr2b> =>

@@ -321,7 +321,10 @@ export type MaterialsErrorCode =
   /** The GRN was cancelled before posting: it is QC'd, posted and cancelled no more. */
   | "grn_cancelled"
   /** A line held as `mrp_revised` (the batch is on the books at another MRP) and no GRANTED `materials_mrp_revision` on the GRN. */
-  | "mrp_revision_unapproved";
+  | "mrp_revision_unapproved"
+  // ── #1061 — the purchase price check ──
+  /** A paid line is more than 2% above the item's last paid receipt or the supplier's contract rate, and no reason was given (`price-check.ts`). */
+  | "price_reason_required";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.

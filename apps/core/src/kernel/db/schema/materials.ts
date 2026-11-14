@@ -1071,12 +1071,26 @@ export const grnLines = pgTable(
     estimatedCost: boolean("estimated_cost").notNull().default(false),
     /** #1047 — QC found the batch already on the books at another MRP (same expiry): posting waits for `mrp_approval_id`. */
     mrpRevised: boolean("mrp_revised").notNull().default(false),
+    /**
+     * #1061 / 0096 — the purchase price check. Set only on a paid line captured MORE than 2% above a reference:
+     * the reference (per base unit, rounded to the paisa), which one (`last_receipt` or `contract`), and the
+     * reason the person gave (`other` carries its words). All four null on every other line.
+     */
+    priceRefPaisePerBase: bigint("price_ref_paise_per_base", { mode: "number" }),
+    priceRefKind: text("price_ref_kind"),
+    priceReasonCode: text("price_reason_code"),
+    priceReasonText: text("price_reason_text"),
   },
   (t) => [
     index("grn_lines_grn_idx").on(t.grnId),
     index("grn_lines_item_idx").on(t.itemId),
     check("grn_lines_qty_in_uom_ck", sql`${t.qtyInUom} > 0`),
     check("grn_lines_qty_base_ck", sql`${t.qtyBase} > 0`),
+    check("grn_lines_price_check_ck", sql`(${t.priceReasonCode} is null) = (${t.priceRefPaisePerBase} is null)
+      and (${t.priceReasonCode} is null) = (${t.priceRefKind} is null)
+      and (${t.priceRefKind} is null or ${t.priceRefKind} in ('last_receipt', 'contract'))
+      and (${t.priceReasonCode} is null or ${t.priceReasonCode} in ('mrp_revised', 'scheme_changed', 'urgent_buy', 'other'))
+      and (${t.priceReasonCode} is distinct from 'other' or coalesce(btrim(${t.priceReasonText}), '') <> '')`),
   ],
 );
 

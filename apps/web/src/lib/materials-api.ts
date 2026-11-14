@@ -105,6 +105,8 @@ export type CaptureLineInput = {
   batchNo?: string | null; mfgDate?: string | null; expiryDate?: string | null;
   mrpPaise?: number | null; mrpUom?: string | null;
   unitCostPaise: number; freeGoods?: boolean;
+  /** #1061 — why a line is priced more than 2% above its reference; the server refuses such a line without one. */
+  priceReason?: { code: string; text?: string | null };
 };
 
 // ─────────────────────────────── items ───────────────────────────────

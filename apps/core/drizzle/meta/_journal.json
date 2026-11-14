@@ -1611,6 +1611,13 @@
       "when": 1794581738956,
       "tag": "0230_pharmacy_stock_in_go_live",
       "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1794663685922,
+      "tag": "0231_grn_price_check",
+      "breakpoints": true
     }
   ]
 }

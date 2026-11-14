@@ -126,7 +126,8 @@ const CENSUS: Record<string, string[]> = {
   ],
   grn_lines: [
     "batch_id", "batch_no", "estimated_cost", "expiry_date", "free_goods", "grn_id", "id", "item_id", "mfg_date",
-    "mrp_paise", "mrp_revised", "mrp_uom", "near_expiry", "qty_accepted_base", "qty_base", "qty_in_uom",
+    "mrp_paise", "mrp_revised", "mrp_uom", "near_expiry", "price_reason_code", "price_reason_text", "price_ref_kind",
+    "price_ref_paise_per_base", "qty_accepted_base", "qty_base", "qty_in_uom",
     "qty_rejected_base", "reject_reason", "temp_log_ref", "unit_cost_paise", "uom",
   ],
   // PHARMACY PARITY P2 — levels per item per store, the purchase order and its lines.

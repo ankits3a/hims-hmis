@@ -11,7 +11,10 @@ import { expiryFromLabel } from "../../../../packages/contracts/src/drug-expiry"
 import { Button } from "@/components/ui/button";
 import { OpeningStockSheet } from "./materials-grn-opening";
 import { NewButton, OfficeHead, fieldCls, useNewKey } from "./pharmacy-office/office-page";
+import { PriceCheckNote, priceAnswered } from "./pharmacy-office/price-check-note";
 import { Sheet } from "./pharmacy-office/sheet";
+import { ApiError } from "../lib/api";
+import type { WirePriceCheck } from "../lib/stock-entry-api";
 import type { CaptureLineInput, WireGrn } from "../lib/materials-api";
 
 /**
@@ -50,11 +53,17 @@ type DraftLine = {
   mrpRupees: string; mrpUom: string; costRupees: string; freeGoods: boolean;
   /** B5 — what the supplier's bill says one pack costs. A helper only: it fills `costRupees`, and is never sent. */
   packRupees: string;
+  /**
+   * #1061 — the server's price check, from its `price_reason_required` refusal: the line is more than 2% above the
+   * item's last paid receipt or the supplier's contract rate, and the next capture sends the reason chosen here.
+   */
+  priceCheck: WirePriceCheck | null; priceReason: string; priceReasonText: string;
 };
 
 const emptyLine = (): DraftLine => ({
   itemId: "", uom: "", qtyInUom: "", batchNo: "", expiryDate: "",
   mrpRupees: "", mrpUom: "", costRupees: "", freeGoods: false, packRupees: "",
+  priceCheck: null, priceReason: "", priceReasonText: "",
 });
 
 /** Rupees typed by a human → integer paise (DD7). The ONE place this screen converts money. */
@@ -180,13 +189,26 @@ export function MaterialsGrn(): React.ReactElement {
         // Free goods are a zero-cost line with FULL batch discipline (DD8), never a discount.
         unitCostPaise: l.freeGoods ? 0 : (toPaise(l.costRupees) ?? 0),
         ...(l.freeGoods ? { freeGoods: true } : {}),
+        ...(priceAnswered(l.priceReason, l.priceReasonText) ? { priceReason: { code: l.priceReason, text: l.priceReasonText.trim() || null } } : {}),
       }));
-    const { grnId, grnNo } = await captureGrn({
-      vendorId, source, storeResourceId: storeId,
-      challanNo: challanNo.trim(), challanDate: challanDate.trim(),
-      ...(purchaseOrderId === "" ? {} : { purchaseOrderId }),
-      lines: payload,
-    });
+    let captured: { grnId: string; grnNo: string };
+    try {
+      captured = await captureGrn({
+        vendorId, source, storeResourceId: storeId,
+        challanNo: challanNo.trim(), challanDate: challanDate.trim(),
+        ...(purchaseOrderId === "" ? {} : { purchaseOrderId }),
+        lines: payload,
+      });
+    } catch (e) {
+      // #1061 — the refusal names each amber line (its index in what was sent) with its check: shown under the line.
+      const body = e instanceof ApiError ? e.body as { code?: string; detail?: { lines?: { index: number; check: WirePriceCheck }[] } } : null;
+      if (body?.code === "price_reason_required") {
+        const amber = new Map((body.detail?.lines ?? []).map((x) => [chosen[x.index], x.check] as const));
+        setLines((prev) => prev.map((l) => (amber.has(l) ? { ...l, priceCheck: amber.get(l) ?? null } : l)));
+      }
+      throw e;
+    }
+    const { grnId, grnNo } = captured;
     setPurchaseOrderId("");
     setReceiving(false);
     setOpenGrnId(grnId);
@@ -463,6 +485,14 @@ export function MaterialsGrn(): React.ReactElement {
                   />
                   {t("materialsGrn.freeGoods")}
                 </label>
+                {l.priceCheck !== null && (
+                  <div className="sm:col-span-full">
+                    <PriceCheckNote
+                      check={l.priceCheck} index={i} reason={l.priceReason} reasonText={l.priceReasonText}
+                      onReason={(p) => setLine(i, { ...(p.priceReason === undefined ? {} : { priceReason: p.priceReason }), ...(p.priceReasonText === undefined ? {} : { priceReasonText: p.priceReasonText }) })}
+                    />
+                  </div>
+                )}
               </div>
               );
             })}

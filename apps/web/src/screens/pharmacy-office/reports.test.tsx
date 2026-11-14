@@ -313,11 +313,11 @@ describe("the office's reports — stage C", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
   const ALL = [...OWNER, "pharmacy.tally.export"];
 
-  it("nineteen reports (#637 adds vendor discounts, on O): after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
+  it("twenty reports (#637 adds vendor discounts, on O; #1061 purchase analysis, on U): after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
     const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/top-selling": topSelling }, ALL);
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     const list = await screen.findByTestId("reports-view");
-    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H", "J", "K", "N", "O"]);
+    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H", "J", "K", "N", "O", "U"]);
     expect(within(within(list).getByTestId("report-catalogue")).getByText("G")).toBeTruthy();
     list.focus();
     await userEvent.keyboard("a");
@@ -621,5 +621,46 @@ describe("the sales register adds up (owner rulings 2026-09-30)", () => {
     expect(within(table).getByTestId("vendor-discount-table-totals")).toHaveTextContent("2,920.00");
     expect(within(table).getByTestId("vendor-discount-table-totals")).toHaveTextContent("8.6%");
     expect(calls.some((c) => c.path.startsWith("/pharmacy/office/reports/vendor-discounts?preset=month"))).toBe(true);
+  });
+
+  /* #1061 / 0096 — lines bought more than 2% above the last purchase or the contract, with the reason; the margin right. */
+  it("purchase analysis: each amber line with usual and paid rate, rise, extra, reason and who, totals by supplier; only with the margin right", async () => {
+    const calls = mock({
+      "GET /pharmacy/office/reports/stores": STORES,
+      "GET /pharmacy/office/reports/purchase-analysis": {
+        from: "2026-11-01", to: "2026-11-30", preset: "month", totalExtraPaise: 4_000,
+        rows: [{
+          grnId: "g-1", grnLineId: "gl-1", grnNo: "GRN-20261114-0001", capturedOn: "2026-11-14", capturedBy: "u-1", capturedByName: "Store keeper", status: "gate_qc",
+          vendorId: "v-1", vendorName: "Acme Distributors", itemId: "i-cr", itemCode: "CROC500", itemName: "Crocin 500 tablet", qtyBase: 50,
+          paidPaisePerBase: 840, refPaisePerBase: 800, refKind: "last_receipt", riseBps: 500, extraPaise: 2_000, reasonCode: "urgent_buy", reasonText: null,
+        }, {
+          grnId: "g-2", grnLineId: "gl-2", grnNo: "GRN-20261114-0002", capturedOn: "2026-11-14", capturedBy: "u-1", capturedByName: "Store keeper", status: "posted",
+          vendorId: "v-1", vendorName: "Acme Distributors", itemId: "i-cr", itemCode: "CROC500", itemName: "Crocin 500 tablet", qtyBase: 20,
+          paidPaisePerBase: 900, refPaisePerBase: 800, refKind: "contract", riseBps: 1250, extraPaise: 2_000, reasonCode: "other", reasonText: "only stockist",
+        }],
+        byVendor: [{ vendorId: "v-1", vendorName: "Acme Distributors", lines: 2, extraPaise: 4_000 }],
+      },
+    }, OWNER);
+    const first = renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(await screen.findByTestId("report-purchaseAnalysis"));
+    const table = await screen.findByTestId("purchase-analysis-table");
+    const row = within(table).getByTestId("purchase-analysis-table-row-gl-1");
+    expect(row).toHaveTextContent("Crocin 500 tablet");
+    expect(row).toHaveTextContent("8.00");
+    expect(row).toHaveTextContent("8.40");
+    expect(row).toHaveTextContent("5.0% · last purchase");
+    expect(row).toHaveTextContent("20.00");
+    expect(row).toHaveTextContent("Urgent buy");
+    expect(row).toHaveTextContent("Store keeper");
+    expect(within(table).getByTestId("purchase-analysis-table-row-gl-2")).toHaveTextContent("Other: only stockist");
+    expect(within(table).getByTestId("purchase-analysis-table-totals")).toHaveTextContent("40.00");
+    expect(within(screen.getByTestId("purchase-analysis-vendors")).getByTestId("purchase-analysis-vendors-row-v-1")).toHaveTextContent("2");
+    expect(calls.some((c) => c.path.startsWith("/pharmacy/office/reports/purchase-analysis?preset=month"))).toBe(true);
+    first.unmount();
+
+    mock({ "GET /pharmacy/office/reports/stores": STORES }, ACCOUNTS);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await screen.findByTestId("report-vendorDiscounts");
+    expect(screen.queryByTestId("report-purchaseAnalysis")).toBeNull();
   });
 });

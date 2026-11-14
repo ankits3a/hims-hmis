@@ -3,7 +3,8 @@ import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { SodViolationError } from "../../kernel/auth/sod";
-import { assertNotPoApprover } from "../materials";
+import { PRICE_REASON_CODES, assertNotPoApprover } from "../materials";
+import type { PriceCheck } from "../materials";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { httpError, idSchema, parsed, toHttp } from "./pharmacy-http";
 import {
@@ -38,7 +39,10 @@ const invoiceBody = z.object({
     vendorId: z.string().max(64).nullable(), invoiceNo: z.string().max(64), invoiceDate: z.string().max(10),
     purchaseOrderId: z.string().max(64).nullish(), storeResourceId: z.string().max(64).nullable(), rateIncludesGst: z.boolean().optional(),
   }),
-  rows: z.array(gridRow.omit({ rack: true, supplier: true })).min(1).max(2000),
+  rows: z.array(gridRow.omit({ rack: true, supplier: true }).extend({
+    /** #1061 — the row's answer to an amber price (`captureGrn` judges whether it answers). */
+    priceReason: z.enum(PRICE_REASON_CODES).optional(), priceReasonText: z.string().max(200).optional(),
+  })).min(1).max(2000),
 });
 /** Either a sheet or the grid — one route, one judgement. */
 const entryBody = z.union([sheetBody, gridBody]);
@@ -57,6 +61,8 @@ type RowView = {
   freePacks: number; ratePaise: number; discountBps: number;
   /** #1047 / 0093 — the cost is the estimate (no rate given). */
   estimatedCost: boolean;
+  /** #1061 — the invoice mode's price check of a paid row; null when not checked (opening stock, free, no supplier yet). */
+  priceCheck: PriceCheck | null;
 };
 
 export type OpeningCheckView = {
@@ -74,6 +80,8 @@ export type InvoiceCheckView = {
   headerReasons: string[]; rows: RowView[]; refusals: number; units: number; newUoms: number; costPaise: number;
   duplicateOf: { grnId: string; grnNo: string } | null;
   authority: OpeningAuthority[];
+  /** #1061 — the supplier's accepted credit notes not yet set off. */
+  unusedCreditPaise: number;
 };
 
 function rowView(r: OpeningRow): RowView {
@@ -82,6 +90,7 @@ function rowView(r: OpeningRow): RowView {
     packs: r.packs, packSize: r.packSize, uom: r.uom ?? null, newUom: r.newUom, near: r.near, mrpPaise: r.mrpPaise,
     costPerBasePaise: r.costPerBasePaise, rack: r.rack, reasons: r.reasons,
     freePacks: r.freePacks, ratePaise: r.ratePaise, discountBps: r.discountBps, estimatedCost: r.estimatedCost,
+    priceCheck: r.priceCheck ?? null,
   };
 }
 
@@ -101,7 +110,7 @@ async function invoiceView(db: Db, actor: Actor, plan: InvoicePlan): Promise<Inv
   }];
   return {
     headerReasons: plan.headerReasons, rows: plan.rows.map(rowView), refusals: plan.refusals, units: plan.units, newUoms: plan.newUoms,
-    costPaise: plan.costPaise, duplicateOf: plan.duplicateOf, authority,
+    costPaise: plan.costPaise, duplicateOf: plan.duplicateOf, authority, unusedCreditPaise: plan.unusedCreditPaise,
   };
 }
 

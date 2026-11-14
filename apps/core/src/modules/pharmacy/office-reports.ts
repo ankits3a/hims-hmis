@@ -1,8 +1,8 @@
-import { NON_MOVING_PRESETS, listStores, nonMovingStock, purchaseRegister, stockValuationAt, vendorDiscountReport } from "../materials";
+import { NON_MOVING_PRESETS, listStores, nonMovingStock, purchaseAnalysisReport, purchaseRegister, stockValuationAt, vendorDiscountReport } from "../materials";
 import { isIsoDate } from "./config";
 import { PharmacyError } from "./errors";
-import { REPORTS_READ, reportRange, reportToday, requireReportPermission } from "./report-range";
-import type { NonMovingReport, PurchaseRegister, StockValuation, VendorDiscountReport } from "../materials";
+import { REPORTS_MARGIN, REPORTS_READ, reportRange, reportToday, requireReportPermission } from "./report-range";
+import type { NonMovingReport, PurchaseAnalysisReport, PurchaseRegister, StockValuation, VendorDiscountReport } from "../materials";
 import type { ReportInput } from "./sales-register";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -33,6 +33,16 @@ export async function officeVendorDiscounts(db: Db, actor: Actor, input: ReportI
   await requireReportPermission(db, actor, REPORTS_READ, "the vendor discount report");
   const range = reportRange(input.preset, reportToday(now), input);
   return { ...(await vendorDiscountReport(db, range.from, range.to)), preset: range.preset };
+}
+
+/**
+ * #1061 — PURCHASE ANALYSIS: the period's GRN lines captured more than 2% above the last purchase or the contract rate,
+ * with the reason, the extra rupees and who; totals by supplier. The margin report's right: it is buying-price data.
+ */
+export async function officePurchaseAnalysis(db: Db, actor: Actor, input: ReportInput, now: Date = new Date()): Promise<PurchaseAnalysisReport & { preset: string }> {
+  await requireReportPermission(db, actor, REPORTS_MARGIN, "the purchase analysis report");
+  const range = reportRange(input.preset, reportToday(now), input);
+  return { ...(await purchaseAnalysisReport(db, range.from, range.to)), preset: range.preset };
 }
 
 /** What the hospital held at the end of `asOf` (today when absent), at GRN cost and at MRP. */

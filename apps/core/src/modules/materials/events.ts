@@ -559,3 +559,15 @@ export const MATERIALS_EVENTS = [
   storeSettingsChanged,
   itemUomReplaced, grnCancelled, batchMrpRevised, supplierCreditNoted,
 ] as const;
+
+// ═══ #1061 — the purchase price check ═══
+
+/**
+ * A paid GRN line captured MORE than 2% above the item's last paid receipt or the supplier's contract rate, with
+ * the reason the person gave (`price-check.ts`, ruling 0096). The office's Purchase analysis report reads the line.
+ */
+export const grnPriceAboveReference = defineEvent("grn.price_above_reference", MODULE, z.object({
+  grnId: id, grnNo: z.string().min(1), grnLineId: id, itemId: id, vendorId: id,
+  unitCostPaise: paise, refPaisePerBase: z.number().nonnegative(), refKind: z.enum(["last_receipt", "contract"]),
+  riseBps: z.number().int(), reasonCode: z.enum(["mrp_revised", "scheme_changed", "urgent_buy", "other"]), reasonText: z.string().nullable(),
+}));

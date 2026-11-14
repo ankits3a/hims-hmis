@@ -56,6 +56,7 @@ Source: `apps/core/src/modules/materials/`
   - `PAYMENT_RUN_HORIZON_DAYS`
   - `PO_HEAD_APPROVAL_LIMIT_PAISE`
   - `PO_RECEIPT_TOLERANCE_BPS`
+  - `PRICE_CHECK_THRESHOLD_BPS`
   - `TRANSIT_STORE_CODE`
   - types: `BlacklistReason`
 - `consumption.ts`
@@ -199,6 +200,16 @@ Source: `apps/core/src/modules/materials/`
   - `submitPaymentRun(db: Db, actor: Actor, runId: string, now: Date = new Date()): Promise<RunView>`
   - `updatePaymentRun(db: Db, actor: Actor, runId: string, patch: { lines?: RunLineInput[]; note?: string | null }, now: Date = new Date()): Pro…`
   - types: `PaymentInput`, `PaymentMode`, `PaymentPlan`, `PlanBill`, `PlanGroup`, `RunLineInput`, `RunLineView`, `RunStatus`, `RunSummary`, `RunVendorView`, `RunView`
+- `price-check.ts`
+  - `PRICE_CHECKED_SOURCES: readonly string[]`
+  - `PRICE_REASON_CODES`
+  - `isAboveReference(cost: number, ref: number, thresholdBps = PRICE_CHECK_THRESHOLD_BPS): boolean`
+  - `judgePrice(costPerBase: number, receipts: readonly PriceReceipt[], contract: PriceContract | null, onRecord: readonly { vendorId: string; v…`
+  - `priceCheckLines(db: Db | Tx, input: { vendorId: string; lines: readonly { itemId: string; unitCostPaise: number; freeGoods?: boolean }[] },…`
+  - `purchaseAnalysisReport(db: Db | Tx, from: string, to: string): Promise<PurchaseAnalysisReport>`
+  - `purchaseHistoryByItem(db: Db | Tx, itemIds: readonly string[], n = 3): Promise<Map<string, PriceReceipt[]>>`
+  - `reasonAnswers(reason: PriceReason | null | undefined): reason is PriceReason`
+  - types: `PriceCheck`, `PriceContract`, `PriceReason`, `PriceReasonCode`, `PriceReceipt`, `PurchaseAnalysisReport`, `PurchaseAnalysisRow`
 - `purchase-orders.ts`
   - `OPEN_PO_STATUSES: readonly PoStatus[]`
   - `allowedReceiptBase(orderedBase: number): number`

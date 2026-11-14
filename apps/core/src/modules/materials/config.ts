@@ -194,6 +194,15 @@ export const PO_HEAD_APPROVAL_LIMIT_PAISE = 5_000_000;
  */
 export const PO_RECEIPT_TOLERANCE_BPS = 200;
 
+/**
+ * #1061 / ruling 0096 — THE PURCHASE PRICE CHECK. A paid supplier GRN line whose cost per base unit is MORE than
+ * this above the item's last paid receipt (any supplier) or this supplier's contract rate is amber and is captured
+ * only with a reason (`price-check.ts`). The owner's number; changing it is a new ruling.
+ */
+export const PRICE_CHECK_THRESHOLD_BPS = 200;
+/** #1061 — a difference of this many paise per base unit or less is the floor of a per-unit cost, never a rise. */
+export const PRICE_CHECK_ROUNDING_PAISE = 1;
+
 // ═══ PHARMACY PARITY P3 — PAYING SUPPLIERS (plan `docs/superpowers/plans/2026-09-24-pharmacy-healthray-parity.md`) ═══
 //
 // The owner has not ruled on the match tolerance or the payment limits. Each value below is a

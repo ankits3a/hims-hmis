@@ -1,6 +1,6 @@
 ---
 issue: 1061
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Price check on every purchase line, unused supplier credit, purchase analysis (#1061)
@@ -46,3 +46,17 @@ of 2026-11-14.
 - **D7** Capturing an invoice from a supplier with accepted, unspent credit shows the unused amount.
 - **D8** The Purchase analysis report lists every amber line with reference, rate paid, extra rupees, reason and
   who, with per-supplier totals.
+
+## Built (2026-11-14)
+
+Built as specified; acceptance tests `spec #1061 D1`–`D8` in `apps/core/src/modules/pharmacy/acceptance/` and the
+web half of D1 and D7 in `apps/web/src/screens/acceptance/`. Migration `0231_grn_price_check` (additive: four nullable
+`grn_lines.price_*` columns and a check). Where the build is more precise than the text above:
+
+- The check lives in `materials/price-check.ts` and runs inside `captureGrn`, so every path that captures a supplier
+  GRN is covered. The refusal `price_reason_required` carries each amber line's index and check.
+- The reference stored on the line is rounded to the paisa; a contract rate per unit may fall between two paise.
+- The PO receipt screen shows the check after the server's refusal, under the line, with the reason picker; the
+  stock-entry grid shows it while the invoice is typed.
+- The report is `GET /pharmacy/office/reports/purchase-analysis`, by capture day (IST), cancelled GRNs left out.
+

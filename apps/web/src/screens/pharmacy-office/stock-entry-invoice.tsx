@@ -5,10 +5,13 @@ import type { WireInvoiceHeader } from "../../lib/stock-entry-api";
  * #1047 — THE SUPPLIER INVOICE'S HEADER over the stock-entry grid: the supplier (an active one, never the
  * hospital's own stock), the invoice number and date as printed, an optional purchase order of that supplier,
  * the store it is received into, and whether the rate column is WITH GST. The server judges it with the rows
- * (`POST /pharmacy/opening-stock/invoice/check`) and its reasons are shown here.
+ * (`POST /pharmacy/opening-stock/invoice/check`) and its reasons are shown here, with the supplier's unused credit
+ * notes (#1061: they are still set off in the payment run).
  */
-export function InvoiceHeaderForm({ header, onChange, suppliers, stores, orders, reasons }: {
+export function InvoiceHeaderForm({ header, onChange, suppliers, stores, orders, reasons, unusedCreditPaise = 0 }: {
   header: WireInvoiceHeader; onChange: (patch: Partial<WireInvoiceHeader>) => void;
+  /** #1061 — the supplier's accepted credit notes not yet set off (0 when none). */
+  unusedCreditPaise?: number;
   suppliers: { id: string; code: string; name: string }[]; stores: { id: string; code: string; name: string }[];
   /** The supplier's open orders; null when this reader may not list them (the PO is then left out). */
   orders: { id: string; poNo: string }[] | null;
@@ -68,6 +71,11 @@ export function InvoiceHeaderForm({ header, onChange, suppliers, stores, orders,
           </div>
         </fieldset>
       </div>
+      {unusedCreditPaise > 0 && (
+        <p role="note" className="text-sm text-amber-900" data-testid="se-invoice-credit">
+          {t("stockEntry.invoice.unusedCredit", { amount: `₹${(unusedCreditPaise / 100).toFixed(2)}` })}
+        </p>
+      )}
       {reasons.length > 0 && (
         <ul className="text-sm text-red-700" data-testid="se-invoice-reasons">
           {reasons.map((r) => <li key={r}>{r}</li>)}
