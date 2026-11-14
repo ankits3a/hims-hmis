@@ -1,6 +1,6 @@
 ---
 issue: 1085
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging morning sweep: no-shows, reminders, HOD digest, register completeness, film/CD queue (#1085)
@@ -47,3 +47,12 @@ Status: APPROVED 2026-11-14 by the owner ("go ahead"), from the imaging module r
 
 - **Files.** radiology new `automation.ts`, `digest.ts`, `completeness.ts`, `chasers.ts`, `schedule.ts`, `followups.ts`, `release.ts`, `gates.ts`, `report-signature.ts`, `criticals.ts`, `place.ts`, `events.ts`, `radiology-supervisor.controller.ts` · `kernel/worker/jobs.ts` (SHARED, kernel: the existing 08:00 registration's body) · `kernel/notify/templates.ts` and its pinned key list (SHARED, kernel) · `kernel/db/schema/radiology.ts` and a migration (SHARED) · web `radiology-hod.tsx`, `radiology-reception.tsx`, `radiology-reports.tsx` · locales (SHARED).
 - **Migration** yes: `imaging_automation_runs`, `imaging_automation_settings`. **Permissions** none. **Size** L. **Depends on** IM2, IM4, IM7a.
+- **As built** (#1085). One additive migration `0235_imaging_automation` (renumbered at merge). The sweep is
+  `runMorningSweep` (`morning-sweep.ts`) inside the existing 08:00 IST job, in this order: no-shows
+  (`automation.ts`), registers (`completeness.ts`), digest (`digest.ts`), reminders. A no_show is terminal and
+  `order_item_id` is unique, so a rebooking is always a new study: the paid no-show's invoice line MOVES to it
+  when the same study is ordered again within 30 days of the missed slot (`carryNoShowInvoice`, `money.ts`,
+  event `imaging.invoice_carried`); a refunded or voided line is not carried. DECIDED: only yesterday's
+  bookings are swept; a reminder needs the slot two or more IST days after the booking; the digest's bell
+  goes to the roster's Radiology head, else to the HOD station's grant holders; the film/CD queue and the
+  digest name no patient; the desk's Clocks also list the last 30 days' no-shows not yet booked again.
