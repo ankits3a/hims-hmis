@@ -168,7 +168,7 @@ blind-count cash short/over (pharmacy-role drawers, the day's last count), purch
 supplier credit below our debit note, paper sales entered late. Rupees always positive, sorted biggest first; "who"
 is the approver where an approval let it through. Each row carries its own reference and the rights that open its
 target screen; the page links only when the viewer holds one (no right was added to the owner). Page
-`officeExceptions` (`pages.ts` key `exceptions`), right `EXCEPTIONS_VIEW` = `pharmacy.exceptions.view`, owner role only.
+`officeExceptions` (`apps/web/src/screens/pharmacy-office/pages.ts` key `exceptions`), right `EXCEPTIONS_VIEW` = `pharmacy.exceptions.view`, owner role only.
 `sendPharmacyExceptionDigest` (08:00 IST job) raises one bell notice per owner-role user, keyed by the day (alert kind
 `pharmacy_exception_digest`, ref type `pharmacy_exceptions_day`), sent to phones by the existing relay in category
 `reminder`; the phone builds the sentence from `Notice.figures` (`kernel/push/phone-push.ts` `figureSentence`), so no
