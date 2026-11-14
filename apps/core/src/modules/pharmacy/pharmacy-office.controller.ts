@@ -9,6 +9,8 @@ import {
   purchaseOrderDocument, writeOffManifestDocument,
 } from "./office";
 import { officeNeeds } from "./office-needs";
+import { expiryActionList, moveExpiryBatch, runExpiryActionsNow } from "./expiry-actions";
+import type { ExpiryActionList, ExpiryRunResult } from "./expiry-actions";
 import { draftPurchaseOrders, orderFromRates, planPurchaseDrafts, vendorRateSheet } from "./purchase-drafts";
 import { officeExecuteMerge, officeGetMerge, officeItems, officeMergePreview, officeRaiseMerge } from "./item-merge";
 import type { OfficeItems } from "./item-merge";
@@ -35,6 +37,7 @@ const assignBody = z.object({
 });
 
 const draftReturnsBody = z.object({ vendorIds: z.array(idSchema).max(200).optional() });
+const moveExpiryBody = z.object({ storeResourceId: idSchema, batchId: idSchema });
 
 const mergePairQuery = z.object({ survivorItemId: idSchema, mergedItemId: idSchema });
 const raiseMergeBody = mergePairQuery.extend({ reason: z.string().trim().min(3).max(500), source: z.enum(["agent", "manual"]).optional() });
@@ -180,6 +183,36 @@ export class PharmacyOfficeController {
   async recallReturn(@CurrentActor() actor: Actor, @Param("id") recallId: string): Promise<{ return: ReturnView }> {
     try {
       return { return: await officeReturnFromRecall(this.db, actor, recallId) };
+    } catch (e) { officeHttp(e); }
+  }
+
+  // ═══ #1063 — the weekly expiry action list: return, move, at risk, write off ═══
+
+  /** The list, computed on read: four groups and NDPS apart, with the run's last, next and batches checked. */
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Get("expiry-actions")
+  async expiryActions(@CurrentActor() actor: Actor): Promise<ExpiryActionList> {
+    try {
+      return await expiryActionList(this.db, actor, new Date());
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** Run now: the Return group into one open agent draft per supplier (never approved or dispatched); the list as it now stands. */
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Post("expiry-actions/run")
+  async expiryRun(@CurrentActor() actor: Actor): Promise<{ run: ExpiryRunResult; list: ExpiryActionList }> {
+    try {
+      return await runExpiryActionsNow(this.db, actor, new Date());
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** A person's tap on Move: the batch to the other counter through the transfer writer, on the transfer's own right. */
+  @RequirePermission("materials.stock.issue", "hospital")
+  @Post("expiry-actions/move")
+  async expiryMove(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ transferId: string; qtyBase: number; toStoreResourceId: string }> {
+    const b = parsed(moveExpiryBody, body ?? {});
+    try {
+      return await moveExpiryBatch(this.db, actor, b, new Date());
     } catch (e) { officeHttp(e); }
   }
 
