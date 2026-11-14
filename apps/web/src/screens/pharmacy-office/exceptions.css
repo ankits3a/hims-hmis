@@ -25,6 +25,10 @@
 .d1 .pof-legacy .exc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
 .d1 .pof-legacy .exc-paise { font: 600 14px/1.2 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .d1 .pof-legacy .exc-open { font-size: 12px; color: var(--primary); text-decoration: underline; }
+.d1 .pof-legacy .exc-ref { max-width: 9rem; font: 500 11px/1.3 "IBM Plex Mono", monospace; color: var(--dim); text-align: right; overflow-wrap: anywhere; }
+/* A leakage line whose money a refund above already carries: listed for the record, drawn quieter, not in the totals. */
+.d1 .pof-legacy .exc-same .exc-paise { color: var(--dim); text-decoration: line-through; }
+.d1 .pof-legacy .exc-note { font-size: 12px; color: var(--dim); font-style: italic; }
 @media (max-width: 480px) {
   .d1 .pof-legacy .exc-total { flex: 1 1 calc(50% - 4px); }
   .d1 .pof-legacy .exc-total-all { flex-basis: 100%; }

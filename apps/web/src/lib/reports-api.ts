@@ -279,7 +279,15 @@ export const EXCEPTION_KINDS = [
   "refund", "discount", "stock_adjustment", "write_off", "mrp_revision", "leakage", "cash", "purchase_price", "supplier_credit", "downtime",
 ] as const;
 export type ExceptionKind = (typeof EXCEPTION_KINDS)[number];
-export type WireExceptionRow = { id: string; kind: ExceptionKind; paise: number; who: string | null; at: string | null; what: string; link: string };
+export type WireExceptionRow = {
+  id: string; kind: ExceptionKind; paise: number; who: string | null; at: string | null; what: string; link: string;
+  /** The record's own reference (P-number, bill, GRN, write-off, count…): shown as text where the link is not the viewer's. */
+  ref?: string;
+  /** Any one of these rights opens `link`'s screen; without one the page shows `ref` instead of a link. */
+  linkNeeds?: string[];
+  /** The row that already carries this money (a leakage line a refund explains): listed, not counted again. */
+  sameMoneyAs?: string | null;
+};
 export type WireExceptions = {
   day: string; rows: WireExceptionRow[]; totals: { kind: ExceptionKind; count: number; paise: number }[]; count: number; totalPaise: number;
 };

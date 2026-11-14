@@ -12148,6 +12148,7 @@
       "failed": "The exceptions could not be read.",
       "none": "No exceptions on this day.",
       "open": "Open",
+      "sameMoney": "Counted once, under Refunds",
       "count_one": "{{count}} exception",
       "count_other": "{{count}} exceptions",
       "kind": {

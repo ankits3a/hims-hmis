@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "../../lib/auth";
 import { fetchExceptions, money } from "../../lib/reports-api";
 import { OfficeHead } from "./office-page";
 import type { WireExceptionRow } from "../../lib/reports-api";
@@ -13,9 +14,10 @@ import "./exceptions.css";
  * Reports → Exceptions, `/pharmacy/office?view=reports&page=exceptions&day=YYYY-MM-DD`: every refund, discount
  * above 10%, stock adjustment and write-off, MRP revision, leakage line, cash count short or over, dearer purchase,
  * supplier credit below the debit note and paper sale entered late, biggest first, with totals by kind. The day is
- * in the address (the 08:00 digest's bell row opens it); without one it is yesterday, the digest's day. Every row
- * carries a link to the screen that holds the record. Only `pharmacy.exceptions.view` sees the page (`pages.ts`);
- * the server refuses the read to anybody else.
+ * in the address (the 08:00 digest's bell row opens it); without one it is yesterday, the digest's day. A row links
+ * to the screen that holds its record only when the viewer holds a right that opens it (`linkNeeds`); otherwise it
+ * shows the record's own reference as text. A leakage line a refund already explains says so and is not in the totals.
+ * Only `pharmacy.exceptions.view` sees the page (`pages.ts`); the server refuses the read to anybody else.
  */
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -35,6 +37,7 @@ function target(link: string): { to: string; search: Record<string, string> } {
 
 export function ExceptionsView(): React.ReactElement {
   const { t } = useTranslation();
+  const { can } = useAuth();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const asked = typeof search.day === "string" && DAY_RE.test(search.day) ? search.day : null;
@@ -81,18 +84,24 @@ export function ExceptionsView(): React.ReactElement {
             <ol className="ofp-box exc-list">
               {rows.map((r) => {
                 const go = target(r.link);
+                // A link only to a screen the viewer may open; otherwise the record's own reference, to ask for it by.
+                const opens = r.linkNeeds === undefined || r.linkNeeds.length === 0 || r.linkNeeds.some((g) => can(g));
+                const same = r.sameMoneyAs ?? null;
                 return (
-                  <li key={r.id} className="exc-row" data-testid="exc-row">
+                  <li key={r.id} className={same === null ? "exc-row" : "exc-row exc-same"} data-testid="exc-row">
                     <div className="exc-main">
                       <span className="exc-kind">{t(`pharmacyOffice.exceptions.kind.${r.kind}`)}</span>
                       <span className="exc-what">{r.what}</span>
                       <span className="exc-meta">
                         {r.who ?? "—"} · <span data-testid="exc-when">{r.at === null ? d.day : clock(r.at)}</span>
                       </span>
+                      {same !== null && <span className="exc-note" data-testid="exc-same">{t("pharmacyOffice.exceptions.sameMoney")}</span>}
                     </div>
                     <div className="exc-side">
                       <span className="exc-paise" data-testid="exc-paise">{rupees(r.paise)}</span>
-                      <Link to={go.to} search={go.search} className="exc-open">{t("pharmacyOffice.exceptions.open")}</Link>
+                      {opens
+                        ? <Link to={go.to} search={go.search} className="exc-open">{t("pharmacyOffice.exceptions.open")}</Link>
+                        : <span className="exc-ref" data-testid="exc-ref">{r.ref ?? ""}</span>}
                     </div>
                   </li>
                 );

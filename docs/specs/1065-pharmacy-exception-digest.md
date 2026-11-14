@@ -55,3 +55,7 @@ the pharmacy software study of 2026-11-14.
   so re-runs send nothing); `alert.raised` carries two integers (`figures`) and the phone relay says "Pharmacy: 7
   exceptions yesterday, ₹3,240" (Hindi too) under the `reminder` switch, link `pharmacyExceptions`; the phone app
   opens the web page. The bell row opens that day's page.
+- **Counted once (follow-up):** a leakage line that day's listed credit notes explain (same dispense or sale, item and
+  batch) is listed with `sameMoneyAs` = the refund row and left out of the count, totals and digest.
+- **Links (follow-up):** each row carries its record's reference (`ref`) and the rights that open its link
+  (`linkNeeds`); the page links a row only for a viewer holding one, else shows the reference as text. No right added.

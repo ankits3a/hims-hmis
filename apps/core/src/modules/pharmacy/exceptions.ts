@@ -1,7 +1,8 @@
 import { and, eq, gt, gte, inArray, lt } from "drizzle-orm";
 import {
-  approvals, enteredInErrorMarks, events, grns, items, pharmacyDispenses, pharmacyRetailSales, resources, stockAdjustments,
-  stockWriteOffs, supplierCreditNotes, supplierReturns, users, vendors,
+  approvals, cashierSessions, enteredInErrorMarks, events, grns, invoices, items, pharmacyDispenseLines, pharmacyDispenses,
+  pharmacyRetailSaleLines, pharmacyRetailSales, resources, stockAdjustments, stockCounts, stockWriteOffs, supplierCreditNotes,
+  supplierReturns, users, vendors,
 } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { raiseNotice } from "../../kernel/alerts/notices";
@@ -9,7 +10,7 @@ import { withTx } from "../../kernel/db/client";
 import { usersHoldingRoleAtScope } from "../../kernel/workflow/roles";
 import { creditNotesBetween, invoiceHeadsByIds } from "../billing";
 import { consumptionRowsAt, findStoreByCode, getBatch, itemsByIds, purchaseAnalysisReport } from "../materials";
-import { DISCOUNT_INCHARGE_APPROVAL_TYPE, DISCOUNT_OWNER_APPROVAL_TYPE } from "./discount";
+import { DISCOUNT_INCHARGE_APPROVAL_TYPE, DISCOUNT_OWNER_APPROVAL_TYPE, discountDraftOf } from "./discount";
 import { RETAIL_REF_TYPE, istDateOf, istInstantOf, isIsoDate } from "./config";
 import { PharmacyError } from "./errors";
 import { LEAKAGE_STORE_CODES, pharmacyLeakage } from "./leakage";
@@ -37,8 +38,15 @@ import type { Db } from "../../kernel/db/client";
  *   downtime          a paper (downtime) sale entered that day
  *
  * Each row: the kind, the rupees (paise, a magnitude — biggest first), who, when, what (codes and numbers;
- * the page is the owner's alone), and a link to the screen that holds the record. Every exception is listed;
- * there is no threshold. "Expiring stock not acted on" joins when #1063 is built.
+ * the page is the owner's alone), the record's own reference, and a link to the screen that holds the record with
+ * the rights that open it (`linkNeeds`): the page links a row only for a viewer who holds one, and shows the
+ * reference as text otherwise — no right is widened for this page (ruling 0097). Every exception is listed; there
+ * is no threshold. "Expiring stock not acted on" joins when #1063 is built.
+ *
+ * THE SAME MONEY ONCE. A refund at the billing desk with nothing returned is a credit note (a `refund` row) and,
+ * to the leakage auditor, units that left the shelf unpaid. The leakage line that day's credit notes explain (same
+ * dispense or sale, same item and batch) is listed with `sameMoneyAs` = the refund row, and is left out of the
+ * count, the totals and the digest; only units no credit note explains are counted as leakage.
  */
 export const EXCEPTIONS_VIEW = "pharmacy.exceptions.view";
 export const EXCEPTION_KINDS = [
@@ -55,8 +63,14 @@ export type PharmacyExceptionRow = {
   /** ISO instant; null when the record keeps only its day (a leakage mismatch). */
   at: string | null;
   what: string;
+  /** The record's own reference (P-number, bill, GRN, write-off, count, slip): what the owner asks for by name. */
+  ref: string;
   /** A route of the web app. */
   link: string;
+  /** Any one of these rights opens `link`'s screen (they mirror the web's `pages.ts` and nav rows). */
+  linkNeeds: string[];
+  /** The id of the row that already carries this money (a leakage line a listed refund explains); null otherwise. Never counted twice. */
+  sameMoneyAs: string | null;
 };
 export type PharmacyExceptionDay = {
   day: string;
@@ -75,56 +89,63 @@ const PHARMACY_CASHIER_ROLES = ["pharmacy", "pharmacy_assistant", "pharmacy_inch
 const DAY_MS = 86_400_000;
 const DISPENSE_REF_TYPE = "pharmacy_dispense";
 
+type Go = { link: string; linkNeeds: string[] };
+/** Each target and the rights that open it: the desk's and approvals' nav rows, the office pages' `perms` (`pages.ts`). */
 const LINK = {
-  dispense: (id: string): string => `/pharmacy/desk/${id}`,
-  approval: (id: string): string => `/approvals?focus=${id}`,
-  reports: "/pharmacy/office?view=reports&page=reports",
-  counts: "/pharmacy/office?view=stock&page=counts",
-  returns: "/pharmacy/office?view=returns&page=returns",
-  grn: "/pharmacy/office?view=stock&page=grn",
-  bills: "/pharmacy/office?view=pay&page=bills",
-  downtime: "/pharmacy/office?view=stock&page=downtime",
-  leakage: "/pharmacy/leakage",
-  drawers: "/billing/office",
-} as const;
+  dispense: (id: string): Go => ({ link: `/pharmacy/desk/${id}`, linkNeeds: ["pharmacy.dispense.read"] }),
+  approval: (id: string): Go => ({ link: `/approvals?focus=${id}`, linkNeeds: ["approvals.requests.read"] }),
+  reports: { link: "/pharmacy/office?view=reports&page=reports", linkNeeds: ["pharmacy.reports.read"] },
+  /** The purchase analysis report is the margin right's (`officePurchaseAnalysis`). */
+  purchases: { link: "/pharmacy/office?view=reports&page=reports", linkNeeds: ["pharmacy.reports.margin"] },
+  counts: { link: "/pharmacy/office?view=stock&page=counts", linkNeeds: ["materials.counts.perform"] },
+  returns: { link: "/pharmacy/office?view=returns&page=returns", linkNeeds: ["materials.returns.manage", "materials.writeoffs.manage", "materials.recall.manage"] },
+  bills: { link: "/pharmacy/office?view=pay&page=bills", linkNeeds: ["materials.bills.manage"] },
+  downtime: { link: "/pharmacy/office?view=stock&page=downtime", linkNeeds: ["pharmacy.downtime.enter"] },
+  leakage: { link: "/pharmacy/leakage", linkNeeds: ["billing.reports.read"] },
+  drawers: { link: "/billing/office", linkNeeds: ["billing.reports.read"] },
+} satisfies Record<string, Go | ((id: string) => Go)>;
 
 /** ₹1,234.50 — the page's words carry money the way the bill does. */
 const inr = (paise: number): string =>
   `₹${(Math.abs(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const iso = (d: Date | null | undefined): string | null => (d == null ? null : d.toISOString());
 
-type Draft = Omit<PharmacyExceptionRow, "who"> & { whoId: string | null; whoName?: string | null };
+type Draft = Omit<PharmacyExceptionRow, "who" | "sameMoneyAs"> & { whoId: string | null; whoName?: string | null; sameMoneyAs?: string | null };
+/** Units a listed credit note took back, by sold line (dispense or sale · item code · batch no): what explains leakage. */
+type Credited = Map<string, { rowId: string; qty: number }[]>;
 
 /** The day's exceptions, every one, biggest first. No actor: the callers below are gated. */
 export async function pharmacyExceptionsOn(db: Db, day: string): Promise<PharmacyExceptionDay> {
   if (!isIsoDate(day)) throw new PharmacyError("invalid_day", `"${day}" is not a date (YYYY-MM-DD)`);
   const { start, end } = istDayWindow(istInstantOf(day, "12:00"));
+  const refund = await refunds(db, day, start, end);
   const drafts: Draft[] = [
-    ...(await refunds(db, day, start, end)),
+    ...refund.drafts,
     ...(await discounts(db, start, end)),
     ...(await adjustments(db, start, end)),
     ...(await writeOffs(db, start, end)),
     ...(await mrpRevisions(db, start, end)),
-    ...(await leakage(db, day, start, end)),
+    ...(await leakage(db, day, start, end, refund.credited)),
     ...(await cash(db, start, end)),
     ...(await purchases(db, day)),
     ...(await supplierCredits(db, start, end)),
     ...(await downtime(db, start, end)),
   ];
   const names = await userNames(db, drafts.map((d) => d.whoId));
-  const rows: PharmacyExceptionRow[] = drafts.map(({ whoId, whoName, ...r }) => ({
-    ...r, who: whoName ?? (whoId === null ? null : names.get(whoId) ?? whoId),
+  const rows: PharmacyExceptionRow[] = drafts.map(({ whoId, whoName, sameMoneyAs, ...r }) => ({
+    ...r, who: whoName ?? (whoId === null ? null : names.get(whoId) ?? whoId), sameMoneyAs: sameMoneyAs ?? null,
   }));
   rows.sort((a, b) => b.paise - a.paise || (a.at ?? "").localeCompare(b.at ?? "") || a.id.localeCompare(b.id));
+  const counted = rows.filter((r) => r.sameMoneyAs === null);
   const byKind = new Map<ExceptionKind, { kind: ExceptionKind; count: number; paise: number }>();
-  for (const r of rows) {
+  for (const r of counted) {
     const t = byKind.get(r.kind) ?? { kind: r.kind, count: 0, paise: 0 };
     t.count += 1;
     t.paise += r.paise;
     byKind.set(r.kind, t);
   }
   const totals = [...byKind.values()].sort((a, b) => b.paise - a.paise || EXCEPTION_KINDS.indexOf(a.kind) - EXCEPTION_KINDS.indexOf(b.kind));
-  return { day, rows, totals, count: rows.length, totalPaise: rows.reduce((s, r) => s + r.paise, 0) };
+  return { day, rows, totals, count: counted.length, totalPaise: counted.reduce((s, r) => s + r.paise, 0) };
 }
 
 /** The office's Exceptions page: any IST day up to today, yesterday when none is named. The owner's right. */
@@ -171,20 +192,42 @@ export async function sendPharmacyExceptionDigest(db: Db, now: Date): Promise<{ 
 // ═══════════════════════════════════ the sources ═══════════════════════════════════
 
 /** The pharmacy's bills among these invoices: which dispense or which walk-in / paper sale raised each. */
-async function pharmacyBillsOf(db: Db, invoiceIds: readonly string[]): Promise<Map<string, { dispenseId: string | null; channel: string }>> {
-  const out = new Map<string, { dispenseId: string | null; channel: string }>();
+type Bill = { dispenseId: string | null; dispenseNo: string | null; saleId: string | null; channel: string };
+async function pharmacyBillsOf(db: Db, invoiceIds: readonly string[]): Promise<Map<string, Bill>> {
+  const out = new Map<string, Bill>();
   const ids = [...new Set(invoiceIds)];
   if (ids.length === 0) return out;
-  for (const d of await db.select({ id: pharmacyDispenses.id, invoiceId: pharmacyDispenses.invoiceId }).from(pharmacyDispenses).where(inArray(pharmacyDispenses.invoiceId, ids))) {
-    if (d.invoiceId !== null) out.set(d.invoiceId, { dispenseId: d.id, channel: "dispense" });
+  for (const d of await db.select({ id: pharmacyDispenses.id, no: pharmacyDispenses.dispenseNo, invoiceId: pharmacyDispenses.invoiceId }).from(pharmacyDispenses).where(inArray(pharmacyDispenses.invoiceId, ids))) {
+    if (d.invoiceId !== null) out.set(d.invoiceId, { dispenseId: d.id, dispenseNo: d.no, saleId: null, channel: "dispense" });
   }
-  for (const s of await db.select({ invoiceId: pharmacyRetailSales.invoiceId, channel: pharmacyRetailSales.channel }).from(pharmacyRetailSales).where(inArray(pharmacyRetailSales.invoiceId, ids))) {
-    out.set(s.invoiceId, { dispenseId: null, channel: s.channel });
+  for (const s of await db.select({ id: pharmacyRetailSales.id, invoiceId: pharmacyRetailSales.invoiceId, channel: pharmacyRetailSales.channel }).from(pharmacyRetailSales).where(inArray(pharmacyRetailSales.invoiceId, ids))) {
+    out.set(s.invoiceId, { dispenseId: null, dispenseNo: null, saleId: s.id, channel: s.channel });
   }
   return out;
 }
 
-async function refunds(db: Db, day: string, start: Date, end: Date): Promise<Draft[]> {
+/** The sold line each of these invoice lines bills (a dispense's or a sale's), as the leakage auditor names it. */
+async function soldLinesOf(db: Db, invoiceLineIds: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const ids = [...new Set(invoiceLineIds)];
+  if (ids.length === 0) return out;
+  const lines = [
+    ...(await db.select({ doc: pharmacyDispenseLines.dispenseId, itemId: pharmacyDispenseLines.itemId, batchId: pharmacyDispenseLines.batchId, invoiceLineId: pharmacyDispenseLines.invoiceLineId })
+      .from(pharmacyDispenseLines).where(inArray(pharmacyDispenseLines.invoiceLineId, ids))),
+    ...(await db.select({ doc: pharmacyRetailSaleLines.saleId, itemId: pharmacyRetailSaleLines.itemId, batchId: pharmacyRetailSaleLines.batchId, invoiceLineId: pharmacyRetailSaleLines.invoiceLineId })
+      .from(pharmacyRetailSaleLines).where(inArray(pharmacyRetailSaleLines.invoiceLineId, ids))),
+  ];
+  const codes = await itemsByIds(db, [...new Set(lines.flatMap((l) => (l.itemId === null ? [] : [l.itemId])))]);
+  for (const l of lines) {
+    if (l.invoiceLineId === null || l.itemId === null || l.batchId === null) continue;
+    const batchNo = (await getBatch(db, l.batchId))?.batchNo ?? l.batchId;
+    out.set(l.invoiceLineId, soldKey(l.doc, codes.get(l.itemId)?.code ?? "", batchNo));
+  }
+  return out;
+}
+const soldKey = (doc: string, itemCode: string, batchNo: string): string => `${doc}|${itemCode}|${batchNo}`;
+
+async function refunds(db: Db, day: string, start: Date, end: Date): Promise<{ drafts: Draft[]; credited: Credited }> {
   const notes = await creditNotesBetween(db, day, day);
   const voids = await db.select({ docId: enteredInErrorMarks.docId, markedBy: enteredInErrorMarks.markedBy, markedAt: enteredInErrorMarks.markedAt, reason: enteredInErrorMarks.reason })
     .from(enteredInErrorMarks).where(and(eq(enteredInErrorMarks.docType, "invoice"), gte(enteredInErrorMarks.markedAt, start), lt(enteredInErrorMarks.markedAt, end)));
@@ -193,29 +236,37 @@ async function refunds(db: Db, day: string, start: Date, end: Date): Promise<Dra
   const refundAsks = notes.length === 0 ? [] : await db.select({ id: approvals.id, subjectId: approvals.subjectId }).from(approvals)
     .where(and(eq(approvals.subjectType, "billing_refund"), inArray(approvals.subjectId, notes.map((n) => n.id))));
   const askOf = new Map(refundAsks.map((a) => [a.subjectId, a.id] as const));
-  const where = (b: { dispenseId: string | null; channel: string }): string =>
-    b.dispenseId !== null ? "desk" : b.channel === "downtime" ? "paper sale" : "walk-in";
+  const where = (b: Bill): string => b.dispenseId !== null ? "desk" : b.channel === "downtime" ? "paper sale" : "walk-in";
+  const listed = notes.filter((n) => bills.has(n.invoiceId));
+  const soldOf = await soldLinesOf(db, listed.flatMap((n) => n.lines.map((l) => l.invoiceLineId)));
+  const credited: Credited = new Map();
   const out: Draft[] = [];
-  for (const n of notes) {
-    const bill = bills.get(n.invoiceId);
-    if (bill === undefined) continue;
+  for (const n of listed) {
+    const bill = bills.get(n.invoiceId)!;
     const ask = askOf.get(n.id);
+    const id = `refund:${n.id}`;
+    const billNo = heads.get(n.invoiceId)?.invoiceNo ?? "";
     out.push({
-      id: `refund:${n.id}`, kind: "refund", paise: n.netPaise, whoId: n.issuedBy, at: n.issuedAt,
-      what: `${n.creditNoteNo} on bill ${heads.get(n.invoiceId)?.invoiceNo ?? ""} (${where(bill)}) · ${n.reason}`,
-      link: bill.dispenseId !== null ? LINK.dispense(bill.dispenseId) : ask !== undefined ? LINK.approval(ask) : LINK.reports,
+      id, kind: "refund", paise: n.netPaise, whoId: n.issuedBy, at: n.issuedAt,
+      what: `${n.creditNoteNo} on bill ${billNo} (${where(bill)}) · ${n.reason}`, ref: bill.dispenseNo ?? billNo,
+      ...(bill.dispenseId !== null ? LINK.dispense(bill.dispenseId) : ask !== undefined ? LINK.approval(ask) : LINK.reports),
     });
+    for (const l of n.lines) {
+      const key = soldOf.get(l.invoiceLineId);
+      if (key !== undefined) credited.set(key, [...(credited.get(key) ?? []), { rowId: id, qty: l.qty }]);
+    }
   }
   for (const v of voids) {
     const bill = bills.get(v.docId);
     if (bill === undefined) continue;
+    const billNo = heads.get(v.docId)?.invoiceNo ?? "";
     out.push({
       id: `void:${v.docId}`, kind: "refund", paise: heads.get(v.docId)?.netPayablePaise ?? 0, whoId: v.markedBy, at: v.markedAt.toISOString(),
-      what: `bill ${heads.get(v.docId)?.invoiceNo ?? ""} voided (${where(bill)}) · ${v.reason}`,
-      link: bill.dispenseId !== null ? LINK.dispense(bill.dispenseId) : LINK.reports,
+      what: `bill ${billNo} voided (${where(bill)}) · ${v.reason}`, ref: bill.dispenseNo ?? billNo,
+      ...(bill.dispenseId !== null ? LINK.dispense(bill.dispenseId) : LINK.reports),
     });
   }
-  return out;
+  return { drafts: out, credited };
 }
 
 async function discounts(db: Db, start: Date, end: Date): Promise<Draft[]> {
@@ -224,10 +275,17 @@ async function discounts(db: Db, start: Date, end: Date): Promise<Draft[]> {
     gte(approvals.decidedAt, start), lt(approvals.decidedAt, end),
   ));
   const names = await userNames(db, rows.map((r) => r.requesterId));
+  const drafts = [...new Set(rows.map((r) => discountDraftOf(r.subjectId)))];
+  const refOf = new Map<string, string>();
+  if (drafts.length > 0) {
+    for (const d of await db.select({ id: pharmacyDispenses.id, no: pharmacyDispenses.dispenseNo }).from(pharmacyDispenses).where(inArray(pharmacyDispenses.id, drafts))) if (d.no !== null) refOf.set(d.id, d.no);
+    for (const s of await db.select({ id: pharmacyRetailSales.id, no: invoices.invoiceNo }).from(pharmacyRetailSales)
+      .innerJoin(invoices, eq(invoices.id, pharmacyRetailSales.invoiceId)).where(inArray(pharmacyRetailSales.id, drafts))) refOf.set(s.id, s.no);
+  }
   return rows.map((a) => ({
     id: `discount:${a.id}`, kind: "discount" as const, paise: a.amountPaise ?? 0, whoId: a.decidedBy, at: iso(a.decidedAt),
     what: `${a.requestNote ?? "discount"} · asked by ${names.get(a.requesterId) ?? a.requesterId}${a.typeKey === DISCOUNT_OWNER_APPROVAL_TYPE ? " · owner's tier" : ""}`,
-    link: LINK.approval(a.id),
+    ref: refOf.get(discountDraftOf(a.subjectId)) ?? "not billed", ...LINK.approval(a.id),
   }));
 }
 
@@ -235,8 +293,9 @@ async function adjustments(db: Db, start: Date, end: Date): Promise<Draft[]> {
   const rows = await db.select({
     id: stockAdjustments.id, qtyDelta: stockAdjustments.qtyDelta, valuePaise: stockAdjustments.valuePaise, reason: stockAdjustments.reasonCode,
     postedAt: stockAdjustments.postedAt, postedBy: stockAdjustments.postedBy, approvedBy: approvals.decidedBy, itemName: items.name, storeCode: resources.code,
-    batchId: stockAdjustments.batchId,
+    batchId: stockAdjustments.batchId, frozenAt: stockCounts.frozenAt,
   }).from(stockAdjustments)
+    .innerJoin(stockCounts, eq(stockCounts.id, stockAdjustments.countId))
     .innerJoin(items, eq(items.id, stockAdjustments.itemId))
     .innerJoin(resources, eq(resources.id, stockAdjustments.resourceId))
     .leftJoin(approvals, eq(approvals.id, stockAdjustments.approvalId))
@@ -247,7 +306,7 @@ async function adjustments(db: Db, start: Date, end: Date): Promise<Draft[]> {
     out.push({
       id: `adjust:${r.id}`, kind: "stock_adjustment", paise: Math.abs(r.valuePaise), whoId: r.approvedBy ?? r.postedBy, at: iso(r.postedAt),
       what: `${r.itemName} ${batchNo} ${r.qtyDelta > 0 ? "+" : ""}${String(r.qtyDelta)} · ${r.reason.replaceAll("_", " ")} · ${r.storeCode}`,
-      link: LINK.counts,
+      ref: `count ${istDateOf(r.frozenAt)}`, ...LINK.counts,
     });
   }
   return out;
@@ -263,7 +322,7 @@ async function writeOffs(db: Db, start: Date, end: Date): Promise<Draft[]> {
     .where(and(eq(stockWriteOffs.status, "posted"), gte(stockWriteOffs.postedAt, start), lt(stockWriteOffs.postedAt, end)));
   return rows.map((r) => ({
     id: `writeoff:${r.id}`, kind: "write_off" as const, paise: r.value, whoId: r.approvedBy ?? r.postedBy, at: iso(r.postedAt),
-    what: `${r.no} · ${r.reason} · ${r.storeCode}`, link: LINK.returns,
+    what: `${r.no} · ${r.reason} · ${r.storeCode}`, ref: r.no, ...LINK.returns,
   }));
 }
 
@@ -275,13 +334,14 @@ async function eventsOf(db: Db, module: string, name: string, start: Date, end: 
 }
 
 async function mrpRevisions(db: Db, start: Date, end: Date): Promise<Draft[]> {
-  type Revised = { batchId: string; itemId: string; batchNo: string; grnLineId: string; approvalId: string; from: { mrpPaise: number | null; mrpUom: string | null }; to: { mrpPaise: number | null; mrpUom: string | null } };
+  type Revised = { batchId: string; itemId: string; batchNo: string; grnId: string; grnLineId: string; approvalId: string; from: { mrpPaise: number | null; mrpUom: string | null }; to: { mrpPaise: number | null; mrpUom: string | null } };
   const evs = await eventsOf(db, "materials", "batch.mrp_revised", start, end);
   if (evs.length === 0) return [];
   const ps = evs.map((e) => e.payload as Revised);
   const names = await itemsByIds(db, [...new Set(ps.map((p) => p.itemId))]);
   const deciders = await db.select({ id: approvals.id, decidedBy: approvals.decidedBy }).from(approvals).where(inArray(approvals.id, ps.map((p) => p.approvalId)));
   const deciderOf = new Map(deciders.map((d) => [d.id, d.decidedBy] as const));
+  const grnNoOf = new Map((await db.select({ id: grns.id, no: grns.grnNo }).from(grns).where(inArray(grns.id, [...new Set(ps.map((p) => p.grnId))]))).map((g) => [g.id, g.no] as const));
   return evs.map((e, i) => {
     const p = ps[i]!;
     const from = p.from.mrpPaise ?? 0;
@@ -291,23 +351,36 @@ async function mrpRevisions(db: Db, start: Date, end: Date): Promise<Draft[]> {
       id: `mrp:${p.grnLineId}:${p.batchId}`, kind: "mrp_revision" as const, paise: Math.abs(to - from), whoId: deciderOf.get(p.approvalId) ?? e.actorId,
       at: e.occurredAt.toISOString(),
       what: `${names.get(p.itemId)?.name ?? p.itemId} ${p.batchNo}: MRP ${inr(from)} → ${inr(to)} per ${uom}`,
-      link: LINK.approval(p.approvalId),
+      ref: grnNoOf.get(p.grnId) ?? p.batchNo, ...LINK.approval(p.approvalId),
     };
   });
 }
 
-async function leakage(db: Db, day: string, start: Date, end: Date): Promise<Draft[]> {
+async function leakage(db: Db, day: string, start: Date, end: Date, credited: Credited): Promise<Draft[]> {
   const out: Draft[] = [];
   for (const code of LEAKAGE_STORE_CODES) {
     const store = await findStoreByCode(db, code);
     if (store === undefined) continue; // a hospital without this counter has nothing to leak from it
     const report = await pharmacyLeakage(db, day, code);
     for (const [i, m] of report.mismatches.entries()) {
-      out.push({
-        id: `leak:${code}:${String(i)}:${m.dispenseId ?? m.saleId ?? ""}:${m.batchNo}`, kind: "leakage", paise: Math.abs(m.unbilledPaise), whoId: null, at: null,
-        what: `${m.dispenseNo ?? m.invoiceNo ?? ""} ${m.itemCode} ${m.batchNo}: ${String(m.unbilledUnits)} ${Math.abs(m.unbilledUnits) === 1 ? "unit" : "units"} ${m.unbilledUnits > 0 ? "issued, not billed" : "billed, not issued"} · ${code}`,
-        link: LINK.leakage,
+      const id = `leak:${code}:${String(i)}:${m.dispenseId ?? m.saleId ?? ""}:${m.batchNo}`;
+      const ref = m.dispenseNo ?? m.invoiceNo ?? "";
+      const row = (units: number, sameMoneyAs: string | null, suffix: string): Draft => ({
+        id: `${id}${suffix}`, kind: "leakage", paise: Math.abs(units) * (m.unbilledUnits === 0 ? 0 : Math.abs(m.unbilledPaise / m.unbilledUnits)), whoId: null, at: null,
+        what: `${ref} ${m.itemCode} ${m.batchNo}: ${String(units)} ${Math.abs(units) === 1 ? "unit" : "units"} ${units > 0 ? "issued, not billed" : "billed, not issued"} · ${code}`,
+        ref, sameMoneyAs, ...LINK.leakage,
       });
+      // Units that day's listed credit notes took back on this very sold line are that refund's money: point at it.
+      const takers = m.unbilledUnits > 0 ? (credited.get(soldKey(m.dispenseId ?? m.saleId ?? "", m.itemCode, m.batchNo)) ?? []) : [];
+      let left = m.unbilledUnits;
+      for (const t of takers) {
+        const took = Math.min(left, t.qty);
+        if (took <= 0) continue;
+        out.push(row(took, t.rowId, `:${t.rowId}`));
+        t.qty -= took;
+        left -= took;
+      }
+      if (left !== 0) out.push(row(left, null, ""));
     }
     // Consumption outside any sale, at the batch's cost: the leakage report's second list, with the batch to price it.
     for (const c of await consumptionRowsAt(db, store.id, start, end)) {
@@ -317,7 +390,7 @@ async function leakage(db: Db, day: string, start: Date, end: Date): Promise<Dra
       out.push({
         id: `used:${c.id}`, kind: "leakage", paise: units * cost, whoId: c.actorId, at: c.occurredAt.toISOString(),
         what: `${c.itemCode} ${c.batchNo}: ${String(units)} used outside a sale (${c.refType ?? "no reference"}${c.refId === null ? "" : ` ${c.refId}`}) · ${code}`,
-        link: LINK.leakage,
+        ref: `${c.refType ?? "no reference"}${c.refId === null ? "" : ` ${c.refId}`}`, ...LINK.leakage,
       });
     }
   }
@@ -337,10 +410,13 @@ async function cash(db: Db, start: Date, end: Date): Promise<Draft[]> {
     const p = e.payload as { sessionId: string; cashierUserId: string; variancePaise: number };
     if (cashiers.has(p.cashierUserId)) last.set(p.sessionId, { ...p, at: e.occurredAt });
   }
-  return [...last.values()].filter((v) => v.variancePaise !== 0).map((v) => ({
+  const missed = [...last.values()].filter((v) => v.variancePaise !== 0);
+  const opened = new Map((missed.length === 0 ? [] : await db.select({ id: cashierSessions.id, at: cashierSessions.openedAt }).from(cashierSessions)
+    .where(inArray(cashierSessions.id, missed.map((v) => v.sessionId)))).map((x) => [x.id, x.at] as const));
+  return missed.map((v) => ({
     id: `cash:${v.sessionId}`, kind: "cash" as const, paise: Math.abs(v.variancePaise), whoId: v.cashierUserId, at: v.at.toISOString(),
     what: `Drawer counted ${inr(v.variancePaise)} ${v.variancePaise < 0 ? "short" : "over"}`,
-    link: LINK.drawers,
+    ref: `drawer opened ${istDateOf(opened.get(v.sessionId) ?? v.at)}`, ...LINK.drawers,
   }));
 }
 
@@ -353,7 +429,7 @@ async function purchases(db: Db, day: string): Promise<Draft[]> {
     id: `price:${r.grnLineId}`, kind: "purchase_price" as const, paise: r.extraPaise, whoId: r.capturedBy, whoName: r.capturedByName,
     at: iso(created.get(r.grnId)),
     what: `${r.itemName} · ${r.grnNo} · ${r.vendorName}: ${(r.riseBps / 100).toFixed(1)}% above the ${r.refKind === "contract" ? "contract" : "last purchase"} · ${r.reasonCode.replaceAll("_", " ")}${r.reasonText === null ? "" : ` (${r.reasonText})`}`,
-    link: LINK.reports,
+    ref: r.grnNo, ...LINK.purchases,
   }));
 }
 
@@ -372,7 +448,7 @@ async function supplierCredits(db: Db, start: Date, end: Date): Promise<Draft[]>
   return rows.map((r) => ({
     id: `credit:${r.id}`, kind: "supplier_credit" as const, paise: r.difference, whoId: r.recordedBy, at: r.recordedAt.toISOString(),
     what: `${r.vendor}: credit ${r.no} ${inr(r.difference)} below debit note ${r.debitNoteNo ?? ""}${r.reason === null ? "" : ` · ${r.reason}`}`,
-    link: LINK.bills,
+    ref: r.debitNoteNo ?? r.no, ...LINK.bills,
   }));
 }
 
@@ -391,6 +467,6 @@ async function downtime(db: Db, start: Date, end: Date): Promise<Draft[]> {
     id: `paper:${r.id}`, kind: "downtime" as const, paise: heads.get(r.invoiceId)?.netPayablePaise ?? 0, whoId: r.enteredBy ?? r.soldBy,
     at: r.createdAt.toISOString(),
     what: `bill ${heads.get(r.invoiceId)?.invoiceNo ?? ""} sold on paper on ${istDateOf(r.soldAt)}, entered later · ${stores.get(r.storeId) ?? ""}`,
-    link: LINK.downtime,
+    ref: heads.get(r.invoiceId)?.invoiceNo ?? "", ...LINK.downtime,
   }));
 }
