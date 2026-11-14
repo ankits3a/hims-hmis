@@ -27,6 +27,8 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "buy", key: "rates", perms: ["materials.po.raise", "materials.vendors.manage"], was: null },
   { side: "pay", key: "bills", perms: ["materials.bills.manage"], was: null },
   { side: "returns", key: "returns", perms: ["materials.returns.manage", "materials.writeoffs.manage", "materials.recall.manage"], was: null },
+  // #1063 — the weekly expiry action list; read on the returns right, as its server route is.
+  { side: "returns", key: "expiring", perms: ["materials.returns.manage"], was: null },
   { side: "stock", key: "grn", perms: ["materials.stock.read"], was: "/materials/grn" },
   { side: "stock", key: "opening", perms: ["materials.grn.capture"], was: "/materials/grn" },
   { side: "stock", key: "counts", perms: ["materials.counts.perform"], was: "/materials/counts" },
