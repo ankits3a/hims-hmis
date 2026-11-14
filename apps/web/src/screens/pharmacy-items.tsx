@@ -69,7 +69,8 @@ export function PharmacyItems(): React.ReactElement {
     }
   };
 
-  const gstLabel = (bps: number | null): string => (bps === null || bps === 0 ? t("pharmacyItems.nil") : `${String(bps / 100)}%`);
+  /* Re-walk 2026-11-13 — a blank slab is "not set" (it sells as exempt by omission); only a real 0% slab is nil. */
+  const gstLabel = (bps: number | null): string => (bps === null ? t("pharmacyItems.gstNotSet") : bps === 0 ? t("pharmacyItems.nil") : `${String(bps / 100)}%`);
 
   /* GAP-CLOSURE B5 — ONE list, grouped: what is not on sale yet (the act) first, then on sale, then withdrawn. */
   const onSale = (registered.data ?? []).filter((it) => it.active);

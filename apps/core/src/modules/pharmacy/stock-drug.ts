@@ -63,12 +63,18 @@ export type StockEntryItem = {
 
 const SEARCH_LIMIT = 15;
 
-/** The brand search. Every word must match (name or code); the longest word narrows the read. */
-export async function stockEntryItems(db: Db, search: string, now: Date = new Date()): Promise<StockEntryItem[]> {
+/**
+ * The brand search. Every word must match (name or code); the longest word narrows the read.
+ *
+ * Re-walk 2026-11-13: a RETIRED item is never offered for receiving (the grid offered one). `retired`
+ * is for the price-list import alone, which must still recognise a brand already on the master rather
+ * than propose it again as a new drug.
+ */
+export async function stockEntryItems(db: Db, search: string, now: Date = new Date(), opts: { retired?: boolean } = {}): Promise<StockEntryItem[]> {
   const words = norm(search).split(" ").filter((w) => w !== "");
   if (words.length === 0 || words.join("").length < 2) return [];
   const anchor = words.reduce((a, b) => (b.length > a.length ? b : a));
-  const found = (await listItems(db, { class: "drug", search: anchor }))
+  const found = (await listItems(db, { class: "drug", search: anchor, ...(opts.retired === true ? {} : { active: true }) }))
     .filter((i) => i.mergedIntoItemId === null)
     .filter((i) => { const hay = norm(`${i.name} ${i.code}`); return words.every((w) => hay.includes(w)); })
     .sort((a, b) => Number(!norm(a.name).startsWith(words[0]!)) - Number(!norm(b.name).startsWith(words[0]!)) || a.name.localeCompare(b.name))

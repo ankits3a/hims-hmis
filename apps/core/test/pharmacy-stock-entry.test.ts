@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { withTx } from "../src/kernel/db/client";
-import { formularyMedicines } from "../src/kernel/db/schema";
+import { formularyMedicines, items } from "../src/kernel/db/schema";
 import { grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { effectiveRegulation, getItem, listItems, registerItem } from "../src/modules/materials";
 import { createService } from "../src/modules/tariff";
@@ -95,6 +95,12 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
     });
     expect(await stockEntryItems(db, "croc 650")).toEqual([]);
     expect(await stockEntryItems(db, "c")).toEqual([]);
+  });
+
+  it("re-walk 2026-11-13: the brand search never offers a retired item for receiving", async () => {
+    expect((await stockEntryItems(db, "croc 500")).map((i) => i.code)).toEqual(["CROC500"]);
+    await db.update(items).set({ active: false }).where(eq(items.id, fx.item.crocin));
+    expect(await stockEntryItems(db, "croc 500")).toEqual([]);
   });
 
   const DOLO: NewStockDrug = {

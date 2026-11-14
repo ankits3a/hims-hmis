@@ -37,6 +37,7 @@ import { parseGs1 } from "./gs1";
 import { registrationAt, registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
 import { resolveScan } from "./scan";
 import { shelfItemsByMedicine } from "./shelf";
+import type { ShelfEntry } from "./shelf";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { DocumentStore } from "../../kernel/documents/store";
@@ -227,6 +228,8 @@ export type RetailShelfEntry = {
 };
 
 const SHELF_LIMIT = 20;
+/** The most items of each group (named, salt) read for their stock before the best `SHELF_LIMIT` are kept. */
+const SHELF_CANDIDATES = 200;
 
 function refused(flag: string | null): boolean {
   return flag !== null && (REFUSED_FLAGS as readonly string[]).includes(flag);
@@ -286,7 +289,7 @@ export async function searchShelfAt(db: Db, storeId: string, q: string, now: Dat
   if (text === "") return [];
   /*
     #1047 — EVERY ITEM, NOT ONE PER MEDICINE. A person is choosing here, so two brands on one formulary
-    medicine are two rows, each with its own stock, the medicine's own item first. One row per medicine
+    medicine are two rows, each with its own stock, ordered by this store's stock (below). One row per medicine
     hid the second item's whole stock (staging: 380 tablets behind a new item's 75). The row's `itemId`
     is what the cart and the paper Rx send back, and it is what they sell.
   */
@@ -298,39 +301,46 @@ export async function searchShelfAt(db: Db, storeId: string, q: string, now: Dat
     if (hit !== undefined) { scanned = { itemId: hit.itemId, batchId: null }; break; }
   }
   const needle = text.toLowerCase();
-  const entries = shelf.filter((e) => scanned === null
+  const named = shelf.filter((e) => scanned === null
     ? e.item.code.toLowerCase().includes(needle) || e.item.name.toLowerCase().includes(needle)
-    : e.item.id === scanned.itemId);
-  const medicines = await medicinesByIds(db, entries.slice(0, 200).map((e) => e.medicineId));
-  let offered = entries
-    .map((e) => ({ e, m: medicines.get(e.medicineId) }))
-    .filter((x): x is { e: typeof x.e; m: MedicineWithSalts } => x.m !== undefined && !refused(x.m.scheduleFlag))
-    .filter((x) => scanned !== null || x.m.brandName.toLowerCase().includes(needle) || x.e.item.code.toLowerCase().includes(needle) || x.e.item.name.toLowerCase().includes(needle))
-    .slice(0, SHELF_LIMIT);
+    : e.item.id === scanned.itemId).slice(0, SHELF_CANDIDATES);
   /*
-    NO PRODUCT IS CALLED THAT — IS IT A SALT? A pharmacist types "paracetamol" and the shelf holds
-    Calpol and Crocin; a name-only search answered nothing, and the desk's resolve sheet told them to
-    decline a medicine that was on the shelf (PD-5b's walk). Only when no product matches by name, so
-    a brand the person typed is never widened to everything sharing its salt. The formulary's own
-    exact resolver decides what counts as a salt (its name or a recorded alias) — no second matcher.
+    A SALT'S NAME FINDS THE PRODUCTS CARRYING IT, AFTER THE ITEMS NAMED SO. A pharmacist types
+    "paracetamol" and the shelf holds Calpol and Crocin; a name-only search answered nothing (PD-5b's
+    walk). It then ran only when no item NAME matched, so on staging (re-walk 2026-11-13) a generic item
+    called "Pantoprazole 40 mg tablet" hid Pan 40 and its stock. The answer is the union, deduplicated:
+    the items named so first, then every other item carrying the salt. The formulary's own exact
+    resolver decides what counts as a salt (its name or a recorded alias) — no second matcher. A text
+    that names exactly ONE product (the resolver's brand path, `medicineId` set) is that product, and is
+    widened to its salt only when nothing on the shelf is called that.
   */
-  if (offered.length === 0 && scanned === null) {
-    const salts = (await resolveDrugTexts(db, [text])).get(text)?.salts ?? [];
-    if (salts.length > 0) {
-      const wanted = new Set(salts.map((x) => x.saltId));
-      const onShelf = await medicinesByIds(db, [...new Set(shelf.map((e) => e.medicineId))]);
-      offered = shelf
-        .map((e) => ({ e, m: onShelf.get(e.medicineId) }))
-        .filter((x): x is { e: typeof x.e; m: MedicineWithSalts } => x.m !== undefined && !refused(x.m.scheduleFlag))
-        .filter((x) => x.m.salts.some((ms) => wanted.has(ms.saltId)))
-        .slice(0, SHELF_LIMIT);
-    }
-  }
+  const resolved = scanned === null ? (await resolveDrugTexts(db, [text])).get(text) ?? null : null;
+  const salts = resolved !== null && (resolved.medicineId === null || named.length === 0) ? resolved.salts.map((x) => x.saltId) : [];
+  const medicines = await medicinesByIds(db, [...new Set((salts.length > 0 ? shelf : named).map((e) => e.medicineId))]);
+  const seen = new Set(named.map((e) => e.item.id));
+  const wanted = new Set(salts);
+  const bySalt = salts.length === 0 ? [] : shelf
+    .filter((e) => !seen.has(e.item.id) && (medicines.get(e.medicineId)?.salts.some((ms) => wanted.has(ms.saltId)) ?? false))
+    .slice(0, SHELF_CANDIDATES);
+  const sellable = (entries: readonly ShelfEntry[]): { e: ShelfEntry; m: MedicineWithSalts }[] => entries
+    .map((e) => ({ e, m: medicines.get(e.medicineId) }))
+    .filter((x): x is { e: ShelfEntry; m: MedicineWithSalts } => x.m !== undefined && !refused(x.m.scheduleFlag));
+  const byName = sellable(named);
+  const bySaltOnly = sellable(bySalt);
+  /*
+    RE-WALK 2026-11-13 — BY THIS STORE'S STOCK. The rows came in the hospital-wide order
+    (`shelfItemsByMedicine`), so "10 available" sat above "40 available" at a counter that sells only
+    from its own store. Each group is ordered by what the store searched can sell, best first; a tie
+    goes to the code that sorts first.
+  */
+  const available = await availableQtyByItem(db, storeId, [...byName, ...bySaltOnly].map((x) => x.e.item.id), now);
+  const best = (a: { e: ShelfEntry }, b: { e: ShelfEntry }): number =>
+    (available.get(b.e.item.id) ?? 0) - (available.get(a.e.item.id) ?? 0) || (a.e.item.code < b.e.item.code ? -1 : a.e.item.code > b.e.item.code ? 1 : 0);
+  const offered = [...byName.sort(best), ...bySaltOnly.sort(best)].slice(0, SHELF_LIMIT);
   if (scanned !== null && gs1 !== null && gs1.batch !== null && offered.length > 0) {
     const scan = await resolveScan(db, storeId, 0, scanned.itemId, text);
     scanned.batchId = scan.batchId;
   }
-  const available = await availableQtyByItem(db, storeId, offered.map((x) => x.e.item.id), now);
   return offered.map(({ e, m }) => ({
     medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form, scheduleFlag: m.scheduleFlag,
     itemId: e.item.id, itemCode: e.item.code, itemName: e.item.name, baseUom: e.item.baseUom,
