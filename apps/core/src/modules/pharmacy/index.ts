@@ -93,6 +93,9 @@ export { renewalDaysLeft } from "./pharmacists";
 /** P12 — the leakage triangle (doc 16 I1). Read-only. */
 export { pharmacyLeakage } from "./leakage";
 export type { LeakageMismatch, LeakageReport } from "./leakage";
+/** #1065 (ruling 0097) — the day's exceptions on the owner's page, and the 08:00 IST digest the worker sends. */
+export { EXCEPTIONS_VIEW, EXCEPTION_KINDS, officeExceptions, pharmacyExceptionsOn, sendPharmacyExceptionDigest } from "./exceptions";
+export type { ExceptionKind, PharmacyExceptionDay, PharmacyExceptionRow } from "./exceptions";
 /** P16 — each drug's GST slab from the notification, and the sale category that follows it. */
 export {
   GST_NOTIFICATION, NIL_RATED_DRUGS, applyGstSlabPlan, gstSlabPlan, setItemGstSlab, suggestGstSlab, syncSaleItemCategory,

@@ -1314,9 +1314,11 @@ const pharmacyReorderRoute = createRoute({
 const pharmacyOfficeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/office",
-  validateSearch: (search: Record<string, unknown>): { view?: string; page?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { view?: string; page?: string; day?: string } => ({
     ...(typeof search.view === "string" ? { view: search.view } : {}),
     ...(typeof search.page === "string" ? { page: search.page } : {}),
+    // #1065 — the Exceptions page's IST day (the 08:00 digest's bell row opens it).
+    ...(typeof search.day === "string" ? { day: search.day } : {}),
   }),
   component: PharmacyOffice,
 });

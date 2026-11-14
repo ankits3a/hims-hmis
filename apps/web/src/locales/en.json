@@ -12136,7 +12136,31 @@
         "adr": "Adverse drug reactions (PvPI)",
         "incidents": "Medication errors & near misses",
         "reports": "Reports",
+        "exceptions": "Exceptions of a day",
         "ledger": "Stock ledger — where it went"
+      }
+    },
+    "exceptions": {
+      "title": "Exceptions",
+      "lead": "Biggest first.",
+      "day": "Day",
+      "loading": "Reading the day…",
+      "failed": "The exceptions could not be read.",
+      "none": "No exceptions on this day.",
+      "open": "Open",
+      "count_one": "{{count}} exception",
+      "count_other": "{{count}} exceptions",
+      "kind": {
+        "refund": "Refunds & cancels",
+        "discount": "Discounts over 10%",
+        "stock_adjustment": "Stock adjusted",
+        "write_off": "Written off",
+        "mrp_revision": "MRP revised",
+        "leakage": "Leakage",
+        "cash": "Cash short/over",
+        "purchase_price": "Bought dearer",
+        "supplier_credit": "Credit below debit",
+        "downtime": "Paper sales late"
       }
     },
     "today": {

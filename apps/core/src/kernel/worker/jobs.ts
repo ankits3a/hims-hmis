@@ -27,7 +27,7 @@ import { sweepOverdueApprovals } from "../approvals/overdue";
 import { collectDeskProviders } from "../desk/registry";
 import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
-import { runRefillReminders, sweepExpiredPicks } from "../../modules/pharmacy";
+import { runRefillReminders, sendPharmacyExceptionDigest, sweepExpiredPicks } from "../../modules/pharmacy";
 import {
   sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
@@ -214,6 +214,12 @@ export type JobIntervals = Pick<
  * been served, so a reminder never races a refill bought at 09:00.
  */
 const REFILL_REMINDERS_IST = "10:00";
+/**
+ * #1065 (ruling 0097) — yesterday's pharmacy exceptions to the owner's bell and phone, at the start of the owner's
+ * day. Idempotent per day: each bell row is keyed by the day (`raiseNotice`), so a late first tick or a second
+ * worker sends nothing twice; a day with no exceptions sends nothing.
+ */
+const PHARMACY_EXCEPTION_DIGEST_IST = "08:00";
 const ROSTER_WINDOWS_IST = "01:30";
 /** After the window sweep, and long before anybody opens a clinic. */
 const ROSTER_PROPOSALS_IST = "02:10";
@@ -645,6 +651,17 @@ export function registerAllJobs(
     name: "runRefillReminders",
     dailyIst: REFILL_REMINDERS_IST,
     run: async (now) => { await runRefillReminders(db, now); },
+  });
+  /**
+   * #1065 (ruling 0097) — THE OWNER'S PHARMACY DIGEST, once a day at 08:00 IST, for the day before: every exception
+   * (refunds, discounts above 10%, stock adjustments and write-offs, MRP revisions, leakage, cash short or over,
+   * dearer purchases, supplier credits below the debit note, paper sales entered late) counted and summed into one
+   * bell row per owner, which the phone relay turns into one notification. Re-runs raise nothing twice.
+   */
+  scheduler.register({
+    name: "sendPharmacyExceptionDigest",
+    dailyIst: PHARMACY_EXCEPTION_DIGEST_IST,
+    run: async (now) => { await sendPharmacyExceptionDigest(db, now); },
   });
   /**
    * 18-S RS11 T3 — THE OVERDUE-QA SWEEP. A machine whose QA is past due (the record's next-due

@@ -957,6 +957,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "lab.metrics.read",
       // HOSPITAL NUMBERS (owner 2026-10-13, #777) — imaging's and the pharmacy's counts, amounts and times. Aggregate only.
       "radiology.metrics.read", "pharmacy.metrics.read",
+      // #1065 (ruling 0097) — the pharmacy's daily exceptions page and its 08:00 phone digest: the owner
+      // alone. Giving it to anybody else is a new ruling.
+      "pharmacy.exceptions.view",
     ],
   },
   {

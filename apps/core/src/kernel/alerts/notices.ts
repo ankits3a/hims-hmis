@@ -33,6 +33,8 @@ export type Notice = {
   sourceKey: string;
   /** The sweep's own instant — the row is dated by the tick that raised it, so pacing reads one clock. */
   at: Date;
+  /** #1065 — a count and an amount for the phone's sentence (integers only; see `alertRaised`). */
+  figures?: { count: number; paise: number };
 };
 
 /** True when the row was written (and announced); false when this key had already been raised for this person. */
@@ -46,7 +48,10 @@ export async function raiseNotice(db: Db, n: Notice): Promise<boolean> {
     if (row === undefined) return false;
     await appendEvent(tx, alertRaised.make({
       actor: NOTICES_ACTOR,
-      payload: { alertId: row.id, userId: n.userId, kind: n.kind, refType: n.refType, refId: n.refId, sourceEventId: n.sourceKey },
+      payload: {
+        alertId: row.id, userId: n.userId, kind: n.kind, refType: n.refType, refId: n.refId, sourceEventId: n.sourceKey,
+        ...(n.figures === undefined ? {} : { figures: n.figures }),
+      },
     }));
     return true;
   });

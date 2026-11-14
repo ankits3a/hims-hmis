@@ -274,6 +274,16 @@ export type WirePurchaseAnalysis = {
   byVendor: { vendorId: string; vendorName: string; lines: number; extraPaise: number }[]; totalExtraPaise: number;
 };
 export const fetchPurchaseAnalysis = (r: RangeInput): Promise<WirePurchaseAnalysis> => api("GET", `${BASE}/purchase-analysis${query(r)}`);
+/** #1065 (ruling 0097) — a day's pharmacy exceptions, biggest first, with totals by kind (`modules/pharmacy/exceptions.ts`). The owner's. */
+export const EXCEPTION_KINDS = [
+  "refund", "discount", "stock_adjustment", "write_off", "mrp_revision", "leakage", "cash", "purchase_price", "supplier_credit", "downtime",
+] as const;
+export type ExceptionKind = (typeof EXCEPTION_KINDS)[number];
+export type WireExceptionRow = { id: string; kind: ExceptionKind; paise: number; who: string | null; at: string | null; what: string; link: string };
+export type WireExceptions = {
+  day: string; rows: WireExceptionRow[]; totals: { kind: ExceptionKind; count: number; paise: number }[]; count: number; totalPaise: number;
+};
+export const fetchExceptions = (day: string): Promise<WireExceptions> => api("GET", `${BASE}/exceptions${query({ day })}`);
 export const fetchValuation = (asOf: string, store: string): Promise<WireValuation> => api("GET", `${BASE}/valuation${query({ asOf, store })}`);
 export const fetchNonMoving = (days: number, store: string): Promise<WireNonMoving> => api("GET", `${BASE}/non-moving${query({ days, store })}`);
 export const reconcileGstr2b = (input: { format: "json" | "csv"; content: string; preset: ReportPreset; from: string; to: string }): Promise<WireGstr2b> =>

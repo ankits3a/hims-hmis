@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/pharmacy/`
 
 - **Depends on modules:** `billing`, `formulary`, `materials`, `membership`, `opd`, `patients`, `tariff`
 - **Used by modules:** —
-- **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `report`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `report`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -107,6 +107,13 @@ Source: `apps/core/src/modules/pharmacy/`
   - `retailLineReturned`
   - `retailSold`
   - `substitutionRecorded`
+- `exceptions.ts`
+  - `EXCEPTIONS_VIEW`
+  - `EXCEPTION_KINDS`
+  - `officeExceptions(db: Db, actor: Actor, input: { day?: string | null }, now: Date): Promise<PharmacyExceptionDay>`
+  - `pharmacyExceptionsOn(db: Db, day: string): Promise<PharmacyExceptionDay>`
+  - `sendPharmacyExceptionDigest(db: Db, now: Date): Promise<{ day: string; count: number; totalPaise: number; notified: number }>`
+  - types: `ExceptionKind`, `PharmacyExceptionDay`, `PharmacyExceptionRow`
 - `expiry.ts`
   - `PHARMACY_PICK_SWEEP_ACTOR: Actor`
   - `PICK_EXPIRED_REASON`

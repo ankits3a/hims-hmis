@@ -49,7 +49,7 @@ groups:
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames|pruneCopilotAsks|sendUnitReports"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames|pruneCopilotAsks|sendUnitReports|sendPharmacyExceptionDigest"
           } > 93600
         for: 5m
         labels:
@@ -158,6 +158,9 @@ groups:
           # DOCTOR DESK DD-report v0 — the thirty-first, a DAILY job (08:00 IST), joining leg 1b. A
           # report job that never started looks exactly like a unit with nothing to report.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sendUnitReports"})
+          # #1065 (ruling 0097) — a DAILY job (08:00 IST), joining leg 1b. A digest that never started looks
+          # exactly like a pharmacy with no exceptions.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sendPharmacyExceptionDigest"})
         for: 5m
         labels:
           severity: critical
