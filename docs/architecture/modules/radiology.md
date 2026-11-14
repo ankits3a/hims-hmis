@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
 - **Used by modules:** `abdm`, `doctor-desk`, `ordering`
-- **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `config`, `consent`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
 ## Public API (`index.ts`), by declaring file
