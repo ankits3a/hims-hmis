@@ -1,6 +1,6 @@
 ---
 issue: 1083
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging lists update live over the realtime gateway (#1083)
@@ -32,3 +32,10 @@ Status: APPROVED 2026-11-14 by the owner ("go ahead"), from the imaging module r
 
 - **Files.** radiology `realtime.ts` (new), `radiology.module.ts`, `index.ts` · web reception, prep, room, reading, reports screens (one hook each).
 - **Migration** no. **Permissions** none. **Size** S. **Depends on** IM1; easiest after IM2 and IM3 merge (same screens).
+
+## As built (2026-11-14)
+
+- One topic space, `imaging`, on `radiology.worklist.read`. The gateway reads a topic's space from the text before its first colon, so `imaging:floor`, `imaging:read` and `imaging:release` share that one grant. Every seeded role that works one of the five screens holds it, and frames carry ids and codes only. Giving the reading room and the hand-over desk their own grant needs a change to the kernel gateway; it is not in this slice.
+- Routed: an imaging `order.placed`, `imaging.study_scheduled`, `imaging.booking_changed`, `imaging.gate_evaluated` to the floor; `imaging.study_acquired` to the floor and reading; `imaging.report_published` to reading and hand-over; `imaging.critical_flagged`, `imaging.critical_acknowledged` and `imaging.image_viewed` (opening the images is the reading claim) to reading; `imaging.report_handed_over` and `imaging.media_requested` to hand-over.
+- The worker creates the study a moment after `order.placed`, so a screen reads its list on that frame and once more 4 s later.
+- A frame refetches only the screen's list queries (exact keys), never the study in hand. Polls are unchanged (prep, rooms, hand-over 30 s; reading 60 s); the desk, which had none, now polls every 60 s.
