@@ -190,7 +190,7 @@ describe("modality rooms (18-S RS6)", () => {
     for (const kind of checked.gates) {
       const gate = await requireStudyGate(db, study.studyId, kind);
       const evidence: Record<string, unknown> = {
-        identity_two_factor: { secondIdentifier: "wristband", value: "HMS-00000001-5" },
+        identity_two_factor: { secondIdentifier: "wristband", value: "HMS-00000001-5", nameStated: true },
         pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
       };
       await withTx(db, (tx) => satisfyGate(tx, fx.radiographer, gate.id, evidence[kind] ?? {}, NOW));
@@ -237,7 +237,7 @@ describe("modality rooms (18-S RS6)", () => {
     await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, { studyId: study.studyId, deviceResourceId: fx.devices.ct!, scheduledAt: SLOT }));
     const checked = await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: study.studyId, now: NOW }));
     const evidence: Record<string, unknown> = {
-      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
       pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
       contrast_consent: {
         procedureCode: "CT-HEAD", templateVersion: "rad-contrast-v3", language: "hi", signer: "patient",

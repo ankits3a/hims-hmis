@@ -8,7 +8,8 @@ import type { WireImagingDoor } from "../../lib/radiology-api";
 /**
  * PLAN 18-S RS2 — ORDER IMAGING, INSIDE THE CONSULT.
  *
- * What these pin: the indication is TYPED, never defaulted (18a-iv D4); a limb study asks the side;
+ * What these pin: the indication is TYPED, never defaulted (18a-iv D4); a limb study asks the side
+ * and sends it as the item's `laterality` (#1080), never as words in the indication;
  * the 30-day duplicate asks a reason and sends the override PAIR; a 24-hour refusal from the server
  * is turned into the same question; the order goes with the consult doctor as the clinician and no
  * outside authority; after sending, the panel says where the order is.
@@ -96,7 +97,7 @@ it("D4: the indication starts EMPTY and Send is refused without one — nothing 
   expect(posts()).toHaveLength(0);
 });
 
-it("a limb study asks the side, and the order carries it with the doctor as clinician and the chosen priority", async () => {
+it("a limb study asks the side, and the order carries it as a field with the doctor as clinician and the chosen priority", async () => {
   mockRoutes({ "GET /api/radiology/advised": { status: 200, body: door() }, "POST /api/radiology/orders": PLACED });
   render();
   const card = await screen.findByTestId(`imaging-card-${KNEE}`);
@@ -111,7 +112,7 @@ it("a limb study asks the side, and the order carries it with the doctor as clin
   await waitFor(() => { expect(posts()).toHaveLength(1); });
   expect(posts()[0]!.body).toMatchObject({
     patientId: "P1", encounterNo: "V2609280001", orderingClinicianId: "U-DR", priority: "urgent",
-    indication: "Right — pain after a fall, ?fracture", items: [{ serviceId: KNEE }],
+    indication: "pain after a fall, ?fracture", items: [{ serviceId: KNEE, laterality: "right" }],
   });
   expect(posts()[0]!.body).not.toHaveProperty("authority");
   expect(posts()[0]!.idem).not.toBeNull();

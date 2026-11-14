@@ -28,7 +28,7 @@ import { CreditChip } from "../components/patient-credit";
  *     the right list is THIS machine's floor list (scheduled → in acquisition, STAT first) with
  *     "Clocks running" (STAT waiting over 10 minutes, ready over 20) folded under it; opening a
  *     patient from the list IS the patient on the table (a booked study is checked in by that act —
- *     no presence button); the centre is `RoomConsole`'s four steps with the one next act docked.
+ *     no presence button); the centre is `RoomConsole`'s three steps (Identify, Acquire, Send; #1080) with the one next act docked.
  *   · **Dose log** — the day's dose register for this machine (the existing `/aerb/doses` read),
  *     DRL breaches with the reason typed at the console.
  *   · **Rejects & repeats** — the reject analysis (`/radiology/room/rejects`) and the bill

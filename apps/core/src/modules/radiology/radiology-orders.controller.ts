@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
+import { ORDER_ITEM_LATERALITIES } from "../../kernel/db/schema/orders";
 import { addImagingViews, placeImagingOrder } from "./place";
 import { imagingDoorFor } from "./advised";
 import { idSchema, isoDateSchema, parsed, toHttp } from "./radiology-http";
@@ -41,6 +42,8 @@ const itemSchema = z.object({
    * trims it and owns the refusal (`invalid_bedside_location`); the bound here only caps the body.
    */
   bedsideLocation: z.string().max(400).nullish(),
+  /** #1080 — the side; `place.ts` refuses a sided study without one (`laterality_required`). */
+  laterality: z.enum(ORDER_ITEM_LATERALITIES).nullish(),
 });
 
 const orderBody = z.object({

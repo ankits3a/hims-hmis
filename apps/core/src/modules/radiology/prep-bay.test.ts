@@ -55,8 +55,10 @@ describe("the prep & safety bay reads (18-S RS5 T3)", () => {
 
   const arrive = async (serviceCode: string, deviceKey: string) => {
     seq += 1;
+    /** #1080 — this book's X-ray is sided, so its order says which side. */
     const study = await placeAndCreateStudy(
       db, fx, serviceCode, `prep${String(seq)}`, new Date(NOW.getTime() + seq * 25 * 3_600_000),
+      { laterality: serviceCode === "XR-CHEST" ? "left" : undefined },
     );
     await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
       studyId: study.studyId, deviceResourceId: fx.devices[deviceKey]!,

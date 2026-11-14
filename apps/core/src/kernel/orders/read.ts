@@ -41,6 +41,8 @@ export type OrderItemView = {
   status: OrderItemStatus;
   origin: string;
   restricted: boolean;
+  /** #1080 — the side the item asks for, or `null` for a study with none. */
+  laterality: string | null;
   cancelledFrom: string | null;
   cancelReason: string | null;
   startedAt: Date | null;
@@ -171,7 +173,7 @@ function visibleItems(
 function toItemView(row: typeof orderItems.$inferSelect): OrderItemView {
   return {
     id: row.id, serviceId: row.serviceId, status: row.status as OrderItemStatus, origin: row.origin,
-    restricted: row.restricted, cancelledFrom: row.cancelledFrom, cancelReason: row.cancelReason,
+    restricted: row.restricted, laterality: row.laterality, cancelledFrom: row.cancelledFrom, cancelReason: row.cancelReason,
     startedAt: row.startedAt, completedAt: row.completedAt, cancelledAt: row.cancelledAt,
     createdAt: row.createdAt,
   };

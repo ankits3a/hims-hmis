@@ -23,6 +23,7 @@ import { imagingGateDefinition } from "./workflow-def";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { StudyType } from "./definitions";
 import type { Db } from "../../kernel/db/client";
+import type { OrderItemLaterality } from "../../kernel/db/schema/orders";
 
 /**
  * PLAN 18a T5 — Assertion Book rows **A2, A3, A4, A5 and A6**. A1 is `checkin.test.ts` and A7 is
@@ -135,10 +136,10 @@ describe("the ten imaging safety gates (18a T5)", () => {
     studyTypeRow({ code, service_id: fx.services[code]!, ...over });
 
   /** Places, books a slot, and checks in — the precondition every gate assertion needs. */
-  const arrive = async (serviceCode: string, deviceKey: string) => {
+  const arrive = async (serviceCode: string, deviceKey: string, laterality?: OrderItemLaterality) => {
     seq += 1;
     const study = await placeAndCreateStudy(
-      db, fx, serviceCode, `g${String(seq)}`, new Date(NOW.getTime() + seq * 25 * 3_600_000),
+      db, fx, serviceCode, `g${String(seq)}`, new Date(NOW.getTime() + seq * 25 * 3_600_000), { laterality },
     );
     await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
       studyId: study.studyId, deviceResourceId: fx.devices[deviceKey]!,
@@ -155,7 +156,7 @@ describe("the ten imaging safety gates (18a T5)", () => {
     withTx(db, (tx) => satisfyGate(tx, actor, gateId, evidence, now));
 
   /** The identity evidence the fixture's own patient satisfies — used wherever identity is noise. */
-  const IDENTITY_OK = { secondIdentifier: "uhid" as const, value: "HMS-00000001-5" };
+  const IDENTITY_OK = { secondIdentifier: "uhid" as const, value: "HMS-00000001-5", nameStated: true };
 
   /* ══════════════════════════ A2 — THE STATUTORY REFUSALS ══════════════════════════ */
 
@@ -639,11 +640,11 @@ describe("the ten imaging safety gates (18a T5)", () => {
     const study = await arrive("USG-ABDO", "usg");
     const gateId = await gateIdFor(study.studyId, "identity_two_factor");
 
-    await expect(satisfy(gateId, { secondIdentifier: "uhid", value: "HMS-00000009-1" }))
+    await expect(satisfy(gateId, { secondIdentifier: "uhid", value: "HMS-00000009-1", nameStated: true }))
       .rejects.toMatchObject({ code: "gate_open" });
-    await expect(satisfy(gateId, { secondIdentifier: "dob", value: "1990-05-05" }))
+    await expect(satisfy(gateId, { secondIdentifier: "dob", value: "1990-05-05", nameStated: true }))
       .rejects.toMatchObject({ code: "gate_open" });
-    expect((await satisfy(gateId, { secondIdentifier: "dob", value: "1996-01-01" })).state).toBe("satisfied");
+    expect((await satisfy(gateId, { secondIdentifier: "dob", value: "1996-01-01", nameStated: true })).state).toBe("satisfied");
   });
 
   it("pregnancy: a declaration ALONE does not carry an ionising study under the default policy", async () => {
@@ -786,6 +787,10 @@ describe("the ten imaging safety gates (18a T5)", () => {
    *
    * The gate now RECORDS the side the patient states, and re-siding a study that already carries
    * one is what stays refused, because that is a person changing their mind about which knee.
+   *
+   * #1080 — the study now carries the ORDER's side from creation, so the disagreement leg is the
+   * ordinary path (`laterality_mismatch`, the referrer named), and the recording leg is what is left
+   * for a study whose order carried no side (placed before the column existed: `na` on the row).
    */
   it("F59/laterality: the gate RECORDS the side, and refuses a later disagreement", async () => {
     await rewriteBook([
@@ -794,7 +799,9 @@ describe("the ten imaging safety gates (18a T5)", () => {
       bookRow("CT-HEAD", { modality: "ct", ionising: true }),
       bookRow("MRI-BRAIN", { modality: "mri" }),
     ]);
-    const study = await arrive("USG-ABDO", "usg");
+    const study = await arrive("USG-ABDO", "usg", "right");
+    /** The legacy row: an order placed before #1080 left the study at `na`. */
+    await db.update(imagingStudies).set({ laterality: "na" }).where(eq(imagingStudies.id, study.studyId));
     const gateId = await gateIdFor(study.studyId, "laterality_confirm");
 
     expect((await satisfy(gateId, { patientStated: "left" })).state).toBe("satisfied");
@@ -802,13 +809,12 @@ describe("the ten imaging safety gates (18a T5)", () => {
       .where(eq(imagingStudies.id, study.studyId));
     expect(row!.laterality).toBe("left");
 
-    /** A second study on the same type, re-sided after the fact, is the refusal that remains. */
-    const second = await arrive("USG-ABDO", "usg");
-    await db.update(imagingStudies).set({ laterality: "right" })
-      .where(eq(imagingStudies.id, second.studyId));
+    /** A second study, ordered for the right: the patient pointing left is the refusal that remains. */
+    const second = await arrive("USG-ABDO", "usg", "right");
     const g2 = await gateIdFor(second.studyId, "laterality_confirm");
-    await expect(satisfy(g2, { patientStated: "left" }))
-      .rejects.toMatchObject({ code: "gate_open" });
+    const refused = await satisfy(g2, { patientStated: "left" }).catch((e: unknown) => e);
+    expect(refused).toMatchObject({ code: "laterality_mismatch" });
+    expect(String(refused)).toMatch(/referring doctor resolves a change of side/);
   });
 
   /* ══════════════════════════ the shared refusals ══════════════════════════ */

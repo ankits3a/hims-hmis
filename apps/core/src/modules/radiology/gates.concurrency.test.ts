@@ -68,7 +68,7 @@ describe("a gate is moved by the engine's CAS, not by a read (18a T5 A7)", () =>
     return (await requireStudyGate(db, study.studyId, "identity_two_factor")).id;
   };
 
-  const IDENTITY_OK = { secondIdentifier: "uhid" as const, value: "HMS-00000001-5" };
+  const IDENTITY_OK = { secondIdentifier: "uhid" as const, value: "HMS-00000001-5", nameStated: true };
 
   /**
    * ═══ THE HOLD IS WHAT CONSTRUCTS THE OVERLAP, AND IT IS NOT A HACK TO MAKE A FLAKE PASS ═══
