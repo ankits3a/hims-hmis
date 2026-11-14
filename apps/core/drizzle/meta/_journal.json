@@ -1639,6 +1639,13 @@
       "when": 1794689733534,
       "tag": "0234_imaging_reading_room",
       "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "when": 1794693523817,
+      "tag": "0235_imaging_automation",
+      "breakpoints": true
     }
   ]
 }

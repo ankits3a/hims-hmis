@@ -1,13 +1,18 @@
-import { Controller, Get, Inject, Query } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
+import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { istDayString } from "../../kernel/approvals/cumulative";
+import { withTx } from "../../kernel/db/client";
 import { escalationList } from "./escalations";
+import { addIstDays, automationSettings, switchAutomation } from "./automation";
+import { registerCompleteness } from "./completeness";
+import { storedDigest } from "./digest";
 import {
   supervisorAccessLog, supervisorApprovals, supervisorEquipment, supervisorFloor, supervisorMoney, supervisorQuality,
   supervisorRoster,
 } from "./supervisor";
-import { toHttp } from "./radiology-http";
+import { parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -26,7 +31,12 @@ import type { Db } from "../../kernel/db/client";
  * Nothing here writes, except the access log's own PHI rows (one per patient it names). The HOD's
  * ACTS go through the seats' own routes and the kernel's (`/alerts/:id/ack`, the override decide
  * route, `/approvals`), so no act has two doors.
+ *
+ * #1085 (IM6c) — and the morning sweep's three reads (the stored digest, the live register gaps, the
+ * automations) plus its ONE write here: switching an automation off or on with a reason, which is the
+ * HOD's act and has no other door.
  */
+const switchBody = z.object({ enabled: z.boolean(), reason: z.string().trim().min(3).max(400) }).strict();
 @Controller("radiology/supervisor")
 export class RadiologySupervisorController {
   constructor(@Inject(DB) private readonly db: Db) {}
@@ -79,6 +89,37 @@ export class RadiologySupervisorController {
   @RequirePermission("radiology.definitions.manage", "hospital")
   async money(@Query("day") day?: string): Promise<unknown> {
     try { return await supervisorMoney(this.db, { ...(day ? { day } : {}), now: new Date() }); } catch (e) { toHttp(e); }
+  }
+
+  /** #1085 — the morning digest stored for `?day` (the run day; default the newest). No names. */
+  @Get("digest")
+  @RequirePermission("radiology.definitions.manage", "hospital")
+  async digest(@Query("day") day?: string): Promise<unknown> {
+    try { return { digest: await storedDigest(this.db, day === undefined ? {} : { day }) }; } catch (e) { toHttp(e); }
+  }
+
+  /** #1085 — the register gaps of `?day` (default yesterday, IST), live, by accession. */
+  @Get("completeness")
+  @RequirePermission("radiology.definitions.manage", "hospital")
+  async completeness(@Query("day") day?: string): Promise<unknown> {
+    try {
+      return await registerCompleteness(this.db, { day: day ?? addIstDays(istDayString(new Date()), -1) });
+    } catch (e) { toHttp(e); }
+  }
+
+  @Get("automations")
+  @RequirePermission("radiology.definitions.manage", "hospital")
+  async automations(): Promise<unknown> {
+    try { return { automations: await automationSettings(this.db) }; } catch (e) { toHttp(e); }
+  }
+
+  @Post("automations/:kind")
+  @RequirePermission("radiology.definitions.manage", "hospital")
+  async switchOne(@CurrentActor() actor: Actor, @Param("kind") kind: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(switchBody, body);
+    try {
+      return await withTx(this.db, (tx) => switchAutomation(tx, actor, { kind, enabled: input.enabled, reason: input.reason }));
+    } catch (e) { toHttp(e); }
   }
 
   /** `?from&to` — IST days, inclusive, at most 31; default today. Names patients: PHI-logged. */

@@ -4,6 +4,7 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { imagingDeskArriveBody, imagingDeskCollectBody } from "@hmis/contracts";
 import { arriveAtDesk, collectAtDesk, deskVisitsToday, proposeSlot, walkInNow } from "./desk";
+import { noShowsToRebook } from "./automation";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -71,6 +72,13 @@ export class RadiologyDeskController {
   }
 
   /** The desk door, after the patient search: this patient's visits of today. */
+  /** #1085 — the no-shows of the last 30 days nobody has booked again; a paid one says until when its invoice holds. */
+  @Get("no-shows")
+  @RequirePermission("radiology.schedule", "hospital")
+  async noShows(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { rows: await noShowsToRebook(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
   @Get("visits")
   @RequirePermission("radiology.schedule", "hospital")
   async visits(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<unknown> {

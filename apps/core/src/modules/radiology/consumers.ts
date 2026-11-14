@@ -10,6 +10,7 @@ import { RadiologyError } from "./errors";
 import { IMAGING_STUDY_DEF_KEY } from "./workflow-def";
 import { studyTypeByService } from "./study-types";
 import { pcpndtApplicability } from "./applicability";
+import { carryNoShowInvoice } from "./money";
 import { patients } from "../../kernel/db/schema/patients";
 import { events } from "../../kernel/db/schema/events";
 import { imagingBedsideRequested } from "./events";
@@ -97,7 +98,7 @@ export async function handleOrderPlaced(
   const itemById = new Map(items.map((i) => [i.id, i]));
 
   const orderRows = await (tx as unknown as Db)
-    .select({ priority: orders.priority, serviceDate: orders.serviceDate })
+    .select({ priority: orders.priority, serviceDate: orders.serviceDate, placedAt: orders.placedAt })
     .from(orders)
     .where(eq(orders.id, payload.orderId));
   const order = orderRows[0];
@@ -204,6 +205,12 @@ export async function handleOrderPlaced(
        */
       bedsideLocation: bedsideByItem.get(itemId) ?? null,
     });
+
+    /**
+     * #1085 / ruling 0098 §3 — a paid no-show of this same study within 30 days: the rebooking is born
+     * authorised by that invoice, and the no-show gives its line up (`money.ts`, one line, one study).
+     */
+    await carryNoShowInvoice(tx, { id: studyId, patientId: payload.patientId, serviceId: item.serviceId }, order.placedAt);
 
     created.push({ studyId, accessionNo, orderItemId: itemId });
   }

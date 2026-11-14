@@ -1649,3 +1649,52 @@ export const imagingTeleReads = pgTable(
     check("imaging_tele_reads_not_own_ck", sql`${t.overreadBy} is null or ${t.overreadBy} <> ${t.readerId}`),
   ],
 );
+
+/**
+ * ═══ #1085 (IM6c) — THE MORNING SWEEP'S MEMORY AND ITS SWITCHES ═══
+ *
+ * The 08:00 IST radiology job does four automated things a day: it marks yesterday's never-arrived
+ * bookings as no-shows, queues patient reminders, sends the HOD's digest and checks yesterday's
+ * registers (PCPNDT Form F, the AERB dose register). Each is written by the system actor
+ * `radiology-automation` and each leaves ONE row here per IST day — `(kind, day)` is unique, so a
+ * second run on the same day (a restart at 08:00, a double tick) inserts nothing and does nothing.
+ * `counts` holds counts and minutes only: no patient, no UHID, no name (the digest is stored here).
+ *
+ * `imaging_automation_settings` holds at most one row per automation: a holder of
+ * `radiology.definitions.manage` switches one off or on with a reason (`imaging.automation_switched`).
+ * No row means the automation's default — every one ON except `patient_reminders`, which stays OFF
+ * until the WhatsApp and SMS templates are approved (ruling 0098 §2).
+ */
+export const IMAGING_AUTOMATION_KINDS = ["no_show_sweep", "patient_reminders", "hod_digest", "register_completeness"] as const;
+export type ImagingAutomationKind = (typeof IMAGING_AUTOMATION_KINDS)[number];
+
+export const imagingAutomationRuns = pgTable(
+  "imaging_automation_runs",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    kind: text("kind").notNull(),
+    /** The IST day the run belongs to — the morning it ran. */
+    day: date("day", { mode: "string" }).notNull(),
+    counts: jsonb("counts").notNull().default({}),
+    ranAt: timestamp("ran_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("imaging_automation_runs_kind_day_ux").on(t.kind, t.day),
+    check("imaging_automation_runs_kind_ck", inList(t.kind, IMAGING_AUTOMATION_KINDS)),
+  ],
+);
+
+export const imagingAutomationSettings = pgTable(
+  "imaging_automation_settings",
+  {
+    kind: text("kind").primaryKey(),
+    enabled: boolean("enabled").notNull(),
+    reason: text("reason").notNull(),
+    changedBy: text("changed_by").notNull(),
+    changedAt: timestamp("changed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("imaging_automation_settings_kind_ck", inList(t.kind, IMAGING_AUTOMATION_KINDS)),
+    check("imaging_automation_settings_reason_ck", sql`char_length(btrim(${t.reason})) >= 3`),
+  ],
+);

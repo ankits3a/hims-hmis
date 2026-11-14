@@ -22,6 +22,9 @@ describe("the notification template registry (D8)", () => {
       "appointment_reminder",
       /** 18-S RS3 T4 — the imaging desk's appointment and prep message (recorded; the provider is not on main). */
       "imaging_appointment_booked",
+      /** #1085 — the morning sweep's two patient reminders, behind the HOD's switch (off until approved). */
+      "imaging_appointment_reminder",
+      "imaging_followup_due",
       /** PLAN 18a T2 — the imaging twin of the lab's notice, same shape and same omissions. */
       "imaging_report_ready",
       "owner_escalation_sms",
@@ -147,6 +150,35 @@ describe("the notification template registry (D8)", () => {
     expect(template.render.en({ ...params, prep: [] })).not.toMatch(/Before/);
     expect([template.audience, template.class, template.channels]).toEqual(["patient", "transactional", undefined]);
     expect(template.expiresAt(params, OCCURRED_AT).toISOString()).toBe("2026-08-31T09:00:00.000Z");
+  });
+
+  /**
+   * #1085 — the morning sweep's two reminders say the time and the token, never the study or the finding.
+   * The params carry a study name and a finding a careless template would interpolate (§3.14: an absence
+   * assertion whose fixture could never produce the thing proves nothing).
+   */
+  it("renders the imaging reminder and the follow-up notice without the study or the finding", () => {
+    const leaky = {
+      accessionNo: "X2608310001", slotStart: "2026-09-01T05:00:00.000Z", dueOn: "2027-02-28",
+      studyName: "CT chest", finding: "pulmonary nodule", recommendation: "CT at 6-12 months",
+    };
+    for (const key of ["imaging_appointment_reminder", "imaging_followup_due"]) {
+      const template = notificationTemplates[key]!;
+      for (const lang of ["en", "hi"] as const) {
+        const body = template.render[lang](leaky);
+        expect(body).not.toMatch(/\b(CT|MRI|USG|x-?ray|ultrasound|chest|nodule|pulmonary|months)\b/i);
+        expect(body.length).toBeGreaterThan(20);
+      }
+      expect([template.audience, template.class, template.waApprovalStatus]).toEqual(["patient", "transactional", "not_submitted"]);
+    }
+    const reminder = notificationTemplates.imaging_appointment_reminder!;
+    expect(reminder.render.en(leaky)).toContain("X2608310001");
+    expect(reminder.render.en(leaky)).toMatch(/tomorrow/);
+    expect(reminder.expiresAt(leaky, OCCURRED_AT).toISOString()).toBe("2026-09-01T05:00:00.000Z");
+    const due = notificationTemplates.imaging_followup_due!;
+    expect(due.render.en(leaky)).toContain("28 Feb 2027");
+    expect(due.render.hi(leaky)).toMatch(DEVANAGARI);
+    expect(due.expiresAt(leaky, OCCURRED_AT).toISOString()).toBe(new Date(OCCURRED_AT.getTime() + 7 * 86_400_000).toISOString());
   });
 
   /**

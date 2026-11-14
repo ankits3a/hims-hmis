@@ -255,6 +255,19 @@ export type WireSlotProposal = { studyId: string; deviceResourceId: string; code
 export const fetchDeskProposal = (studyId: string) =>
   api<{ proposal: WireSlotProposal | null }>("GET", `/radiology/desk/studies/${studyId}/proposal`);
 
+/**
+ * #1085 — the desk's one-tap no-show writes the sweep's own reason for the same fact (`NO_SHOW_REASON` in
+ * `modules/radiology/automation.ts`), in English whatever the screen's language: it is the audit's word.
+ */
+export const NO_SHOW_REASON = "not arrived";
+
+/** #1085 `noShowsToRebook`: the last 30 days' no-shows nobody has booked again; a paid one is good until `goodUntil`. */
+export type WireNoShowToRebook = {
+  studyId: string; accessionNo: string; studyTypeCode: string; patientId: string; patientName: string;
+  encounterNo: string; missedAt: string; paid: boolean; goodUntil: string;
+};
+export const fetchNoShowsToRebook = () => api<{ rows: WireNoShowToRebook[] }>("GET", "/radiology/desk/no-shows");
+
 /** `deskVisitsToday`: the patient's OPD visits of today (IST), for the desk door. */
 export type WireDeskVisit = { encounterNo: string; serviceDate: string; status: string; visitType: string; openedAt: string };
 export const fetchDeskVisits = (patientId: string) =>

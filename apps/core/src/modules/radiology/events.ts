@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 import {
-  IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_KINDS, IMAGING_FOLLOWUP_SOURCES, IMAGING_MEDIA_KINDS,
+  IMAGING_ACTED_OUTCOMES, IMAGING_AUTOMATION_KINDS, IMAGING_COLLECTOR_KINDS, IMAGING_FOLLOWUP_SOURCES, IMAGING_MEDIA_KINDS,
 } from "../../kernel/db/schema/radiology";
 import { BEDSIDE_LOCATION_MAX_LENGTH } from "./kinds";
 
@@ -347,6 +347,23 @@ export const imagingReadingClaimed = defineEvent("imaging.reading_claimed", MODU
   studyId: id, readerId: id, previousReaderId: id.nullable(), tookOver: z.boolean(),
 }));
 
+/**
+ * #1085 — a morning-sweep automation was switched off or on, by whom (the event's actor) and why. The
+ * switch is the HOD's; the reason is the sentence the audit reads back.
+ */
+export const imagingAutomationSwitched = defineEvent("imaging.automation_switched", MODULE, z.object({
+  kind: z.enum(IMAGING_AUTOMATION_KINDS), enabled: z.boolean(), reason: z.string().min(3).max(400),
+}));
+
+/**
+ * #1085, ruling 0098 §3 — a paid no-show's invoice line moved to the rebooking of the same study within
+ * 30 days, so the rebooking is authorised by the original invoice and no second one is raised. One line
+ * still pays for one study: the no-show gives the line up in the same transaction. Ids only.
+ */
+export const imagingInvoiceCarried = defineEvent("imaging.invoice_carried", MODULE, z.object({
+  fromStudyId: id, toStudyId: id, invoiceLineId: id,
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -378,4 +395,6 @@ export const RADIOLOGY_EVENTS = [
   imagingOverreadRecorded,
   imagingReportPrinted,
   imagingReadingClaimed,
+  imagingAutomationSwitched,
+  imagingInvoiceCarried,
 ] as const;
