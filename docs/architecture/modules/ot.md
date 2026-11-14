@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ot/`
 
 - **Depends on modules:** `billing`, `materials`, `patients`, `roster`, `tariff`
 - **Used by modules:** `radiology`
-- **Kernel used:** `approvals`, `auth`, `config`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `config`, `consent`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `materialConsumed`, `patientMerged`
 
 ## Public API (`index.ts`), by declaring file
@@ -60,10 +60,8 @@ Source: `apps/core/src/modules/ot/`
   - types: `BackfillPhase`, `ChecklistPhase`
 - `consents.ts`
   - `CONSENT_KINDS`
-  - `consentEvidence(consent: ConsentEvidence, actor: Actor): Record<string, unknown>`
-  - `consentSchema`
   - `validateConsent(tx: Tx, caseId: string, raw: unknown, at: Date = new Date()): Promise<ConsentEvidence>`
-  - types: `ConsentEvidence`, `ConsentKind`
+  - types: `ConsentKind`
 - `consumers.ts`
   - `OT_IMPLANT_CONFIRMED_CONSUMER`
   - `OT_PATIENT_MERGED_CONSUMER`
@@ -117,10 +115,7 @@ Source: `apps/core/src/modules/ot/`
 - `events.ts`
   - `OT_EVENTS`
 - `gates.ts`
-  - `ADULT_AGE_YEARS`
   - `CLINICALLY_OVERRIDABLE_KINDS`
-  - `NPO_CLEAR_FLUIDS_HOURS`
-  - `NPO_SOLIDS_HOURS`
   - `TERMINAL_GATE_STATES`
   - `caseGates(exec: Db | Tx, caseId: string): Promise<{ id: string; kind: string; state: string; waivable: boolean }[]>`
   - `evaluateReadiness(tx: Tx, caseId: string): Promise<{ state: string; open: string[] }>`
@@ -136,6 +131,14 @@ Source: `apps/core/src/modules/ot/`
   - `explantImplant(tx: Tx, actor: Actor, input: { implantId: string; reason: string }): Promise<void>`
   - `implantsFor(exec: Db | Tx, caseId: string): Promise<ImplantRow[]>`
   - types: `DeployImplantInput`, `ImplantRow`
+- `kernel/consent/consent.ts`
+  - `ADULT_AGE_YEARS`
+  - `consentEvidence(consent: ConsentEvidence, actor: Actor): Record<string, unknown>`
+  - `consentSchema`
+  - types: `ConsentEvidence`
+- `kernel/consent/fasting.ts`
+  - `NPO_CLEAR_FLUIDS_HOURS`
+  - `NPO_SOLIDS_HOURS`
 - `kernel/db/schema/ot.ts`
   - `OT_DEFINITION_KIND_VALUES`
 - `kinds.ts`
