@@ -1,6 +1,6 @@
 ---
 issue: 1078
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging desk counter in two steps, with collect and check-in done on the server (#1078)
