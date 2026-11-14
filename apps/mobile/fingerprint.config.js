@@ -16,5 +16,9 @@
 /** @type {import('@expo/fingerprint').Config} */
 module.exports = {
   sourceSkips: ["ExpoConfigVersions", "ExpoConfigExtraSection"],
-  ignorePaths: ["node_modules/**/*gradle-plugin*/**/build/**", "node_modules/**/.gradle/**", "node_modules/**/.kotlin/**"],
+  // The app's own native module (modules/install-source, spec #1058) gets the same treatment for its Gradle output.
+  ignorePaths: [
+    "node_modules/**/*gradle-plugin*/**/build/**", "node_modules/**/.gradle/**", "node_modules/**/.kotlin/**",
+    "modules/**/android/build/**", "modules/**/android/.gradle/**", "modules/**/android/.kotlin/**",
+  ],
 };

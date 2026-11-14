@@ -27,7 +27,7 @@ function introspect(appEnv: string): Introspected {
   return JSON.parse(out.slice(out.indexOf("{"))) as Introspected;
 }
 
-describe.each([["production", "HMIS Scan"], ["preview", "HMIS Scan (staging)"]])("the %s build's scan widget", (env, label) => {
+describe.each([["production", "CRKMCH Scan"], ["preview", "CRKMCH Scan (staging)"]])("the %s build's scan widget", (env, label) => {
   let c: Introspected;
   beforeAll(() => { c = introspect(env); }, 120_000);
 

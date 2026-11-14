@@ -41,6 +41,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+# Gradle output of the app's own native module (modules/install-source)
+/modules/*/android/build/
+/modules/*/android/.gradle/
 
 # scaffold-only editor settings
 .claude/

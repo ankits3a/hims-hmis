@@ -17,7 +17,7 @@ const API_BASE: Record<typeof ENV, string> = {
   production: "https://hmis.crkmch.com/api",
 };
 
-/** Where the installed app asks whether a newer build exists (src/update.ts). No app store: the hospital's own download folder. */
+/** Where an app from the hospital's download link asks whether a newer build exists (src/update.ts). A Google Play or App Store phone never reads it. */
 const UPDATE_FEED: Record<typeof ENV, string> = {
   development: process.env.EXPO_PUBLIC_UPDATE_FEED ?? "https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.json",
   preview: "https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.json",
@@ -55,8 +55,8 @@ const VERSION = "0.23.0";
  * ITMS-90683 (Apple, 2026-11-02): expo-location's code can reach Core Motion, so Apple refuses a build with
  * no NSMotionUsageDescription even though the app never asks. The app reads no motion data (decision 0062).
  */
-export const MOTION_SENTENCE = "HMIS does not read motion or fitness data. This sentence is here because a location component in the app can.";
-export const LOCATION_SENTENCE = "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.";
+export const MOTION_SENTENCE = "CRKMCH does not read motion or fitness data. This sentence is here because a location component in the app can.";
+export const LOCATION_SENTENCE = "CRKMCH checks your location once when you mark attendance, to confirm you are on hospital premises.";
 
 /**
  * M6b — NOTIFICATIONS ARE IN A BUILD ONLY WHEN THE HOSPITAL'S FIREBASE PROJECT IS.
@@ -75,12 +75,14 @@ const VERSION_CODE = Number(process.env.HMIS_VERSION_CODE ?? "1");
  * through the system picker, which needs none — spec #934), no location, no tracking, no background
  * mode. Each sentence is handed to the config plugin that owns its key.
  */
-const IOS_CAMERA = "HMIS uses the camera to photograph prescription slips and scan patient codes.";
-const IOS_MICROPHONE = "HMIS uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.";
-const IOS_FACE_ID = "HMIS uses Face ID to unlock the app.";
+const IOS_CAMERA = "CRKMCH uses the camera to photograph prescription slips and scan patient codes.";
+const IOS_MICROPHONE = "CRKMCH uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.";
+const IOS_FACE_ID = "CRKMCH uses Face ID to unlock the app.";
 
 const config: ExpoConfig = {
-  name: ENV === "production" ? "HMIS" : "HMIS Staging",
+  // The name under the icon, in the phone's settings and on both stores (owner 2026-11-14, spec #1058). "HMIS"
+  // stays the name of the hospital system the app signs in to; the app ids below never change.
+  name: ENV === "production" ? "CRKMCH" : "CRKMCH Staging",
   // `slug` must match the EAS project the owner created (projectId below); the stray app.json
   // that held this id was written by `eas init` run from /opt/hmis, whose package name is "hmis".
   slug: "hmis",
@@ -105,8 +107,9 @@ const config: ExpoConfig = {
   userInterfaceStyle: "light",
   android: {
     package: ENV === "production" ? "com.crkmch.hmis" : "com.crkmch.hmis.staging",
-    // Sideloaded (no Play Store, owner 2026-10-05): a phone only accepts an update whose versionCode
-    // is HIGHER than the installed one. scripts/build-apk.sh passes a counter that only goes up.
+    // The download link's APK and the Google Play bundle are ONE app (decision 0095): same id, same key,
+    // same counter. A phone only accepts an update whose versionCode is HIGHER than the installed one,
+    // so scripts/build-apk.sh passes a counter that only goes up, shared by both.
     versionCode: VERSION_CODE,
     adaptiveIcon: {
       backgroundColor: "#FFFFFF",
@@ -162,9 +165,9 @@ const config: ExpoConfig = {
     // keys repeat expo-camera's and expo-audio's own sentences: `false` there would BLOCK the camera and the
     // microphone the scan door and the spoken note need (the plugin blocks a permission set to `false`).
     ["expo-image-picker", { photosPermission: false, cameraPermission: IOS_CAMERA, microphonePermission: IOS_MICROPHONE }],
-    // Decision 0064 (E1.1) — the "HMIS Scan" home-screen widget, Android only: one tap opens hmis://scan.
+    // Decision 0064 (E1.1) — the "CRKMCH Scan" home-screen widget, Android only: one tap opens hmis://scan.
     // It draws a fixed icon and runs no JavaScript, so it never shows a patient (plugins/with-scan-widget.js).
-    ["./plugins/with-scan-widget", { label: ENV === "production" ? "HMIS Scan" : "HMIS Scan (staging)" }],
+    ["./plugins/with-scan-widget", { label: ENV === "production" ? "CRKMCH Scan" : "CRKMCH Scan (staging)" }],
   ],
   extra: {
     apiBase: API_BASE[ENV],
