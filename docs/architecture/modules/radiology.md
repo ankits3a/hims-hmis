@@ -111,12 +111,15 @@ Source: `apps/core/src/modules/radiology/`
   - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
 - `desk.ts`
   - `DESK_COLLECT_ROUTE`
+  - `DESK_WALK_IN_ROUTE`
   - `arriveAtDesk(db: Db, actor: Actor, input: { encounterNo: string; now?: Date }): Promise<DeskArrival>`
   - `collectAtDesk(db: Db, actor: Actor, input: DeskCollectInput, idempotencyKey: string, now: Date = new Date()): Promise<DeskCollectResult>`
   - `deskVisitsToday(db: Db, actor: Actor, input: { patientId: string; now?: Date }): Promise<DeskVisit[]>`
+  - `deskWalkInView(db: Db, actor: Actor, input: { now?: Date } = {}): Promise<DeskWalkInView>`
+  - `placeWalkInOrder(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: DeskWalkInOrderInput, idemKey?: string, now: Date = new Date…`
   - `proposeSlot(db: Db, actor: Actor, input: { studyId: string; now?: Date }): Promise<SlotProposal | null>`
   - `walkInNow(db: Db, actor: Actor, input: { studyId: string; now?: Date }): Promise<DeskWalkIn>`
-  - types: `DeskArrival`, `DeskCollectInput`, `DeskCollectResult`, `DeskTender`, `DeskVisit`, `DeskWalkIn`
+  - types: `DeskArrival`, `DeskCollectInput`, `DeskCollectResult`, `DeskTender`, `DeskVisit`, `DeskWalkIn`, `DeskWalkInOrderInput`, `DeskWalkInOrderResult`, `DeskWalkInView`
 - `devices.ts`
   - `imagingDevices(db: Db, onDate: string, opts: { includeRetired?: boolean } = {}): Promise<ImagingDeviceRow[]>`
   - types: `ImagingDeviceRow`
