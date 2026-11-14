@@ -1,6 +1,6 @@
 ---
 issue: 1065
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Daily owner exception digest for the pharmacy (#1065)
@@ -36,3 +36,22 @@ the pharmacy software study of 2026-11-14.
 - **D4** The page sorts by rupees and totals each kind; without `pharmacy.exceptions.view` it is refused.
 - **D5** At 08:00 IST the owner gets one notification with the count and total, opening that day's page; a day with
   no exceptions sends none.
+
+## Built (2026-11-14)
+
+- **Read model:** `apps/core/src/modules/pharmacy/exceptions.ts` `pharmacyExceptionsOn(db, day)`, computed on read
+  (no table, no migration). Kinds: `refund` (live credit notes on a pharmacy bill, and pharmacy bills voided as
+  entered in error), `discount` (granted in-charge/owner discount approvals), `stock_adjustment` (one row per posted
+  line), `write_off`, `mrp_revision` (`batch.mrp_revised`; rupees = the change per pack), `leakage` (the auditor's
+  mismatches at both counters, and consumption outside a sale at the batch's cost), `cash` (the last blind count of
+  each drawer of a pharmacy-role cashier that day, short or over), `purchase_price` (#1061's analysis rows),
+  `supplier_credit`, `downtime` (paper sales by entry time). Each row: kind, paise (a magnitude), who (the approver
+  where an approval let it through), at (null for a leakage mismatch), what, link.
+- **Page:** `GET /pharmacy/office/reports/exceptions?day=` (right `pharmacy.exceptions.view`, owner only); web
+  Reports → Exceptions, `/pharmacy/office?view=reports&page=exceptions&day=YYYY-MM-DD`, yesterday by default
+  (`apps/web/src/screens/pharmacy-office/exceptions.tsx`).
+- **Digest:** worker job `sendPharmacyExceptionDigest`, `dailyIst("08:00")`: one bell row per holder of the owner
+  role (kind `pharmacy_exception_digest`, ref `pharmacy_exceptions_day` = the day, key `pharmacy_exceptions:<day>`,
+  so re-runs send nothing); `alert.raised` carries two integers (`figures`) and the phone relay says "Pharmacy: 7
+  exceptions yesterday, ₹3,240" (Hindi too) under the `reminder` switch, link `pharmacyExceptions`; the phone app
+  opens the web page. The bell row opens that day's page.
