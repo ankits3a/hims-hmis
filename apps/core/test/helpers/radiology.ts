@@ -360,6 +360,8 @@ export async function startStudyOnMachine(
     identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
     pregnancy_screen: { declared: true, lmpDate: new Date(opts.now.getTime() - 10 * 86_400_000).toISOString() },
     laterality_confirm: { patientStated: "na" },
+    /** #1081 — an MRI study walks the same path: a negative four-question screen. */
+    mri_safety: { pacemaker: false, clips: false, cochlear: false, metalFb: false },
   };
   for (const kind of checked.gates) {
     const gate = await requireStudyGate(db, study.studyId, kind);
@@ -389,6 +391,8 @@ export async function acquireStudy(
     identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
     pregnancy_screen: { declared: true, lmpDate: new Date(opts.now.getTime() - 10 * 86_400_000).toISOString() },
     laterality_confirm: { patientStated: "na" },
+    /** #1081 — an MRI study walks the same path: a negative four-question screen. */
+    mri_safety: { pacemaker: false, clips: false, cochlear: false, metalFb: false },
   };
   for (const kind of checked.gates) {
     const gate = await requireStudyGate(db, study.studyId, kind);
