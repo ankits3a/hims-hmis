@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Build a signed, sideloadable Android APK of the staff app ON THIS SERVER — no expo.dev cloud
-# (owner 2026-10-05: no Play Store / App Store, ever). See BUILDING.md.
+# Build a signed Android app of the staff app ON THIS SERVER — no expo.dev cloud. See BUILDING.md.
 #
-#   apps/mobile/scripts/build-apk.sh staging      # talks to stagehmis.crkmch.com, id com.crkmch.hmis.staging
-#   apps/mobile/scripts/build-apk.sh production   # talks to hmis.crkmch.com,      id com.crkmch.hmis
+#   apps/mobile/scripts/build-apk.sh staging            # APK for the download link, id com.crkmch.hmis.staging
+#   apps/mobile/scripts/build-apk.sh production         # APK for the download link, id com.crkmch.hmis
+#   apps/mobile/scripts/build-apk.sh production --play  # the SAME app as a bundle (AAB) for Google Play
+#
+# GOOGLE PLAY (owner 2026-11-14, decision 0095, spec #1058). The Play bundle is built from the same tree,
+# with the same app id and the same versionCode counter as the APK, so the two are one app: a phone that
+# has the APK updates from Play in place (Play App Signing holds our production key). The bundle is
+# signed with the separate UPLOAD key, is checked against what Play refuses (scripts/play-checks.js), and
+# lands in a private folder — never the public download folder, and no feed or link names it.
 #
 # Production runs on this same box, so the build is capped (3 GB heap, 2 workers, no daemon), runs
 # at the lowest CPU/IO priority, and holds the test lock so it never overlaps a jest/vitest pool.
@@ -13,7 +19,15 @@ ENV_NAME="${1:-}"
 case "$ENV_NAME" in
   staging) APP_ENV=preview ;;
   production) APP_ENV=production ;;
-  *) echo "usage: $0 <staging|production>" >&2; exit 2 ;;
+  *) echo "usage: $0 <staging|production> [--play]" >&2; exit 2 ;;
+esac
+FORM=apk
+case "${2:-}" in
+  "") ;;
+  --play)
+    [ "$ENV_NAME" = production ] || { echo "only the production app goes to Google Play; staging stays on its download link" >&2; exit 2; }
+    FORM=aab ;;
+  *) echo "usage: $0 <staging|production> [--play]" >&2; exit 2 ;;
 esac
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,23 +39,29 @@ case "$ENV_NAME" in
   production) OUT_DIR=/opt/hmis-context/mobile-apk-prod ;;
   *) OUT_DIR=/opt/hmis-context/mobile-apk ;;
 esac
+# The Play bundle: mounted by no caddy, named by no feed. The owner uploads it to Play Console by hand.
+[ "$FORM" = apk ] || OUT_DIR=/opt/hmis-context/mobile-aab-prod
 LOCK=/opt/hmis-lanes/.orchestrator/bin/test-lock.sh
 export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
 export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 
 ENV_FILE="$KEY_DIR/hmis-$ENV_NAME.env"
-[ -r "$ENV_FILE" ] || { echo "no signing key for $ENV_NAME at $ENV_FILE — see BUILDING.md" >&2; exit 1; }
+# Play signs what phones install with OUR production key (Play App Signing); we sign the bundle with the upload key.
+[ "$FORM" = apk ] || ENV_FILE="$KEY_DIR/hmis-$ENV_NAME-upload.env"
+[ -r "$ENV_FILE" ] || { echo "no signing key for $ENV_NAME ($FORM) at $ENV_FILE — see BUILDING.md" >&2; exit 1; }
 # shellcheck disable=SC1090
 source "$ENV_FILE"   # HMIS_KEYSTORE, HMIS_KEY_ALIAS, HMIS_STORE_PASSWORD, HMIS_KEY_PASSWORD — never echoed
 
-# versionCode only ever goes up, per app id, or a phone refuses the update.
+# versionCode only ever goes up, per app id, or a phone refuses the update. ONE counter for the APK and
+# the Play bundle: they are the same app, and Play refuses a versionCode it has seen.
 COUNTER="$KEY_DIR/versioncode-$ENV_NAME"
 VC=$(( $(cat "$COUNTER" 2>/dev/null || echo 0) + 1 ))
 VERSION=$(cd "$APP_DIR" && APP_ENV=$APP_ENV npx expo config --json 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).version))')
 SHA=$(git -C "$APP_DIR" rev-parse --short=8 HEAD)
 DIRTY=$(git -C "$APP_DIR" status --porcelain -- . | grep -q . && echo "-dirty" || true)
-NAME="hmis-staff-$ENV_NAME-$VERSION-vc$VC-$SHA$DIRTY.apk"
+NAME="hmis-staff-$ENV_NAME-$VERSION-vc$VC-$SHA$DIRTY.$FORM"
+case "$FORM" in apk) GRADLE_TASK=assembleRelease ;; aab) GRADLE_TASK=bundleRelease ;; esac
 
 # NOTIFICATIONS (plan M6b). A build carries Firebase only when the owner's `google-services.json` is
 # on this host AND names the app id being built — Gradle's google-services plugin fails the whole
@@ -102,12 +122,52 @@ build() {
     echo "android.injected.signing.key.password=$HMIS_KEY_PASSWORD"
   } >> "$props"
   trap 'sed -i "/^android.injected.signing/d" "$APP_DIR/android/gradle.properties" 2>/dev/null || true' EXIT
-  (cd android && EXPO_UPDATES_FINGERPRINT_OVERRIDE="$RUNTIME_WANTED" APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD nice -n 19 ionice -c3 ./gradlew assembleRelease --no-daemon --max-workers=2)
+  (cd android && EXPO_UPDATES_FINGERPRINT_OVERRIDE="$RUNTIME_WANTED" APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD nice -n 19 ionice -c3 ./gradlew "$GRADLE_TASK" --no-daemon --max-workers=2)
 }
 
 export -f build
-export APP_DIR APP_ENV VC HMIS_PUSH_IN_BUILD RUNTIME_WANTED HMIS_KEYSTORE HMIS_KEY_ALIAS HMIS_STORE_PASSWORD HMIS_KEY_PASSWORD
+
+# THE GOOGLE PLAY BUNDLE (spec #1058). aapt cannot read a bundle, so the same promises the APK checks make
+# are read from the manifest Gradle merged for the bundle; then scripts/play-checks.js refuses what Play
+# refuses. Nothing is copied anywhere before every check has passed.
+play_bundle() {
+  local built="$APP_DIR/android/app/build/outputs/bundle/release/app-release.aab" manifest lib runtime
+  [ -s "$built" ] || { echo "REFUSED: Gradle wrote no bundle at $built" >&2; exit 1; }
+  manifest="$(find "$APP_DIR/android/app/build/intermediates" -path '*bundle_manifest*release*' -name AndroidManifest.xml 2>/dev/null | head -1)"
+  [ -n "$manifest" ] || manifest="$(find "$APP_DIR/android/app/build/intermediates" -path '*merged_manifest*release*' -name AndroidManifest.xml 2>/dev/null | head -1)"
+  [ -r "$manifest" ] || { echo "REFUSED: no merged manifest for the release bundle" >&2; exit 1; }
+  grep -q 'android.permission.RECORD_AUDIO' "$manifest" \
+    || { echo "REFUSED: the bundle does not declare android.permission.RECORD_AUDIO (the expo-audio plugin was not applied)" >&2; exit 1; }
+  if [ "$HMIS_PUSH_IN_BUILD" = 1 ]; then
+    grep -q 'android.permission.POST_NOTIFICATIONS' "$manifest" || { echo "REFUSED: the bundle does not declare android.permission.POST_NOTIFICATIONS" >&2; exit 1; }
+    grep -q 'com.google.firebase.MESSAGING_EVENT' "$manifest" || { echo "REFUSED: the bundle has no Firebase messaging service" >&2; exit 1; }
+  fi
+  lib="$(mktemp -d)"
+  trap 'rm -rf "$lib"' RETURN
+  unzip -q -o "$built" 'base/lib/*' -d "$lib" || true   # none at all is refused by play-checks.js, with its reason
+  mkdir -p "$lib/base/lib"
+  node "$APP_DIR/scripts/play-checks.js" "$manifest" "$lib/base/lib"
+  runtime="$(unzip -p "$built" base/assets/fingerprint 2>/dev/null || true)"
+  if [ -r "$APP_DIR/ota/certificate-$ENV_NAME.pem" ]; then
+    [ "$runtime" = "$RUNTIME_WANTED" ] \
+      || { echo "REFUSED: the bundle's native fingerprint ('$runtime') is not this commit's ($RUNTIME_WANTED) — over-the-air updates would never reach it" >&2; exit 1; }
+    echo "over-the-air updates: IN this bundle (runtime $runtime, the same as this commit's APK)"
+  fi
+  "$JAVA_HOME/bin/jarsigner" -verify "$built" | grep -q "jar verified" || { echo "REFUSED: the bundle is not signed" >&2; exit 1; }
+  mkdir -p "$OUT_DIR"
+  chmod 700 "$OUT_DIR"
+  cp "$built" "$OUT_DIR/$NAME"
+  echo "$VC" > "$COUNTER"
+  (cd "$OUT_DIR" && sha256sum "$NAME" > "$NAME.sha256")
+  echo "built $OUT_DIR/$NAME (versionCode $VC) — upload it in Play Console (BUILDING.md, Google Play)"
+}
+export APP_DIR APP_ENV VC GRADLE_TASK HMIS_PUSH_IN_BUILD RUNTIME_WANTED HMIS_KEYSTORE HMIS_KEY_ALIAS HMIS_STORE_PASSWORD HMIS_KEY_PASSWORD
 "$LOCK" run mobile-apk bash -c build
+
+if [ "$FORM" = aab ]; then
+  play_bundle
+  exit 0
+fi
 
 BUILT="$APP_DIR/android/app/build/outputs/apk/release/app-release.apk"
 # A BUILD THAT SAYS IT CARRIES NOTIFICATIONS MUST BE ABLE TO SHOW ONE (owner's phone, 2026-10-06).

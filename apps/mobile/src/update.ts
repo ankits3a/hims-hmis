@@ -1,10 +1,11 @@
 import { Platform } from "react-native";
 import { APP_VERSION_CODE, UPDATE_FEED } from "./config";
+import { installedFromPlay } from "./install-source";
 
 /**
- * IS THERE A NEWER BUILD? (owner 2026-10-05: no Play Store and no App Store, ever.)
+ * IS THERE A NEWER BUILD? For an Android phone that has the app from the hospital's download link.
  *
- * Without a store nothing tells a phone that a newer APK exists, so the app asks: a small JSON the
+ * Without a store nothing tells that phone that a newer APK exists, so the app asks: a small JSON the
  * build script writes beside the APKs (`scripts/build-apk.sh` → `hmis-staff-<env>-latest.json`).
  * It carries a version, a file name and a checksum — never anything about a patient — and the app
  * only ever OFFERS the download: Android installs it, after the person taps the file, and only
@@ -13,21 +14,22 @@ import { APP_VERSION_CODE, UPDATE_FEED } from "./config";
  * A check that cannot be made (no signal, the feed not served yet) is "unknown", and unknown says
  * nothing on start-up. It is never an error on a clinical screen.
  *
- * iPHONE (owner 2026-10-08): the iPhone app comes from the App Store, and the App Store updates it.
- * An iPhone cannot install an APK, so on iOS the feed is never read, nothing is offered and the
- * "Check for update" rows are not drawn (`updatesFromFeed`).
+ * A STORE KEEPS THE APP CURRENT on the iPhone (owner 2026-10-08, App Store) and on an Android phone that
+ * Google Play installed (owner 2026-11-14, spec #1058, decision 0095: Play bans an app from updating itself
+ * any other way). There the feed is never read, nothing is offered and the "Check for update" rows are
+ * not drawn (`updatesFromFeed`).
  */
 export type LatestBuild = { versionCode: number; versionName: string; apk: string; sha256: string; builtAt?: string; notes?: string };
 export type UpdateAnswer =
   | { kind: "update"; latest: LatestBuild; url: string }
   | { kind: "latest" }
   | { kind: "unknown" }
-  /** iPhone: the App Store keeps the app current; the app asks nobody. */
+  /** iPhone, or an Android phone Google Play installed: the store keeps the app current; the app asks nobody. */
   | { kind: "store" };
 
-/** Does THIS phone learn of a new build from the hospital's own folder? Android and the browser preview: yes. iPhone: no. */
+/** Does THIS phone learn of a new build from the hospital's own folder? Android from the download link and the browser preview: yes. iPhone and Google Play: no. */
 export function updatesFromFeed(): boolean {
-  return Platform.OS !== "ios";
+  return Platform.OS !== "ios" && !installedFromPlay();
 }
 
 /** The feed is read as untrusted text: a body that is not exactly this shape is "unknown", never half-believed. */
