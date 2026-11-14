@@ -1,6 +1,6 @@
 ---
 issue: 1082
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging copilot: 14 tools, Hindi and Hinglish cues, four confirmed acts (#1082)
