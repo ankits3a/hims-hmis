@@ -65,11 +65,29 @@ export type WireInvoiceHeader = {
   vendorId: string | null; invoiceNo: string; invoiceDate: string; purchaseOrderId: string | null; storeResourceId: string | null;
   rateIncludesGst: boolean;
 };
-export type WireInvoiceRow = Omit<WireGridRow, "rack" | "supplier">;
+/** #1061 — the reasons an amber price is captured with (`other` carries words). */
+export const PRICE_REASONS = ["mrp_revised", "scheme_changed", "urgent_buy", "other"] as const;
+export type PriceReasonCode = (typeof PRICE_REASONS)[number];
+export type WirePriceReceipt = { grnNo: string; postedOn: string; vendorId: string; vendorName: string; paisePerBase: number };
+/**
+ * #1061 — a paid line against the item's last paid receipts (any supplier) and this supplier's contract, per base unit.
+ * `amber`: more than 2% above one of them (the capture needs a reason); `first`: no receipt and no contract on record.
+ */
+export type WirePriceCheck = {
+  status: "ok" | "amber" | "first";
+  refKind: "last_receipt" | "contract" | null; refPaisePerBase: number | null; riseBps: number | null;
+  receipts: WirePriceReceipt[];
+  contract: { vendorId: string; vendorName: string; uom: string; multiplier: number; ratePaise: number; paisePerBase: number } | null;
+  cheaper: { vendorId: string; vendorName: string; paisePerBase: number } | null;
+};
+export type WireInvoiceRow = Omit<WireGridRow, "rack" | "supplier"> & { priceReason?: PriceReasonCode; priceReasonText?: string };
 export type WireInvoiceCheck = {
-  headerReasons: string[]; rows: WireStockCheck["rows"]; refusals: number; units: number; newUoms: number; costPaise: number;
+  headerReasons: string[]; rows: (WireStockCheck["rows"][number] & { priceCheck?: WirePriceCheck | null })[];
+  refusals: number; units: number; newUoms: number; costPaise: number;
   duplicateOf: { grnId: string; grnNo: string } | null;
   authority: WireStockCheck["authority"];
+  /** #1061 — the supplier's accepted credit notes not yet set off; absent from an older server. */
+  unusedCreditPaise?: number;
 };
 export type WireInvoiceCapture = { grnId: string; grnNo: string; lines: number; uomsAdded: number };
 

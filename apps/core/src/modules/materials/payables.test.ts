@@ -120,7 +120,12 @@ describe("supplier bills, payables and payment runs (parity P3)", () => {
     const { grnId } = await withTx(db, (tx) => captureGrn(tx, keeper.actor, {
       vendorId: v, source: "challan", storeResourceId: store, challanNo: `CH-${String(Math.random()).slice(2, 8)}`, challanDate: "2026-09-24",
       invoiceNo: "INV/26-27/0042", purchaseOrderId: poId,
-      lines: [{ itemId, uom: "strip", qtyInUom: strips, batchNo: `B-${String(Math.random()).slice(2, 6)}`, expiryDate: "2028-06-30", unitCostPaise: ratePerStrip / 10 }],
+      // #1061 — the cases buy the same item at very different rates; a line above the last receipt needs a reason
+      // (ignored on any other line). The price check itself is spec #1061's (pharmacy/acceptance/grn-price-check-1061).
+      lines: [{
+        itemId, uom: "strip", qtyInUom: strips, batchNo: `B-${String(Math.random()).slice(2, 6)}`, expiryDate: "2028-06-30", unitCostPaise: ratePerStrip / 10,
+        priceReason: { code: "other", text: "test case rate" },
+      }],
       now: at(10),
     }));
     await withTx(db, (tx) => runGateQc(tx, pharmacist.actor, grnId));

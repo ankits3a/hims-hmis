@@ -14,12 +14,14 @@ import { ItemEditPanel } from "../materials-item-edit";
 import { OpeningStockSheet } from "../materials-grn-opening";
 import { NewDrugSheet } from "./new-drug-sheet";
 import { Sheet } from "./sheet";
+import { PriceCheckNote, priceAnswered } from "./price-check-note";
 import { InvoiceHeaderForm } from "./stock-entry-invoice";
 import { RecountPanel } from "./stock-entry-recount";
 import type { ControlFile } from "./stock-entry-recount";
 import type { WireOpeningCapture, WireOpeningCheck } from "../../lib/materials-api";
 import type {
-  PackType, WireGridRow, WireInvoiceCapture, WireInvoiceCheck, WireInvoiceHeader, WireInvoiceRow, WireStockCheck, WireStockItem,
+  PackType, PriceReasonCode, WireGridRow, WireInvoiceCapture, WireInvoiceCheck, WireInvoiceHeader, WireInvoiceRow, WirePriceCheck, WireStockCheck,
+  WireStockItem,
 } from "../../lib/stock-entry-api";
 import "./stock-entry.css";
 
@@ -69,13 +71,15 @@ export type GridRow = {
   /** #1033: sealed boxes and packs in one box; `packs` is then the loose ones. */
   boxes: string; perBox: string;
   mrp: string; rate: string; discount: string; rack: string; supplier: string;
+  /** #1061 — the answer to an amber price (invoice mode): a reason code, and the words for "other". */
+  priceReason: string; priceReasonText: string;
 };
 
 let seq = 0;
 const newKey = (): string => { seq += 1; return `r${String(Date.now())}-${String(seq)}`; };
 export const blankRow = (): GridRow => ({
   key: newKey(), item: null, query: "", packType: "tablet_strip", packSize: "", batch: "", expiry: "", packs: "", freePacks: "", boxes: "", perBox: "",
-  mrp: "", rate: "", discount: "", rack: "", supplier: "",
+  mrp: "", rate: "", discount: "", rack: "", supplier: "", priceReason: "", priceReasonText: "",
 });
 /**
  * Walk 2026-11-13 — a brand just picked is not yet a row anybody has typed: its refusals ("the batch number is
@@ -302,15 +306,26 @@ export function StockEntryView(): React.ReactElement {
     return i < 0 || judged === null ? undefined : judged.rows.find((x) => x.line === i + 1);
   };
   const lacking = judged?.authority.filter((a) => !a.held && a.why !== "racks") ?? [];
+  // #1061 — an amber price waits for its reason (the server refuses the capture without one).
+  const priceOf = (key: string): WirePriceCheck | null => {
+    const i = sendable.findIndex((r) => r.key === key);
+    return i < 0 || invFresh === null ? null : invFresh.rows.find((x) => x.line === i + 1)?.priceCheck ?? null;
+  };
+  const unansweredPrices = invoice ? sendable.filter((r) => priceOf(r.key)?.status === "amber" && !priceAnswered(r.priceReason, r.priceReasonText)) : [];
   const canCapture = invoice
     ? invFresh !== null && invFresh.refusals === 0 && invFresh.headerReasons.length === 0 && lacking.length === 0 && unpicked.length === 0 && !busy
+      && unansweredPrices.length === 0
     : fresh !== null && fresh.refusals === 0 && lacking.length === 0 && unpicked.length === 0 && !busy && fresh.grns.some((g) => g.state === "new");
 
   const capture = async (): Promise<void> => {
     setBusy(true); setError(null);
     try {
       if (invoice) {
-        setInvResult(await captureInvoiceRows(header, invoicePayload));
+        // #1061 — the reasons travel with the capture only; the check is judged without them.
+        setInvResult(await captureInvoiceRows(header, sendable.map((r) => ({
+          ...toInvoiceWire(r),
+          ...(r.priceReason === "" ? {} : { priceReason: r.priceReason as PriceReasonCode, priceReasonText: r.priceReasonText.trim() }),
+        }))));
         setRowsRaw([blankRow()]);
         setInvCheck(null);
         // The store and the rate basis stay for the next invoice; the rest is this invoice's own.
@@ -401,6 +416,7 @@ export function StockEntryView(): React.ReactElement {
           onChange={(p) => { setInvResult(null); if (p.rateIncludesGst !== undefined) keepRateBasis(p.rateIncludesGst); setHeader((h) => ({ ...h, ...p })); }}
           suppliers={suppliers.data ?? []} stores={stores.data ?? []} orders={orders.isError ? null : orders.data ?? []}
           reasons={invFresh?.headerReasons ?? []}
+          unusedCreditPaise={invFresh?.unusedCreditPaise ?? 0}
         />
       )}
 
@@ -467,6 +483,7 @@ export function StockEntryView(): React.ReactElement {
               near={judgedRow(r.key)?.near === true && r.item !== null}
               estimate={!invoice && judgedRow(r.key)?.estimatedCost === true ? judgedRow(r.key)!.costPerBasePaise : null}
               mode={mode} rateIncludesGst={invoice && header.rateIncludesGst}
+              priceCheck={invoice && r.item !== null ? priceOf(r.key) : null}
               mayCreate={mayCreate} mayPutOnSale={mayPutOnSale}
               onChange={(p) => update(r.key, p)} onRemove={() => remove(r.key)} onPick={(item) => pick(r.key, item)}
               onPutOnSale={(item) => void putOnSale(r.key, item)}
@@ -541,8 +558,10 @@ export function StockEntryView(): React.ReactElement {
   );
 }
 
-function RowView({ row, index, last, reasons, near, estimate, mode, rateIncludesGst, mayCreate, mayPutOnSale, onChange, onRemove, onPick, onPutOnSale, onNewDrug, onEdit }: {
+function RowView({ row, index, last, reasons, near, estimate, mode, rateIncludesGst, priceCheck, mayCreate, mayPutOnSale, onChange, onRemove, onPick, onPutOnSale, onNewDrug, onEdit }: {
   row: GridRow; index: number; last: boolean; reasons: string[]; near: boolean; mayCreate: boolean; mayPutOnSale: boolean;
+  /** #1061 — the invoice mode's price check of this row, or null. */
+  priceCheck: WirePriceCheck | null;
   /** #1047 / 0093 — the server's estimated cost per unit for a row with no rate (opening mode), or null. */
   estimate: number | null; mode: EntryMode; rateIncludesGst: boolean;
   onChange: (p: Partial<GridRow>) => void; onRemove: () => void; onPick: (item: WireStockItem) => void;
@@ -627,6 +646,16 @@ function RowView({ row, index, last, reasons, near, estimate, mode, rateIncludes
             {reasons.length > 0
               ? <span className="text-red-700" data-testid={`se-reasons-${String(index)}`}>{reasons.join(" · ")}</span>
               : <span className="text-amber-800">{t("stockEntry.near")}</span>}
+          </td>
+        </tr>
+      )}
+      {priceCheck !== null && reasons.length === 0 && (priceCheck.status === "amber" || priceCheck.status === "first") && (
+        <tr className="se-why">
+          <td colSpan={mode === "opening" ? 15 : 13}>
+            <PriceCheckNote
+              check={priceCheck} index={index} reason={row.priceReason} reasonText={row.priceReasonText}
+              onReason={(p) => onChange({ ...(p.priceReason === undefined ? {} : { priceReason: p.priceReason }), ...(p.priceReasonText === undefined ? {} : { priceReasonText: p.priceReasonText }) })}
+            />
           </td>
         </tr>
       )}

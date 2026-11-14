@@ -11,9 +11,10 @@ import { applyReceiptToPo, assertReceivableAgainstPo } from "./purchase-orders";
 import { DEEMED_SUPPLY_DAYS, EXPIRY_IS_A_MONTH_CLASSES } from "./config";
 import { MRP_REVISION_APPROVAL_TYPE, NEAR_EXPIRY_APPROVAL_TYPE } from "./approval-types";
 import { MaterialsError } from "./errors";
-import { batchMrpRevised, grnCancelled, grnLineRejected, grnReceived, grnRejected } from "./events";
+import { batchMrpRevised, grnCancelled, grnLineRejected, grnPriceAboveReference, grnReceived, grnRejected } from "./events";
 import { assertNotMerged, effectiveRegulation, itemUomRows, itemsByIds } from "./items";
 import { getBatch, postMovements } from "./ledger";
+import { PRICE_CHECKED_SOURCES, isSupplierCode, priceCheckLines, reasonAnswers } from "./price-check";
 import { qcLine } from "./qc";
 import { loadMaterialsSettings } from "./settings";
 import { requireStore } from "./stores";
@@ -21,6 +22,7 @@ import { assertVendorPurchasable, hasValidDocument } from "./vendors";
 import { packPriceOf, toBase } from "./uom";
 import type { PackPrice } from "./uom";
 import type { QcContext, RuleCode } from "./qc";
+import type { PriceCheck, PriceReason } from "./price-check";
 import type { Actor } from "@hmis/contracts";
 import type { Custody } from "./controlled";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -207,6 +209,11 @@ export type CaptureLine = {
   tempLogRef?: string | null;
   /** #1047 / 0093 — the cost is an estimate (an opening-stock row with no rate), carried to the batch it creates. */
   estimatedCost?: boolean;
+  /**
+   * #1061 / 0096 — why a paid line is priced MORE than 2% above the item's last paid receipt or this supplier's
+   * contract rate. Required for such a line (`price_reason_required` without it), ignored on any other.
+   */
+  priceReason?: PriceReason | null;
 };
 
 /**
@@ -245,7 +252,7 @@ export async function captureGrn(
   }
   // The vendor must be purchasable BEFORE anything is written: a blacklisted supplier's delivery is
   // refused at the gate, not discovered at post.
-  await assertVendorPurchasable(tx, input.vendorId);
+  const vendor = await assertVendorPurchasable(tx, input.vendorId);
   await requireStore(tx, input.storeResourceId);
   // PHARMACY P6 — an item merged into another is never received: the survivor is (`item-merge.ts`).
   await assertNotMerged(tx, input.lines.map((l) => l.itemId), "receiving it");
@@ -273,6 +280,23 @@ export async function captureGrn(
     }
   }
 
+  // #1061 / 0096 — THE PRICE CHECK, before anything is written: a paid line of a supplier's delivery more than 2%
+  // above the item's last paid receipt (any supplier) or this supplier's contract rate is captured only with a reason.
+  const checks: (PriceCheck | null)[] = PRICE_CHECKED_SOURCES.includes(input.source) && isSupplierCode(vendor.code)
+    ? await priceCheckLines(tx, { vendorId: input.vendorId, lines: input.lines }, input.now ?? new Date())
+    : input.lines.map(() => null);
+  const unanswered = input.lines.flatMap((l, index) => {
+    const check = checks[index];
+    return check?.status === "amber" && !reasonAnswers(l.priceReason) ? [{ index, itemId: l.itemId, unitCostPaise: l.unitCostPaise, check }] : [];
+  });
+  if (unanswered.length > 0) {
+    throw new MaterialsError(
+      "price_reason_required",
+      `${String(unanswered.length)} line(s) cost more than 2% above the last purchase or the contract rate — give a reason for each`,
+      { lines: unanswered },
+    );
+  }
+
   const grnNo = await nextEpisodeNo(tx, "grn", serviceDate);
   const grnId = newId();
 
@@ -285,7 +309,7 @@ export async function captureGrn(
   });
 
   const classes = await itemsByIds(tx, input.lines.map((l) => l.itemId));
-  for (const line of input.lines) {
+  for (const [index, line] of input.lines.entries()) {
     const uoms = await itemUomRows(tx, line.itemId);
     if (uoms.length === 0) {
       throw new MaterialsError("unknown_item", `item ${line.itemId} not found`, { itemId: line.itemId });
@@ -294,8 +318,11 @@ export async function captureGrn(
     // rule 2 enforced at capture as well as at QC, because a quantity nobody can convert is not a
     // quantity worth recording.
     const qtyBase = toBase(uoms, line.uom, line.qtyInUom);
+    const check = checks[index];
+    const amber = check?.status === "amber" && reasonAnswers(line.priceReason) ? { check, reason: line.priceReason } : null;
+    const lineId = newId();
     await tx.insert(grnLines).values({
-      id: newId(), grnId, itemId: line.itemId, uom: line.uom.trim(),
+      id: lineId, grnId, itemId: line.itemId, uom: line.uom.trim(),
       qtyInUom: line.qtyInUom, qtyBase,
       batchNo: line.batchNo ?? null, mfgDate: line.mfgDate ?? null,
       // 2026-11-13 — a drug's expiry is kept at its month's end, whatever day the picker or the caller sent.
@@ -305,7 +332,21 @@ export async function captureGrn(
       tempLogRef: line.tempLogRef ?? null,
       // A free line costs nothing, known: only a paid line's cost can be an estimate.
       estimatedCost: (line.estimatedCost ?? false) && !(line.freeGoods ?? false),
+      ...(amber === null ? {} : {
+        priceRefPaisePerBase: Math.round(amber.check.refPaisePerBase!), priceRefKind: amber.check.refKind,
+        priceReasonCode: amber.reason.code, priceReasonText: amber.reason.text?.trim().slice(0, 200) || null,
+      }),
     });
+    if (amber !== null) {
+      await appendEvent(tx, grnPriceAboveReference.make({
+        occurredAt: input.now ?? new Date(), actor, correlationId: grnId,
+        payload: {
+          grnId, grnNo, grnLineId: lineId, itemId: line.itemId, vendorId: input.vendorId, unitCostPaise: line.unitCostPaise,
+          refPaisePerBase: amber.check.refPaisePerBase!, refKind: amber.check.refKind!, riseBps: amber.check.riseBps ?? 0,
+          reasonCode: amber.reason.code, reasonText: amber.reason.text?.trim().slice(0, 200) || null,
+        },
+      }));
+    }
   }
   return { grnId, grnNo };
 }

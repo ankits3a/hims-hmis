@@ -22,6 +22,7 @@ import {
 } from "./vendors";
 import { createStore, listStores } from "./stores";
 import { endVendorRate, setVendorRates, vendorRates } from "./vendor-rates";
+import { PRICE_REASON_CODES } from "./price-check";
 import type { VendorRateResult, VendorRateView } from "./vendor-rates";
 import { loadMaterialsSettings, updateMaterialsSettings } from "./settings";
 import type { MaterialsSettings } from "./settings";
@@ -252,6 +253,8 @@ const grnLineBody = z.object({
   mrpPaise: paise.nullish(), mrpUom: z.string().max(32).nullish(),
   unitCostPaise: paise.nonnegative(), freeGoods: z.boolean().optional(),
   tempLogRef: z.string().max(200).nullish(),
+  /** #1061 — why a line is priced more than 2% above its reference; required for such a line, ignored otherwise. */
+  priceReason: z.object({ code: z.enum(PRICE_REASON_CODES), text: z.string().max(200).nullish() }).nullish(),
 });
 const grnCaptureBody = z.object({
   vendorId: id, source: z.enum(["challan", "consignment_challan", "donation"]),

@@ -5,9 +5,10 @@ import { getApproval } from "../../kernel/approvals/worklist";
 import { withTx } from "../../kernel/db/client";
 import {
   MaterialsError, OPENING_STOCK_SOURCE, activateVendor, addItemUom, addVendorDocument, captureGrn, daysBetween, findStoreByCode, getGrn, getVendor,
-  itemsByIds, listGrns, listVendors, nearExpiryMinDays, postGrn, registerVendor, replaceItemUom, requestNearExpiryAcceptance, runGateQc,
-  setIssueUom, supplierKindOf, uomsByItems,
+  itemsByIds, listGrns, listVendors, nearExpiryMinDays, postGrn, priceCheckLines, registerVendor, replaceItemUom, requestNearExpiryAcceptance,
+  runGateQc, setIssueUom, supplierKindOf, uomsByItems, vendorCredits,
 } from "../materials";
+import type { PriceCheck, PriceReasonCode } from "../materials";
 import { OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE } from "./config";
 import { parseCsv } from "./csv";
 import { PharmacyError } from "./errors";
@@ -124,6 +125,8 @@ export type OpeningRow = {
   discountBps: number;
   rack: string; supplier: string; costPerBasePaise: number; itemId?: string; itemCode?: string; itemName?: string; uom?: string;
   newUom: boolean; vendorKey: string; near: boolean; reasons: string[];
+  /** #1061 — a supplier invoice's paid row against the item's last receipts and the contract; absent elsewhere. */
+  priceCheck?: PriceCheck | null;
 };
 /**
  * `captured` — on the books as a GRN, waiting for the pharmacist's QC (the screen's stopping point).
@@ -260,6 +263,8 @@ export type OpeningGridRow = {
   freePacks?: string; ratePerPack?: string; discountPct?: string; packType?: string; rack?: string; supplier?: string;
   /** #1033: sealed boxes, and packs in one box; `packs` is then the loose ones. */
   boxes?: string; packsPerBox?: string;
+  /** #1061 — the supplier invoice's answer to an amber price: a reason code, and the words for `other`. */
+  priceReason?: string; priceReasonText?: string;
 };
 
 /** THE GRID DOOR — the picked item and the typed cells, turned into the sheet's row and judged the same way. */
@@ -764,6 +769,8 @@ export type InvoicePlan = {
   costPaise: number;
   /** A live GRN of this supplier already carries this invoice number. */
   duplicateOf: { grnId: string; grnNo: string } | null;
+  /** #1061 — the supplier's accepted credit notes not yet set off (or reserved) in a payment run; 0 when none or no supplier. */
+  unusedCreditPaise: number;
 };
 
 /** "INV/26-27/0451" and "inv 26 27 0451" are one invoice: upper case, no spaces, `-`, `/` or `.`. */
@@ -785,6 +792,8 @@ export async function planSupplierInvoice(db: Db, header: InvoiceHeader, input: 
   const headerReasons: string[] = [];
   const today = istDay(now);
   let duplicateOf: InvoicePlan["duplicateOf"] = null;
+  /** #1061 — a real, active supplier: its lines are price-checked and its unused credit shown. */
+  let supplierId: string | null = null;
   const invoiceNo = header.invoiceNo.trim();
   if (header.vendorId === null || header.vendorId === "") headerReasons.push("choose the supplier");
   else {
@@ -792,8 +801,9 @@ export async function planSupplierInvoice(db: Db, header: InvoiceHeader, input: 
     if (v === undefined) headerReasons.push("the supplier is not on the books");
     else if (v.status !== "active") headerReasons.push(`${v.tradeName ?? v.legalName} is ${v.status} — only an active supplier is received from`);
     else if (supplierKindOf(v) !== "supplier") headerReasons.push(`${v.tradeName ?? v.legalName} is the hospital's own stock, not a supplier — use Opening stock`);
-    else if (invoiceNo !== "") {
-      const live = (await listGrns(db, { vendorId: v.id })).find((g) => g.status !== "cancelled" && g.invoiceNo !== null && invoiceKey(g.invoiceNo) === invoiceKey(invoiceNo));
+    else supplierId = v.id;
+    if (supplierId !== null && invoiceNo !== "") {
+      const live = (await listGrns(db, { vendorId: supplierId })).find((g) => g.status !== "cancelled" && g.invoiceNo !== null && invoiceKey(g.invoiceNo) === invoiceKey(invoiceNo));
       if (live !== undefined) duplicateOf = { grnId: live.id, grnNo: live.grnNo };
     }
   }
@@ -818,8 +828,17 @@ export async function planSupplierInvoice(db: Db, header: InvoiceHeader, input: 
     return row;
   });
   const good = rows.filter((r) => r.reasons.length === 0);
+  // #1061 / 0096 — each paid row against the item's last paid receipts (any supplier) and this supplier's contract,
+  // as `captureGrn` will judge it; the grid shows amber before the capture asks for a reason.
+  let unusedCreditPaise = 0;
+  if (supplierId !== null) {
+    const paid = good.filter((r) => r.packs > 0 && r.costPerBasePaise > 0 && r.itemId !== undefined);
+    const checks = await priceCheckLines(db, { vendorId: supplierId, lines: paid.map((r) => ({ itemId: r.itemId!, unitCostPaise: r.costPerBasePaise })) }, now);
+    paid.forEach((r, i) => { r.priceCheck = checks[i] ?? null; });
+    unusedCreditPaise = Math.max(0, (await vendorCredits(db, [supplierId])).get(supplierId)?.availablePaise ?? 0);
+  }
   return {
-    header, headerReasons, rows, refusals: rows.length - good.length, duplicateOf,
+    header, headerReasons, rows, refusals: rows.length - good.length, duplicateOf, unusedCreditPaise,
     units: good.reduce((n, r) => n + (r.packs + r.freePacks) * r.packSize, 0),
     newUoms: new Set(good.filter((r) => r.newUom).map((r) => `${r.itemId!}|${r.uom!}`)).size,
     // Each paid line as the invoice states it (`invoiceLinePaise`), not the floored cost per unit × units.
@@ -864,10 +883,14 @@ export async function captureSupplierInvoice(
       challanNo: invoiceNo, challanDate: header.invoiceDate, invoiceNo, invoiceDate: header.invoiceDate,
       purchaseOrderId: header.purchaseOrderId ?? null, now, serviceDate: istDay(now),
       // The paid packs first, then the free ones (same batch, same MRP, cost 0) — `postGrn` posts paid lines first.
-      lines: plan.rows.flatMap((r) => [
+      lines: plan.rows.flatMap((r, i) => [
         ...(r.packs > 0 ? [{
           itemId: r.itemId!, uom: r.uom!, qtyInUom: r.packs, batchNo: r.batch, expiryDate: r.expiryDate,
           mrpPaise: r.mrpPaise, mrpUom: r.uom!, unitCostPaise: r.costPerBasePaise,
+          // #1061 — the row's answer to an amber price; `captureGrn` judges whether it answers.
+          ...(input[i]?.priceReason === undefined || input[i]!.priceReason === "" ? {} : {
+            priceReason: { code: input[i]!.priceReason as PriceReasonCode, text: input[i]!.priceReasonText ?? null },
+          }),
         }] : []),
         ...(r.freePacks > 0 ? [{
           itemId: r.itemId!, uom: r.uom!, qtyInUom: r.freePacks, batchNo: r.batch, expiryDate: r.expiryDate,

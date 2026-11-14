@@ -1618,6 +1618,13 @@
       "when": 1794594803593,
       "tag": "0231_pharmacy_add_medicine_by_hand",
       "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1794675676339,
+      "tag": "0232_grn_price_check",
+      "breakpoints": true
     }
   ]
 }

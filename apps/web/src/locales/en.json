@@ -1,4 +1,5 @@
 {
+  "priceCheck": {"first": "First purchase — no earlier price to compare.", "aboveLast": "{{pct}}% above the last purchase ({{ref}}/unit)", "aboveContract": "{{pct}}% above the contract rate ({{ref}}/unit)", "receipts": "Last bought:", "contract": "Contract {{rate}}/unit", "cheaper": "Cheapest on record: {{vendor}} {{rate}}/unit", "reason": "Reason for the price", "choose": "Choose a reason", "words": "Reason in words", "code": {"mrp_revised": "MRP revised", "scheme_changed": "Scheme changed", "urgent_buy": "Urgent buy", "other": "Other"}},
   "testPicker": {
     "placeholder": "Search a test — 2 letters",
     "none": "No test matches.",
@@ -3413,7 +3414,8 @@
     "grn_same_person": "You captured this delivery. The hospital's setting needs a different person to check and post it.",
     "pack_in_use": "This pack is in use — a batch, a goods receipt or an open order counts in it. Add the right pack as a new one instead.",
     "grn_cancelled": "This goods receipt was cancelled. Nothing more can be done on it.",
-    "mrp_revision_unapproved": "This delivery brings a batch already on the shelf at a new MRP. Ask for the MRP approval; it posts once the materials head grants it."
+    "mrp_revision_unapproved": "This delivery brings a batch already on the shelf at a new MRP. Ask for the MRP approval; it posts once the materials head grants it.",
+    "price_reason_required": "A line costs more than 2% above the last purchase or the supplier's contract rate. Give a reason for it: MRP revised, scheme changed, urgent buy, or other in words."
   },
   "deskSettings": {
     "title": "Desk mode",
@@ -8483,6 +8485,7 @@
       "invoice": "Supplier invoice"
     },
     "invoice": {
+      "unusedCredit": "{{amount}} unused credit from this supplier. Set it off in the next payment run.",
       "heading": "Supplier invoice — receive a delivery",
       "lead": "Type the invoice as printed: the header, then one row per batch. Free packs go in Free; they are received at no cost.",
       "title": "The invoice",
@@ -13344,6 +13347,7 @@
       }
     },
     "reports": {
+      "refKind": {"contract": "contract", "lastReceipt": "last purchase"},
       "discountPct": "Disc %",
       "allVendors": "All vendors",
       "intro": "Every report reads; nothing is changed from here. Press a number to open one.",
@@ -13398,6 +13402,7 @@
       "books": {"ticket": "Ticket", "invoice": "Invoice", "gst": "GST", "bill": "Bill", "creditNotes": "Credit notes", "creditNote": "Credit note", "returned": "Returned", "final": "Final", "creditUsed": "Paid from earlier credit", "total": "Total", "noNotes": "No credit note against this bill.", "value": "Value", "bills_one": "{{count}} bill", "bills_other": "{{count}} bills", "source": {"dispense": "Desk ticket", "walk_in": "Walk-in sale", "downtime": "Paper sheet"}, "rate": "GST rate", "salesTaxable": "Sales taxable", "salesGst": "GST on sales", "returnsTaxable": "Returns taxable", "returnsGst": "GST on returns", "netTaxable": "Net taxable", "netGst": "Net GST", "gstOnSales": "GST on sales", "lessGstOnReturns": "Less GST reversed by credit notes", "gstPayable": "GST payable for the period", "byRate": "Rate by rate (GSTR-1 and 3B)", "notesTitle_one": "{{count}} credit note — with the invoice it reverses", "notesTitle_other": "{{count}} credit notes — each with the invoice it reverses", "againstInvoice": "Against invoice", "invoiceDate": "Invoice date", "moneyTitle": "Money check", "billed": "Billed in the period (with GST)", "paidFromCredit": "Paid from earlier credit notes", "stillOwed": "Still owed by patients", "collected": "Collected in cash, UPI and card", "moneyNote": "Earlier credit spent on a bill is a payment, like cash: it never lowers that bill's GST. The GST of the bill it came from was already reversed by its credit note, shown above — so GST is paid once, on what the patient kept."},
       "credit": {"no": "Credit note", "bill": "Against bill", "reason": "Reason", "value": "Value", "settled": "Money", "kept": "Kept as credit", "refund": "Refund", "count": "Credit notes", "total": "Total", "byPatient": "by patient", "view": "Show", "views": {"document": "Each credit note", "patient": "By patient"}, "summary_one": "{{count}} credit note", "summary_other": "{{count}} credit notes", "keptTotal": "Kept as pharmacy credit", "refundTotal": "Refund asked", "paidTotal": "Refund paid", "settlement": {"kept_as_credit": "Kept as pharmacy credit", "refund_paid": "Refund paid", "refund_approved": "Refund approved, not paid yet", "refund_requested": "Refund waiting for approval", "refund_refused": "Refund refused", "none": "—"}},
       "name": {
+        "purchaseAnalysis": "Purchase analysis",
         "sales": "Sales register",
         "purchases": "Purchase register",
         "vendorDiscounts": "Vendor discounts",
@@ -13419,6 +13424,7 @@
         "accounts": "Accounts for the CA"
       },
       "about": {
+        "purchaseAnalysis": "Lines bought more than 2% above the last purchase or the contract rate, with the reason and the extra paid.",
         "sales": "Every sale and refund, by bill, item, doctor, patient, pharmacist or tender.",
         "purchases": "Supplier bills, our debit notes and vendor credits, with input GST.",
         "vendorDiscounts": "Each vendor's trade discount on booked bills: gross, discount, taxable and GST.",
@@ -13447,6 +13453,10 @@
         "custom": "Custom"
       },
       "col": {
+        "usualRate": "Usual ₹/unit",
+        "paidRate": "Paid ₹/unit",
+        "rise": "Rise",
+        "extra": "Extra paid",
         "date": "Date",
         "time": "Time",
         "docNo": "Document",

@@ -175,6 +175,49 @@ describe("MaterialsGrn", () => {
   });
 
   /**
+   * #1061 / 0096 — a line more than 2% above the last purchase is refused with its price check: the line shows it,
+   * the reason is chosen there, and the next capture sends it.
+   */
+  it("#1061: an amber price comes back as a refusal, the line shows the last receipts, and the reason goes with the next capture", async () => {
+    let tries = 0;
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/materials/grns": () => {
+        tries += 1;
+        return tries === 1
+          ? {
+            status: 409, body: {
+              statusCode: 409, code: "price_reason_required", message: "1 line(s) cost more than 2% above",
+              detail: { lines: [{ index: 0, itemId: "it-1", unitCostPaise: 700, check: {
+                status: "amber", refKind: "last_receipt", refPaisePerBase: 650, riseBps: 769, contract: null,
+                receipts: [{ grnNo: "GRN-1", postedOn: "2026-11-10", vendorId: "v-1", vendorName: "Acme Pharma", paisePerBase: 650 }], cheaper: null,
+              } }] },
+            },
+          }
+          : { status: 201, body: { grnId: "g-1", grnNo: "GRN2608270001" } };
+      },
+      "GET /api/materials/grns/g-1": { status: 200, body: { grn: grnWith(null) } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    const user = userEvent.setup();
+    await fillHeaderAndLine(user);
+    await user.type(screen.getByLabelText(/^MRP \(₹\)$/), "85");
+    await user.selectOptions(screen.getByLabelText("MRP per"), "strip");
+    await user.type(screen.getByLabelText("Cost of ONE tablet (₹)"), "7");
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+
+    const note = await screen.findByTestId("se-price-0");
+    expect(note).toHaveTextContent("7.7% above the last purchase (₹6.50/unit)");
+    expect(note).toHaveTextContent("Acme Pharma ₹6.50");
+    expect(await screen.findByRole("alert")).toHaveTextContent("more than 2% above the last purchase");
+    await user.selectOptions(screen.getByLabelText("Reason for the price · row 1"), "mrp_revised");
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => { expect(bodiesOf("POST", "/materials/grns")).toHaveLength(2); });
+    const sent = bodiesOf("POST", "/materials/grns")[1] as { lines: { priceReason?: { code: string } }[] };
+    expect(sent.lines[0]?.priceReason).toEqual({ code: "mrp_revised", text: null });
+  });
+
+  /**
    * PARITY P2 — a delivery received AGAINST an order: picking the order fills the store and the
    * lines with what is still owed, at the order's rate per base unit, and the capture names the order.
    */

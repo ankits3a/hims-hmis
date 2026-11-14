@@ -359,7 +359,8 @@ describe("purchase orders (parity P2)", () => {
     const po2 = await createPurchaseOrder(db, pharmacist.actor, { vendorId: otherVendor, storeResourceId: store, lines: [line(crocin, { qtyPacks: 5 })] }, { now: T0 });
     await submitPurchaseOrder(db, pharmacist.actor, po2.id, at(30));
     await decidePurchaseOrder(db, head.actor, po2.id, "approve", "ok", at(31));
-    await receive(keeper.actor, po2.id, [grnLine(crocin, 5, { batchNo: "B-BETA", unitCostPaise: 2_600 }), grnLine(crocin, 1, { batchNo: "B-FREE", unitCostPaise: 0, freeGoods: true })], otherVendor);
+    // #1061 — 2,600 is 8% above the last receipt (2,400): a reason is the capture's price for that.
+    await receive(keeper.actor, po2.id, [grnLine(crocin, 5, { batchNo: "B-BETA", unitCostPaise: 2_600, priceReason: { code: "scheme_changed" } }), grnLine(crocin, 1, { batchNo: "B-FREE", unitCostPaise: 0, freeGoods: true })], otherVendor);
     const last = (await lastPurchaseByItem(db, [crocin])).get(crocin);
     expect(last).toMatchObject({ vendorId: otherVendor, vendorActive: true, uom: "strip", multiplier: 10, ratePaise: 26_000 });
   });
