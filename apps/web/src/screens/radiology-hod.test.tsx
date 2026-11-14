@@ -50,7 +50,8 @@ const FLOOR = {
   readers: { toRead: 3, stat: 1, drafted: 1, claimed: [{ userId: "r1", name: "Dr. Anjali Mehta", studies: 2 }], unclaimed: 2 },
   turnaround: {
     from: "2026-09-23", to: "2026-09-29",
-    rows: [{ modality: "ct", source: "ER", n: 4, medianMin: 22, p90Min: 41, targetMin: 30, withinTarget: false }],
+    /** #1077 — the sources are `studySource`'s (no `ER`: STAT is a priority); day care is held to the inpatient 6 h. */
+    rows: [{ modality: "ct", source: "daycare", n: 4, medianMin: 300, p90Min: 410, targetMin: 360, withinTarget: false }],
     northStar: { orderToActed: { n: 5, medianMin: 300, p90Min: 900 }, signedUnreadOver24h: 1, publishedNotActedOver72h: 0 },
   },
   leakage: { open: 1, estimatedPaise: 180000, unpriced: 0, rows: [] },
@@ -101,7 +102,8 @@ it("the floor: pipeline with each stage's longest wait, rooms, turnaround agains
   const rooms = screen.getByTestId("hod-rooms");
   expect(within(rooms).getByText("CT-1").closest("tr")).toHaveAttribute("data-down", "CT-1");
   expect(within(rooms).getByTestId("hod-tech-note")).toHaveTextContent("cannot say who is in which room");
-  expect(within(screen.getByTestId("hod-tat")).getByText(/30 min ✗/)).toBeInTheDocument();
+  expect(within(screen.getByTestId("hod-tat")).getByText(/6 h ✗/)).toBeInTheDocument();
+  expect(within(screen.getByTestId("hod-tat")).getByText("Day care")).toBeInTheDocument();
   expect(screen.getByTestId("hod-brief")).toHaveTextContent("XR-1 cannot expose");
   expect(within(screen.getByTestId("hod-five")).getByText("Dashboard UX")).toBeInTheDocument();
   // The right list is the escalations, red first; one item per cause.

@@ -14,7 +14,7 @@ import type { GovernedReportTemplate } from "./definitions";
  * ═══ ONE PIPELINE, SO A NEW GUARD JOINS RATHER THAN FORKS ═══
  *
  * `PRE_SIGN_CHECKS` is a list. Each check is a pure function of `PreSignContext` — the facts
- * `reports.ts` gathers once — returning findings with a `level`:
+ * `report-signature.ts` gathers once — returning findings with a `level`:
  *   · `refuse` — the signature is not made; the refusal carries the check's own code;
  *   · `warn` — the signature is made only when the signer acknowledges it, and the acknowledgement
  *     is stored on the signed version (`sign_checks`).

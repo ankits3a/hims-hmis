@@ -9,7 +9,8 @@ import { orderItems, orders, phiAccessLog } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { ordersManifest } from "../../kernel/orders/manifest";
 import { patientReportsForDoctor } from "./patient-reports";
-import { amendReport, draftReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { amendReport, signReport } from "./report-signature";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { Db } from "../../kernel/db/client";
 

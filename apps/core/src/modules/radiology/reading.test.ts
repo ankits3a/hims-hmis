@@ -13,7 +13,8 @@ import {
 import { withTx } from "../../kernel/db/client";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
-import { amendReport, draftReport, dryRunPreSign, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { amendReport, dryRunPreSign, publishReport, signReport } from "./report-signature";
 import { parseDefinitionBody } from "./definitions";
 import { readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
 import { signedContentDigest } from "./signer";
@@ -245,9 +246,10 @@ describe("the reading room (18-S RS8a)", () => {
 
   /* ═══════════════════════ T4 — the reading room's reads ═══════════════════════ */
 
-  it("T4: the TAT class — STAT 30 min, urgent (ER) 60, bedside (IPD) 6 h, otherwise OPD 24 h", () => {
-    expect([tatClassOf("stat", "Ward 3"), tatClassOf("urgent", null), tatClassOf("routine", "Ward 3 · bed 12"), tatClassOf("routine", null)])
-      .toEqual(["stat", "er", "ipd", "opd"]);
+  it("T4: the TAT class — priority first (STAT 30 min, urgent/ER 60), then the source: ipd and day care 6 h, otherwise OPD 24 h (#1077)", () => {
+    expect([tatClassOf("stat", "ipd"), tatClassOf("urgent", "opd"), tatClassOf("routine", "ipd"), tatClassOf("routine", "daycare"),
+      tatClassOf("routine", "opd"), tatClassOf("routine", "walk_in")])
+      .toEqual(["stat", "er", "ipd", "ipd", "opd", "opd"]);
   });
 
   it("T4: the worklist — urgency first, the clock from images-in, the report state, and who is reading", async () => {

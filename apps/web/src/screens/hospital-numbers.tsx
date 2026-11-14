@@ -28,7 +28,7 @@ export type WireImagingMetrics = {
   from: string;
   to: string;
   totals: ImagingCounts;
-  bySource: (ImagingCounts & { source: "opd" | "ipd" | "walk_in" })[];
+  bySource: (ImagingCounts & { source: "opd" | "ipd" | "daycare" | "walk_in" })[];
   byModality: (ImagingCounts & { modality: string })[];
   times: { placedToDone: LabTiming; doneToSigned: LabTiming; signedToDelivered: LabTiming; placedToSigned: LabTiming };
 };

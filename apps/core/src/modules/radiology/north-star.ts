@@ -1,9 +1,10 @@
 import { and, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import { imagingReportDelivery, imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
 import { orders } from "../../kernel/db/schema/orders";
-import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { RadiologyError } from "./errors";
 import { activeStudyTypes } from "./study-types";
+import { STUDY_SOURCES, studySource } from "./study-source";
+import type { StudySource } from "./study-source";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -24,13 +25,14 @@ import type { Db } from "../../kernel/db/client";
  *
  * Median and 90th percentile by the nearest-rank method over whole minutes. Pure TS over one query.
  *
- * **Source (DECIDED, until IPD and ER modules exist):** `OUT` when the order's authority is an
- * outside prescription or the patient themself (no in-house treating doctor); `IPD` for a day-care
- * (`D…`) encounter or a bedside study; `ER` for a STAT order; `OPD` otherwise. First match wins.
+ * **Source:** `study-source.ts` `studySource`, the one rule the metrics read also counts by (#1077):
+ * `walk_in`, `daycare`, `ipd`, `opd`. STAT is a priority, not a place, so a STAT order from an OPD
+ * visit is an OPD row; there is no `ER` row until the emergency module is on `main`.
  */
 
-export const NORTH_STAR_SOURCES = ["OPD", "IPD", "ER", "OUT"] as const;
-export type NorthStarSource = (typeof NORTH_STAR_SOURCES)[number];
+/** The north star's sources ARE the study sources (#1077); the names stay for the readers that use them. */
+export const NORTH_STAR_SOURCES = STUDY_SOURCES;
+export type NorthStarSource = StudySource;
 export const UNREAD_ALERT_HOURS = 24;
 export const NOT_ACTED_ALERT_HOURS = 72;
 /** A window longer than this is refused: the read is one query held in memory. */
@@ -65,15 +67,6 @@ export function percentiles(minutes: readonly number[]): Percentiles {
   return { n: s.length, medianMin: rank(0.5), p90Min: rank(0.9) };
 }
 
-export function sourceOf(input: {
-  authority: string; encounterNo: string; bedsideLocation: string | null; priority: string;
-}): NorthStarSource {
-  if (input.authority === "external_prescription" || input.authority === "self") return "OUT";
-  if (input.encounterNo.startsWith(EPISODE_SERIES.daycare) || input.bedsideLocation !== null) return "IPD";
-  if (input.priority === "stat") return "ER";
-  return "OPD";
-}
-
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** An IST calendar day's first instant. */
 function istStart(day: string): Date {
@@ -102,7 +95,7 @@ export async function northStar(
   const studies = await db
     .select({
       id: imagingStudies.id, studyTypeCode: imagingStudies.studyTypeCode, encounterNo: imagingStudies.encounterNo,
-      bedsideLocation: imagingStudies.bedsideLocation, priority: imagingStudies.priority,
+      bedsideLocation: imagingStudies.bedsideLocation,
       placedAt: orders.placedAt, authority: orders.authority,
     })
     .from(imagingStudies)
@@ -152,7 +145,7 @@ export async function northStar(
   const actedCut = now.getTime() - NOT_ACTED_ALERT_HOURS * 3_600_000;
 
   for (const s of studies) {
-    const key = `${modalityOf(s.studyTypeCode)}|${sourceOf(s)}`;
+    const key = `${modalityOf(s.studyTypeCode)}|${studySource(s, s)}`;
     let g = groups.get(key);
     if (g === undefined) { g = { ordered: 0, o2s: [], s2r: [], o2a: [], unread: 0, notActed: 0 }; groups.set(key, g); }
     const add = (f: (a: Acc) => void): void => { f(g!); f(total); };

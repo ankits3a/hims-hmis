@@ -15,12 +15,12 @@ import type { Db } from "../../kernel/db/client";
  *   R1  OPD        USG + X-ray placed 09:00
  *       S1a USG    acquired 09:30, v1 signed 10:00 handed over 10:30, AMENDED v2 11:00 handed over 11:30
  *       S1b X-ray  acquired 10:00, signed 10:40, never handed over
- *   R2  IPD (D…)   CT placed 08:00, acquired 09:00; a RESIDENT signed 09:30 (co-signed), the consultant 10:00;
+ *   R2  day care   CT placed 08:00, acquired 09:00; a RESIDENT signed 09:30 (co-signed), the consultant 10:00;
  *                  handed over 12:00
  *   R3  walk-in    USG on an outside slip, placed 10:00, acquired 10:20, signed 10:50, handed over 11:10
  *   R4  OPD        USG, the ORDER cancelled — counted nowhere
  *   R5  OPD        X-ray, its only ITEM cancelled — counted nowhere
- *   R7  IPD        CT placed 12:00, acquired 12:30, only a resident's signature waiting (13:00): not signed
+ *   R7  day care   CT placed 12:00, acquired 12:30, only a resident's signature waiting (13:00): not signed
  *   R0  OPD        USG placed the evening before (23:00), acquired 08:30, signed 09:00, handed over 09:15
  *   R6  OPD        X-ray all done the day before; handed over 08:00 on the day — delivered, not signed
  */
@@ -114,7 +114,7 @@ describe("radiologyMetrics — counts and turnaround times on a known day", () =
     await handOver(v2, s1a, at("11:30"));
     await report(s1b, 1, "signed", at("10:40"));
 
-    /* R2 — IPD CT: the resident's row was co-signed; the consultant's signature is the report. */
+    /* R2 — day-care CT: the resident's row was co-signed; the consultant's signature is the report. */
     const r2 = await order("D2603100001", at("08:00"));
     const s2 = await study(r2, "D2603100001", "CT-HEAD", at("08:00"), { acquired: at("09:00") });
     await report(s2, 1, "cosigned", at("09:30"));
@@ -156,7 +156,9 @@ describe("radiologyMetrics — counts and turnaround times on a known day", () =
     expect(m.totals).toEqual({ orders: 4, studies: 6, signed: 5, delivered: 5 });
     expect(m.bySource).toEqual([
       { source: "opd", orders: 1, studies: 3, signed: 3, delivered: 3 },
-      { source: "ipd", orders: 2, studies: 2, signed: 1, delivered: 1 },
+      { source: "ipd", orders: 0, studies: 0, signed: 0, delivered: 0 },
+      /** #1077 — a `D…` encounter is day care (`studySource`), no longer folded into ipd. */
+      { source: "daycare", orders: 2, studies: 2, signed: 1, delivered: 1 },
       { source: "walk_in", orders: 1, studies: 1, signed: 1, delivered: 1 },
     ]);
     expect(m.byModality).toEqual([

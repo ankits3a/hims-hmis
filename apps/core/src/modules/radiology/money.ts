@@ -169,7 +169,7 @@ export async function encounterPayers(exec: Db | Tx, encounterNos: readonly stri
  * The three checks below are the three facts that make the link MEAN what its readers think it
  * means. What is deliberately NOT checked here is whether the invoice is settled — `authorisationOf`
  * treats an issued line as authorisation by DD12a's own design (the counter took the booking), and
- * `reports.ts`'s `invoiceIsSettled` owns the settlement question for delivery.
+ * `report-signature.ts`'s `invoiceIsSettled` owns the settlement question for delivery.
  */
 export async function linkInvoiceLine(
   tx: Tx, studyId: string, invoiceLineId: string,

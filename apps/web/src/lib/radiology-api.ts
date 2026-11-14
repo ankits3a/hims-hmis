@@ -1,4 +1,7 @@
 import { api } from "./api";
+import type {
+  ImagingAcquiredBody, ImagingContrastBody, ImagingRescheduleBody, ImagingScheduleBody, ImagingSignBody,
+} from "@hmis/contracts";
 import { messageText } from "./materials-api";
 
 /**
@@ -208,7 +211,7 @@ export const fetchCounter = (studyId: string) =>
 /** Every desk act on a booking carries a reason; the server refuses `reason_required` without one. */
 export const rescheduleStudy = (
   studyId: string,
-  body: { deviceResourceId: string; scheduledAt: string; bedsideLocation?: string | null; reason: string },
+  body: ImagingRescheduleBody & { reason: string },
 ) => api("POST", `/radiology/studies/${studyId}/reschedule`, body);
 
 export const markNoShow = (studyId: string, reason: string) =>
@@ -239,8 +242,8 @@ export const fetchHallBoard = () => api<{ day: string; rooms: WireHallRoom[] }>(
 
 export const scheduleStudy = (
   studyId: string,
-  /** `bedsideLocation` — 18-S RS2b: only for a portable machine; the server refuses the rest. */
-  body: { deviceResourceId: string; scheduledAt: string; bedsideLocation?: string | null },
+  /** #1077 — `@hmis/contracts` `imagingScheduleBody`. `bedsideLocation` (18-S RS2b): only for a portable machine; the server refuses the rest. */
+  body: ImagingScheduleBody,
 ) =>
   api("POST", `/radiology/studies/${studyId}/schedule`, body);
 
@@ -269,7 +272,7 @@ export const waiveGate = (studyId: string, kind: string, reason: string) =>
 export const startAcquisition = (studyId: string) =>
   api("POST", `/radiology/studies/${studyId}/acquisition/start`, {});
 
-export const recordAcquired = (studyId: string, body: Record<string, unknown>) =>
+export const recordAcquired = (studyId: string, body: ImagingAcquiredBody) =>
   api("POST", `/radiology/studies/${studyId}/acquisition/acquired`, body);
 
 /** 18b T3 — a POST: the view row, the event and the PHI line exist before the URL comes back. */
@@ -286,7 +289,7 @@ export const proposeDraft = (studyId: string) =>
 export const draftReport = (studyId: string, body: Record<string, unknown>) =>
   api<{ reportId: string; version: number }>("POST", `/radiology/studies/${studyId}/reports/draft`, body);
 
-export const signReport = (studyId: string, body: { reportId: string; criticalCategory?: string | null }) =>
+export const signReport = (studyId: string, body: ImagingSignBody) =>
   api<{ reportId: string; version: number }>("POST", `/radiology/studies/${studyId}/reports/sign`, body);
 
 export const publishReport = (studyId: string) =>
@@ -427,11 +430,8 @@ export const decideOverrideRequest = (approvalId: string, verdict: "grant" | "re
     "POST", `/radiology/gate-override-requests/${encodeURIComponent(approvalId)}/decide`, { verdict, reason },
   );
 
-/** The controller's `contrastBody` (18a-iii T1), transcribed. */
-export type RecordContrastBody = {
-  agent: string; volumeMl: number; route: string; site?: string | null;
-  vialBatchNo?: string | null; vialExpiry?: string | null; givenBy: string; givenAt: string;
-};
+/** The controller's `contrastBody` (18a-iii T1) — #1077: the server's own schema (`@hmis/contracts` `imagingContrastBody`). */
+export type RecordContrastBody = ImagingContrastBody;
 export const recordContrast = (studyId: string, body: RecordContrastBody) =>
   api<{ administrationId: string }>("POST", `/radiology/studies/${studyId}/contrast`, body);
 

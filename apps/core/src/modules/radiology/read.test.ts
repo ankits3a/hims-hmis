@@ -8,7 +8,8 @@ import { imagingDefinitions, orderItems, orders, patients, phiAccessLog } from "
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
-import { draftReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { signReport } from "./report-signature";
 import { reportView, studyView, worklist } from "./read";
 import { listOrdersForPatient } from "../../kernel/orders/read";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";

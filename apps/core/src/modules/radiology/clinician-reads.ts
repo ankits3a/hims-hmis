@@ -2,8 +2,8 @@ import { and, asc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { imagingCriticalFindings, imagingReportDelivery, imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
 import { orderItems, orders } from "../../kernel/db/schema/orders";
-import { opdDoctors, opdEncounters } from "../../kernel/db/schema/opd";
 import { services } from "../../kernel/db/schema/tariff";
+import { treatingDoctorIs } from "./closed-loop";
 import type { SQL } from "drizzle-orm";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -30,7 +30,7 @@ export type ClinicianImagingRow = {
 
 async function treatedBy(exec: Db | Tx, userId: string): Promise<SQL> {
   const canSeeRestricted = await hasPermission(exec as Db, userId, "orders.read.restricted", "hospital");
-  const treating = or(eq(orders.orderingClinicianId, userId), eq(opdDoctors.userId, userId))!;
+  const treating = treatingDoctorIs(userId);
   return canSeeRestricted ? treating
     : and(treating, or(eq(orderItems.restricted, false), eq(orders.orderingClinicianId, userId)))!;
 }
@@ -49,8 +49,6 @@ export async function unreadReportsForClinician(exec: Db | Tx, userId: string): 
     .innerJoin(services, eq(services.id, imagingStudies.serviceId))
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .leftJoin(imagingReportDelivery, eq(imagingReportDelivery.reportId, imagingReports.id))
     .where(and(released, mine, isNull(imagingReportDelivery.firstReadAt)))
     .orderBy(asc(imagingReports.publishedAt));
@@ -62,8 +60,6 @@ export async function unreadReportsForClinician(exec: Db | Tx, userId: string): 
     .innerJoin(services, eq(services.id, imagingStudies.serviceId))
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .where(and(released, mine, isNull(imagingCriticalFindings.acknowledgedAt)))
     .orderBy(asc(imagingCriticalFindings.createdAt));
   const critIds = new Set(crit.map((c) => c.reportId));

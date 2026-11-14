@@ -10,7 +10,7 @@ import {
 import type { WireReportPrint } from "../lib/radiology-reading-api";
 import { ImagingReportPrint } from "../components/radiology/imaging-report-print";
 import { PatientFacts } from "../components/radiology/patient-facts";
-import type { CollectorKind, WireReleaseRow } from "../lib/radiology-release-api";
+import type { CollectorKind, HandoverBody, WireReleaseRow } from "../lib/radiology-release-api";
 import { RadiologyStation } from "./radiology-station";
 import { Refusal, SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
@@ -116,7 +116,7 @@ export function RadiologyReports(): React.ReactElement {
       collectorKind: draft.kind,
       collectorName: draft.kind === "patient" ? null : draft.name.trim(),
       collectorRelation: draft.kind === "relative" ? tEn(`radiology.release.relation.${draft.relation}`) : null,
-      collectorIdType: draft.kind === "relative" ? draft.idType : null,
+      collectorIdType: draft.kind === "relative" ? draft.idType as HandoverBody["collectorIdType"] : null,
       collectorIdLast4: draft.kind === "relative" ? draft.idLast4 : null,
       mediaRequestIds: draft.media,
       note: draft.note.trim() === "" ? null : draft.note.trim(),
