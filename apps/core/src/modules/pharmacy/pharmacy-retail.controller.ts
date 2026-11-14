@@ -3,7 +3,8 @@ import { z } from "zod";
 import { CONFIG, DB, DOCUMENT_STORE } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { istDateOf } from "./config";
-import { discountAskSchema, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { withIdempotency } from "../billing";
+import { PHARMACY_IDEMPOTENT_ROUTES, discountAskSchema, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 import {
   counterBatches, enterPaperDispense, getRetailSale, inspectSheet, listPaperDispenses, listRetailLicences, listRetailSales,
@@ -11,6 +12,8 @@ import {
   retailBatches, retailPatientContext, searchRetailShelf, sellRetail,
 } from "./retail";
 import type { RetailReturnResult } from "./retail-returns";
+import { noteAskedFor } from "./short-book";
+import type { DemandResult } from "./short-book";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -21,6 +24,14 @@ import type {
 } from "./retail";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** Spec #1064 — "Note as asked for": the shelf row's item, or the name as typed; the quantity in base units (one when not said). */
+const askedForBody = z.object({
+  source: z.enum(["counter_search", "counter_short"]),
+  itemId: idSchema.optional(),
+  medicineId: idSchema.optional(),
+  typedName: z.string().min(1).max(200).optional(),
+  qtyBase: z.number().int().positive().max(100_000).optional(),
+}).refine((b) => b.itemId !== undefined || b.typedName !== undefined, { message: "name the medicine: the shelf row's item, or the name as typed", path: ["typedName"] });
 const lineSchema = z.object({
   medicineId: idSchema,
   /** #1047 — the shelf row chosen, when a medicine has two items; absent, the medicine's own. */
@@ -149,6 +160,23 @@ export class PharmacyRetailController {
   async shelf(@CurrentActor() actor: Actor, @Query("q") q?: string): Promise<{ items: RetailShelfEntry[] }> {
     try {
       return { items: await searchRetailShelf(this.db, actor, (q ?? "").slice(0, 200), new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * Spec #1064 — the walk-in counter's "Note as asked for", one tap from a search with no stock (or none at all) and from
+   * a `short_stock` refusal: a lost-demand row at PHARM-RETAIL, and for a catalogue item the short book raised.
+   * Idempotent on the `Idempotency-Key` the screen keeps for one press: a replay answers the first note.
+   */
+  @RequirePermission("pharmacy.retail.sell", "hospital")
+  @Post("asked-for")
+  async askedFor(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DemandResult> {
+    const input = parsed(askedForBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.askedFor, key }, input,
+        () => noteAskedFor(this.db, actor, input, new Date()));
     } catch (e) {
       return toHttp(e);
     }

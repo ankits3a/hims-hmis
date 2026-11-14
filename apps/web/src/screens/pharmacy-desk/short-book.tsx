@@ -13,16 +13,17 @@ import type { WireShortBookEntry } from "../../lib/pharmacy-api";
  * Three doors, one act (`POST /pharmacy/short-book`), always a person's:
  *   - `N` opens {@link ShortBookSheet}: ONE field, prefilled with the drug of the line the pharmacist
  *     is on, ⏎ notes it;
- *   - a declined line's sheet offers "also note it in the short book" when the reason reads as a
- *     shortage (`lines.tsx`);
+ *   - a declined line's "not in stock" (spec #1064): the decline itself carries the reason code, and the server
+ *     records the medicine as asked for and raises the short book (source `counter`) — typed words that read as a
+ *     shortage are offered the same code (`lines.tsx`);
  *   - the counter agent's DRAFT ("Pan 40 khatam" on F2) is a card on the dock ({@link DraftCard}),
  *     confirmed with one tap. The agent never writes; the tap does, as the person who tapped.
  */
 export type ShortDrug = { itemId: string | null; name: string };
 
-/** A decline reason that says the drug is not there — the sheet then offers the short book, ticked. */
+/** A decline reason that says the drug is not there — the sheet then offers "not in stock" (the demand), ticked. */
 export function readsAsShortage(reason: string): boolean {
-  return /(not\s*stocked|out\s*of\s*stock|no\s*stock|stock\s*(nahi|nhi|out)|short|khatam|khatm|nahi\s*hai|not\s*available|unavailable|स्टॉक\s*नहीं|खत्म)/i.test(reason);
+  return /(not\s*stocked|not\s*in\s*stock|out\s*of\s*stock|no\s*stock|stock\s*(nahi|nhi|out)|short|khatam|khatm|nahi\s*hai|not\s*available|unavailable|स्टॉक\s*नहीं|खत्म)/i.test(reason);
 }
 
 /** What the dock says after a note: "noted", or that somebody already had. */

@@ -8,6 +8,7 @@ import {
   MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, STOCK_IN_KINDS, STOCK_OUT_KINDS, fetchActivity, fetchActivityFeed,
   fetchCatalogue, fetchDailyStock, fetchGstr3b, fetchHsn, fetchLossRegister, fetchMargin, fetchNonMoving, fetchPurchaseRegister, fetchReportStores,
   fetchCreditNoteRegister, fetchPharmacyAccounts, fetchGstBook, fetchTicketInvoices, fetchSalesRegister, fetchTopSelling, fetchValuation, fetchPurchaseAnalysis, fetchVendorDiscounts, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
+  fetchMissedSales,
 } from "../../lib/reports-api";
 import { downloadXlsx, toXlsx, toXlsxBook } from "../../lib/xlsx";
 import type { XlsxSheet } from "../../lib/xlsx";
@@ -34,11 +35,13 @@ import type {
 export type ReportKey =
   | "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally"
   | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes" | "ticketInvoices" | "gstBook" | "accounts" | "vendorDiscounts"
-  | "purchaseAnalysis";
+  | "purchaseAnalysis" | "missedSales";
 const ALL_REPORTS: readonly ReportKey[] = [
   "sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally",
   "topSelling", "losses", "dailyStock", "catalogue", "creditNotes", "ticketInvoices", "gstBook", "accounts", "vendorDiscounts",
   "purchaseAnalysis",
+  // Spec #1064 — the twenty-first, on V (the sales report's right).
+  "missedSales",
 ];
 /**
  * The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten), then letters (stage C made it
@@ -183,6 +186,7 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "accounts" && <AccountsReport {...bind} />}
       {report === "vendorDiscounts" && <VendorDiscountReport {...bind} />}
       {report === "purchaseAnalysis" && <PurchaseAnalysisReport {...bind} />}
+      {report === "missedSales" && <MissedSalesReport {...bind} />}
     </div>
   );
 }
@@ -814,6 +818,64 @@ function PurchaseAnalysisReport({ sheet, presetRef }: Bind): React.ReactElement 
         <>
           <Table testId="purchase-analysis-table" cols={cols} rows={d.rows} rowKey={(r) => r.grnLineId} totals={totals} />
           {d.byVendor.length > 0 && <Table testId="purchase-analysis-vendors" cols={vcols} rows={d.byVendor} rowKey={(r) => r.vendorId} totals={null} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ spec #1064 — missed sales ═══════════════════════════════════
+
+/**
+ * Medicines asked for and not supplied in the range — desk lines declined as not in stock, the walk-in counter's
+ * "Note as asked for", balances owed — by item: times asked, quantity, the estimated value at the latest batch MRP
+ * (blank when unknown), stock now at every pharmacy store and what is on order. Names the catalogue does not carry are
+ * a table of their own (new-item requests). No patient anywhere. E, C and P act on the item table.
+ */
+function MissedSalesReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "missed-sales", range], queryFn: () => fetchMissedSales(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  /* The IST day of an instant, as every report writes a date. */
+  const when = (iso: string): string => new Date(Date.parse(iso) + 330 * 60_000).toISOString().slice(0, 10);
+  type Row = NonNullable<typeof d>["rows"][number];
+  const cols: Col<Row>[] = [
+    { key: "item", label: L("item"), value: (r) => r.itemName },
+    { key: "code", label: L("code"), value: (r) => r.itemCode },
+    { key: "times", label: L("timesAsked"), num: true, value: (r) => r.timesAsked },
+    { key: "qty", label: L("qty"), num: true, value: (r) => r.qtyBase },
+    { key: "unit", label: L("unit"), value: (r) => r.baseUom },
+    { key: "mrp", label: L("mrpUnit"), money: true, value: (r) => r.mrpUnitPaise },
+    { key: "value", label: L("estValue"), money: true, value: (r) => r.estimatedValuePaise },
+    { key: "stock", label: L("stockNow"), num: true, value: (r) => r.stockNow },
+    { key: "onOrder", label: L("onOrder"), num: true, value: (r) => r.openPoBase },
+    { key: "last", label: L("lastAsked"), value: (r) => when(r.lastAskedAt) },
+  ];
+  const totals: Totals | null = d === undefined ? null : { item: t("pharmacyOffice.reports.totals"), times: d.rows.reduce((n, r) => n + r.timesAsked, 0), value: d.totals.estimatedValuePaise };
+  type TRow = NonNullable<typeof d>["typed"][number];
+  const tcols: Col<TRow>[] = [
+    { key: "name", label: L("askedName"), value: (r) => r.name },
+    { key: "times", label: L("timesAsked"), num: true, value: (r) => r.timesAsked },
+    { key: "qty", label: L("qty"), num: true, value: (r) => r.qtyBase },
+    { key: "last", label: L("lastAsked"), value: (r) => when(r.lastAskedAt) },
+  ];
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.missedSales"), subtitle: rangeText(d.from, d.to), file: `missed-sales-${d.from}-${d.to}`, cols: cols as Col<never>[], rows: d.rows, totals };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} store={false} />
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <p className="max-w-3xl text-xs text-muted-foreground">{t("pharmacyOffice.reports.missed.note")}</p>
+          <Table testId="missed-sales-table" cols={cols} rows={d.rows} rowKey={(r) => r.itemId} totals={totals} />
+          {d.typed.length > 0 && (
+            <section className="space-y-1">
+              <h3 className="text-sm font-semibold">{t("pharmacyOffice.reports.missed.typedTitle")}</h3>
+              <Table testId="missed-sales-typed" cols={tcols} rows={d.typed} rowKey={(r) => r.name.toLowerCase()} totals={null} />
+            </section>
+          )}
         </>
       )}
     </div>

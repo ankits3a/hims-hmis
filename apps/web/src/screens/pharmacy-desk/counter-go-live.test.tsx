@@ -82,12 +82,36 @@ describe("the counter's exceptions at the desk (spec #1046)", () => {
     await userEvent.click(within(row).getByRole("button", { name: /What else for Cetzine/ }));
     await userEvent.click(within(row).getByRole("button", { name: "Drop this line" }));
     const sheet = await screen.findByRole("dialog", { name: "Drop Cetzine from the bill" });
-    await userEvent.click(within(sheet).getByRole("button", { name: "patient has it at home" }));
+    // Spec #1064 follow-up — the drop sheet offers the decline's four reasons and sends the code.
+    await userEvent.click(within(sheet).getByRole("button", { name: "patient declined" }));
+    await userEvent.clear(within(sheet).getByRole("textbox"));
+    await userEvent.type(within(sheet).getByRole("textbox"), "patient has it at home");
     await userEvent.click(within(sheet).getByRole("button", { name: "Drop it" }));
-    await waitFor(() => expect(bodies("POST", "/lines/1/decline")).toEqual([{ reason: "patient has it at home" }]));
+    await waitFor(() => expect(bodies("POST", "/lines/1/decline")).toEqual([{ reason: "patient has it at home", reasonCode: "patient_declined" }]));
     await waitFor(() => expect(gets("/d1/bill/preview")).toBeGreaterThan(before));
     // the other line has nothing to drop until it is the bill's turn; nothing to drop once paid
     expect(within(screen.getByTestId("desk-line-0")).getByRole("button", { name: /What else for Crocin/ })).toBeInTheDocument();
+  });
+
+  /* Spec #1064 follow-up — "not in stock" at the bill is the same reason as at the decline: the server records the demand. */
+  it("a line dropped at the bill as 'not in stock' sends the reason code that records the demand", async () => {
+    let current = dispense("picked", [line(0, "Crocin"), line(1, "Cetzine")]);
+    mockRoutes(desk(() => current, {
+      "POST /api/pharmacy/dispenses/d1/lines/1/decline": () => {
+        current = dispense("picked", [line(0, "Crocin"), line(1, "Cetzine", { status: "declined", declinedReason: "not in stock" })]);
+        return { status: 201, body: current };
+      },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-1");
+    await userEvent.click(within(row).getByRole("button", { name: /What else for Cetzine/ }));
+    await userEvent.click(within(row).getByRole("button", { name: "Drop this line" }));
+    const sheet = await screen.findByRole("dialog", { name: "Drop Cetzine from the bill" });
+    for (const pill of ["not in stock", "patient declined", "cost too high", "other"]) expect(within(sheet).getByRole("button", { name: pill })).toBeInTheDocument();
+    await userEvent.click(within(sheet).getByRole("button", { name: "not in stock" }));
+    expect(within(sheet).getByText("Will be noted as asked for.")).toBeInTheDocument();
+    await userEvent.click(within(sheet).getByRole("button", { name: "Drop it" }));
+    await waitFor(() => expect(bodies("POST", "/lines/1/decline")).toEqual([{ reason: "not in stock", reasonCode: "not_in_stock" }]));
   });
 
   it("D3 — after the bill printed at payment here, the hand-over sends the labels alone", async () => {

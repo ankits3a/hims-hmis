@@ -16,7 +16,8 @@ import type { GstBook, TicketInvoices } from "./ticket-books";
 import type { CreditNoteRegister } from "./credit-notes";
 import { gstr2bReconcile } from "./gstr2b";
 import { gstr3bReport } from "./gstr3b";
-import { officeNonMoving, officePurchaseAnalysis, officePurchaseRegister, officeStockValuation, officeVendorDiscounts } from "./office-reports";
+import { officeMissedSales, officeNonMoving, officePurchaseAnalysis, officePurchaseRegister, officeStockValuation, officeVendorDiscounts } from "./office-reports";
+import type { MissedSalesReport } from "./office-reports";
 import { dailyStock, itemCatalogueReport, lossRegister, topSellingItems } from "./office-stock-reports";
 import { EXCEPTIONS_VIEW, officeExceptions } from "./exceptions";
 import type { PharmacyExceptionDay } from "./exceptions";
@@ -144,6 +145,13 @@ export class PharmacyReportsController {
   @Get("purchase-analysis")
   async purchaseAnalysis(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<PurchaseAnalysisReport & { preset: string }> {
     try { return await officePurchaseAnalysis(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Spec #1064 — medicines asked for and not supplied, by item, with the names the catalogue lacks apart; the sales report's right. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("missed-sales")
+  async missedSales(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<MissedSalesReport> {
+    try { return await officeMissedSales(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
   }
 
   /** #637 — the vendors' trade discount by vendor over the period's booked supplier bills. */

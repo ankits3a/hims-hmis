@@ -184,6 +184,16 @@ target screen; the page links only when the viewer holds one (no right was added
 `reminder`; the phone builds the sentence from `Notice.figures` (`kernel/push/phone-push.ts` `figureSentence`), so no
 patient text leaves. A day with none sends nothing. Expiring stock (#1063) is not in it yet.
 
+### 4.6 Lost demand (#1064)
+A medicine asked for and not supplied becomes a `pharmacy_demand` row (no patient column) through `short-book.ts`
+`recordDemand` (one upsert on `pharmacy_short_book_open_item_ux`: an open entry's `asked_count` / `asked_qty_base`
+rise; only a missing open row creates a `counter` entry; a hand-noted entry keeps its source). Sources:
+`desk_decline` (`verify.ts` `declineLine(..., now, { reasonCode })`, `DECLINE_REASON_CODES`; only `not_in_stock`
+records, words alone never count; also the drop-at-bill sheet), `counter_search` / `counter_short` (`noteAskedFor`,
+`POST /pharmacy/retail/asked-for`, idempotent; a typed name not in the catalogue records demand only), `balance_owed`
+(`pick.ts`, a shelf-short pick). The short book reads both counters together (`listCounterShortBook`, store column);
+`?store=` reads one. Report `office-reports.ts` `officeMissedSales` (`GET /pharmacy/office/reports/missed-sales`).
+
 ## 5. Invariants (do not break)
 - `stock_balances` is never negative (CHECK + ordered lock in `materials/ledger.ts` `postMovements`).
 - `pharmacy_reg_h1` and the controlled stock register refuse UPDATE/DELETE by trigger.

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
 import { useAuth } from "../lib/auth";
@@ -10,7 +10,7 @@ import { duplicateCandidates } from "../lib/patients-api";
 import { todayIst } from "../lib/opd-api";
 import {
   acceptRetailReturn, fetchMyRegistration, fetchRetailBatches, fetchRetailPatientContext, fetchRetailSale, fetchRetailSaleByBill, fetchRetailSales,
-  fetchRetailState, pharmacyErrorText,
+  fetchRetailState, noteAskedFor, pharmacyErrorCode, pharmacyErrorText,
   askRetailDiscount, previewRetailSale, searchRetailShelf, sellRetail,
 } from "../lib/pharmacy-api";
 import { InvoicePrint } from "../components/invoice-print";
@@ -230,10 +230,18 @@ function DrawerLink(): React.ReactElement {
   );
 }
 
+/** Spec #1064 — a whole number above zero, as typed for the quantity asked for. */
+const askedQtyOf = (text: string): number | null => (/^\d{1,6}$/.test(text.trim()) && Number(text) > 0 ? Number(text) : null);
+
 /**
  * UX-AUDIT 2026-09-28 — the medicine field is a typeahead over the walk-in shelf: typing lists what
  * is on it (no Find button), ↑/↓ and Enter add the highlighted one. A scanner types and presses
  * Enter: a pack whose barcode names exactly one batch goes straight into the cart, as before.
+ *
+ * SPEC #1064 — LOST DEMAND. When the search finds no stock (every row at 0) or nothing at all, the list's last row
+ * is "Note as asked for" with the quantity (1 unless changed): one tap records the medicine the patient asked for
+ * and did not get — the shelf row's item (which raises the short book), or the name as typed. A tap on a row with
+ * none here offers the same for that row.
  */
 function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }): React.ReactElement {
   const { t } = useTranslation();
@@ -242,28 +250,64 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
   const [active, setActive] = useState(0);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [askFor, setAskFor] = useState<WireRetailShelfEntry | null>(null);
+  const [askQty, setAskQty] = useState("1");
+  /* One idempotency key per press, kept for a retry of the same note (a refusal, a lost answer); a new note, a new key. */
+  const [noteKey, setNoteKey] = useState(newIdempotencyKey);
+  const [asking, setAsking] = useState(false);
+  const [noted, setNoted] = useState<string | null>(null);
   const debounced = useDebounced(q.trim(), 200);
   /* The list closes a beat after the field loses focus (so a click on an option lands first); a stale close must not shut a list reopened since. */
   const closing = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reopen = (): void => { if (closing.current !== null) { clearTimeout(closing.current); closing.current = null; } setOpen(true); };
+  const closeSoon = (): void => { closing.current = setTimeout(() => { closing.current = null; setOpen(false); }, 150); };
   useEffect(() => () => { if (closing.current !== null) clearTimeout(closing.current); }, []);
   const found = useQuery({
     queryKey: ["pharmacy", "retail", "shelf", debounced],
     queryFn: () => searchRetailShelf(debounced),
     enabled: debounced.length >= 2,
     retry: false,
+    /* The list stays up with the last answer while the next one loads (no flicker); nothing acts on a stale answer. */
+    placeholderData: keepPreviousData,
   });
   const items = found.data ?? [];
-  useEffect(() => { setActive(0); }, [found.data]);
+  const fresh = !found.isPlaceholderData;
+  useEffect(() => { setActive(0); setAskFor(null); setAskQty("1"); setNoteKey(newIdempotencyKey()); }, [found.data]);
 
   const add = (entry: WireRetailShelfEntry): void => {
-    if (entry.available === 0) return;
+    /* Spec #1064 — none of it here: offer to note it as asked for instead of adding a line that cannot be sold. */
+    if (entry.available === 0) { setAskFor(entry); setNoteKey(newIdempotencyKey()); return; }
     onAdd(entry); setQ(""); setOpen(false); setError(null);
+  };
+  const settled = open && fresh && debounced.length >= 2 && found.data !== undefined && debounced === q.trim();
+  const ask: { entry: WireRetailShelfEntry } | { typed: string } | null = !settled ? null
+    : askFor !== null ? { entry: askFor }
+      : items.length === 0 ? { typed: debounced }
+        : items.every((f) => f.available === 0) ? { entry: items[0]! } : null;
+  const askQtyBase = askedQtyOf(askQty);
+  /* On a phone the list runs under the pinned bar: the note's row is brought into view when it appears (walk 2026-11-14). */
+  const askRow = useRef<HTMLLIElement>(null);
+  const askKey = ask === null ? null : "entry" in ask ? ask.entry.itemId : `typed:${ask.typed}`;
+  useEffect(() => { if (askKey !== null) askRow.current?.scrollIntoView?.({ block: "nearest" }); }, [askKey]);
+  const noteAsked = async (): Promise<void> => {
+    if (ask === null || askQtyBase === null || asking) return;
+    setAsking(true); setError(null);
+    try {
+      await noteAskedFor("entry" in ask
+        ? { source: "counter_search", itemId: ask.entry.itemId, medicineId: ask.entry.medicineId, qtyBase: askQtyBase }
+        : { source: "counter_search", typedName: ask.typed, qtyBase: askQtyBase }, noteKey);
+      setNoted(t("pharmacyRetail.askedNoted", { name: "entry" in ask ? ask.entry.itemName : ask.typed }));
+      setQ(""); setOpen(false); setAskFor(null); setAskQty("1"); setNoteKey(newIdempotencyKey());
+    } catch (e) {
+      setError(pharmacyErrorText(e, t));
+    } finally {
+      setAsking(false);
+    }
   };
   const enter = async (): Promise<void> => {
     const text = q.trim();
     if (text === "") return;
-    if (open && debounced === text && items.length > 0) { add(items[Math.min(active, items.length - 1)]!); return; }
+    if (open && fresh && debounced === text && items.length > 0) { add(items[Math.min(active, items.length - 1)]!); return; }
     /* A scan arrives faster than the debounce: ask now. */
     try {
       const now = await searchRetailShelf(text);
@@ -288,9 +332,9 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
         placeholder={t("pharmacyRetail.searchPlaceholder")}
         autoComplete="off"
         value={q}
-        onChange={(e) => { setQ(e.target.value); reopen(); setError(null); }}
+        onChange={(e) => { setQ(e.target.value); reopen(); setError(null); setNoted(null); }}
         onFocus={reopen}
-        onBlur={() => { closing.current = setTimeout(() => { closing.current = null; setOpen(false); }, 150); }}
+        onBlur={closeSoon}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") { e.preventDefault(); reopen(); setActive((a) => Math.min(a + 1, Math.max(items.length - 1, 0))); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
@@ -321,9 +365,34 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
               <span className={f.available === 0 ? "rt-muted mo" : "mo"}>{t("pharmacyRetail.available", { count: f.available, unit: f.baseUom })}</span>
             </li>
           ))}
+          {ask !== null && (
+            <li
+              ref={askRow}
+              role="presentation"
+              className="rt-option rt-ask"
+              data-testid="retail-ask"
+              /* A tap here keeps the list open: only the quantity field takes the focus. */
+              onMouseDown={(e) => { if (!(e.target instanceof HTMLInputElement)) e.preventDefault(); }}
+            >
+              <span className="rt-grow rt-strong">{"entry" in ask ? ask.entry.itemName : `“${ask.typed}”`}</span>
+              <input
+                className="in mo rt-askqty"
+                inputMode="numeric"
+                aria-label={t("pharmacyRetail.askedQty")}
+                value={askQty}
+                onChange={(e) => { setAskQty(e.target.value); setNoteKey(newIdempotencyKey()); }}
+                onFocus={reopen}
+                onBlur={closeSoon}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void noteAsked(); } }}
+              />
+              {"entry" in ask && <span className="rt-muted rt-unit">{ask.entry.baseUom}</span>}
+              <button type="button" className="sec grn" disabled={asking || askQtyBase === null} onClick={() => void noteAsked()}>{t("pharmacyRetail.askedNote")}</button>
+            </li>
+          )}
         </ul>
       )}
       {error !== null && <p role="alert" className="rt-err">{error}</p>}
+      {noted !== null && <p role="status" className="rt-note" data-testid="retail-asked-noted">{noted}</p>}
     </div>
   );
 }
@@ -440,6 +509,9 @@ export function PharmacyRetail(): React.ReactElement {
   */
   const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
   const [cartId, setCartId] = useState(newIdempotencyKey);
+  /* Spec #1064 — a cart line larger than this shelf holds (`short_stock`): what was asked for, ready to note. */
+  const [shortAsk, setShortAsk] = useState<{ entry: WireRetailShelfEntry; qty: string; key: string } | null>(null);
+  const [shortNoted, setShortNoted] = useState<string | null>(null);
   const [billMenu, setBillMenu] = useState(false);
   const [discountSheet, setDiscountSheet] = useState(false);
   const approval = useDiscountApproval(discount);
@@ -471,7 +543,34 @@ export function PharmacyRetail(): React.ReactElement {
   });
   const cartValid = cart.length > 0 && cart.every((c) => /^\d+$/.test(c.qty) && Number(c.qty) > 0);
   /* A changed cart is a different bill: its preview, and any discount priced on the old one, go. */
-  const invalidate = (): void => { setPreview(null); setDiscount(null); setCartId(newIdempotencyKey()); };
+  const invalidate = (): void => { setPreview(null); setDiscount(null); setCartId(newIdempotencyKey()); setShortAsk(null); };
+
+  /*
+    Spec #1064 — a `short_stock` refusal names the line and what the shelf can sell. When the shelf holds less than was
+    asked for (not merely less in one batch), the refusal offers "Note as asked for", at the quantity asked.
+  */
+  const shortAskOf = (e: unknown): { entry: WireRetailShelfEntry; qty: string; key: string } | null => {
+    if (pharmacyErrorCode(e) !== "short_stock" || !(e instanceof ApiError)) return null;
+    const detail = (e.body as { detail?: { lineIdx?: unknown; available?: unknown } } | undefined)?.detail;
+    const line = typeof detail?.lineIdx === "number" ? cart[detail.lineIdx] : undefined;
+    if (line === undefined || !/^\d+$/.test(line.qty)) return null;
+    if (typeof detail?.available === "number" && detail.available >= Number(line.qty)) return null;
+    return { entry: line.entry, qty: line.qty, key: newIdempotencyKey() };
+  };
+  const noteShort = async (): Promise<void> => {
+    const qty = shortAsk === null ? null : askedQtyOf(shortAsk.qty);
+    if (shortAsk === null || qty === null) return;
+    setBusy(true);
+    try {
+      await noteAskedFor({ source: "counter_short", itemId: shortAsk.entry.itemId, medicineId: shortAsk.entry.medicineId, qtyBase: qty }, shortAsk.key);
+      setShortNoted(t("pharmacyRetail.askedNoted", { name: shortAsk.entry.itemName }));
+      setShortAsk(null);
+    } catch (e) {
+      setError(pharmacyErrorText(e, t));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const add = (entry: WireRetailShelfEntry): void => {
     setCart((c) => [...c, { entry, qty: "" }]);
@@ -490,6 +589,7 @@ export function PharmacyRetail(): React.ReactElement {
       setTendered("");
     } catch (e) {
       setError(pharmacyErrorText(e, t));
+      setShortAsk(shortAskOf(e)); setShortNoted(null);
     } finally {
       setBusy(false);
     }
@@ -581,7 +681,7 @@ export function PharmacyRetail(): React.ReactElement {
   const reset = (): void => {
     setCustomer(null); setNewDraft(EMPTY_NEW); setRegistering(false); setMatches(null); setCart([]); setPreview(null);
     setRx(EMPTY_RX); setMode("cash"); setTendered(""); setCashPart(""); setUpiPart(""); setRef(""); setError(null); setSold(null); setSaleKey(newIdempotencyKey());
-    setDiscount(null); setCartId(newIdempotencyKey()); setBillMenu(false); setDiscountSheet(false);
+    setDiscount(null); setCartId(newIdempotencyKey()); setBillMenu(false); setDiscountSheet(false); setShortAsk(null); setShortNoted(null);
   };
 
   /*
@@ -794,6 +894,20 @@ export function PharmacyRetail(): React.ReactElement {
                 <p role="status" className="rt-warn">{t("pharmacyRetail.licenceEnds", { count: licence.daysLeft, to: licence.licence?.validTo === undefined ? "" : dmy(licence.licence.validTo) })}</p>
               )}
               {error !== null && <p role="alert" className="rt-bad">{error}</p>}
+              {shortAsk !== null && (
+                <div className="rt-row rt-ask" data-testid="retail-short-ask">
+                  <span className="rt-grow"><span className="rt-muted">{t("pharmacyRetail.askedShort")}</span> <span className="rt-strong">{shortAsk.entry.itemName}</span></span>
+                  <input
+                    className="in mo rt-askqty"
+                    inputMode="numeric"
+                    aria-label={t("pharmacyRetail.askedQty")}
+                    value={shortAsk.qty}
+                    onChange={(e) => setShortAsk({ ...shortAsk, qty: e.target.value, key: newIdempotencyKey() })}
+                  />
+                  <button type="button" className="sec grn" disabled={busy || askedQtyOf(shortAsk.qty) === null} onClick={() => void noteShort()}>{t("pharmacyRetail.askedNote")}</button>
+                </div>
+              )}
+              {shortNoted !== null && <p role="status" className="rt-note" data-testid="retail-short-noted">{shortNoted}</p>}
 
               {sold !== null ? (
                 <section className="box rt-card" data-testid="retail-sold">

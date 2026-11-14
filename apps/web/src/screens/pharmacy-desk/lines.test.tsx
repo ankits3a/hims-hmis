@@ -277,7 +277,8 @@ describe("the line list at the window (PD-4)", () => {
     await userEvent.type(within(odd).getByRole("textbox", { name: /Why is Ascoril/ }), "not stocked here");
     await userEvent.click(within(odd).getByRole("button", { name: "Decline" }));
     await waitFor(() => expect(posted("/pick")).toHaveLength(1));
-    expect(posted("/lines/0/decline")).toEqual([{ reason: "not stocked here" }]);
+    // Spec #1064 — words that read as a shortage are offered "not in stock" (ticked): the decline records the demand.
+    expect(posted("/lines/0/decline")).toEqual([{ reason: "not stocked here", reasonCode: "not_in_stock" }]);
     expect(posted("/verify")).toEqual([{ lines: [{ lineIdx: 1, qtyBase: 5 }] }]);
   });
 
