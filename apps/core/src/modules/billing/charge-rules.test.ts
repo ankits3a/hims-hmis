@@ -55,11 +55,11 @@ describe("the OPD fee branch: feeServiceFor and the fee quote (D8)", () => {
   }
 
   /** See the shaping disclosure in this file's header. */
-  async function shapeEncounter(visitType: string): Promise<string> {
+  async function shapeEncounter(visitType: string, type = "opd"): Promise<string> {
     const id = newId();
     await db.insert(opdEncounters).values({
       id, visitNo: `VFX-${id}`, patientId: await mkTestPatient(), workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
-      visitType, status: "waiting", intendedPayer: "self", openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
+      visitType, type, status: "waiting", intendedPayer: "self", openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
     });
     return id;
   }
@@ -83,6 +83,37 @@ describe("the OPD fee branch: feeServiceFor and the fee quote (D8)", () => {
   it("a REVISIT is FREE — the branch is null, and null is the free branch, not a missing mapping", async () => {
     const cfg = await loadBillingConfig(db);
     expect(feeServiceFor(await encounterOf("revisit"), cfg.chargeRules)).toBeNull();
+  });
+
+  /**
+   * #1079 / decision 0003 ruling 2 — "a diagnostic-only visit carries NO consult fee, ever". The imaging
+   * desk's walk-in (`type = 'imaging'`), the lab's (`'lab'`) and the pharmacy's no-fee visit (`'pharmacy'`)
+   * are not consultations, and each is stamped `visit_type = 'new'` like any first visit — so the branch
+   * must read the visit's KIND, or the /billing counter quotes a consult fee on every one of them.
+   */
+  it("#1079: an imaging walk-in visit has no consult fee — the branch is null and the quote prices nothing", async () => {
+    const cfg = await loadBillingConfig(db);
+    const id = await shapeEncounter("new", "imaging");
+    expect(feeServiceFor((await getEncounter(db, id))!, cfg.chargeRules)).toBeNull();
+    const quote = await feeQuote(db, id, NOW);
+    expect({ free: quote.free, feeServiceId: quote.feeServiceId, draft: quote.draft })
+      .toEqual({ free: true, feeServiceId: null, draft: null });
+  });
+
+  it("#1079: a lab walk-in visit has no consult fee", async () => {
+    const cfg = await loadBillingConfig(db);
+    expect(feeServiceFor((await getEncounter(db, await shapeEncounter("new", "lab")))!, cfg.chargeRules)).toBeNull();
+  });
+
+  it("#1079: a pharmacy visit has no consult fee", async () => {
+    const cfg = await loadBillingConfig(db);
+    expect(feeServiceFor((await getEncounter(db, await shapeEncounter("new", "pharmacy")))!, cfg.chargeRules)).toBeNull();
+  });
+
+  it("#1079: an OPD visit and a hand-shaped row with no kind still charge the consult fee", async () => {
+    const cfg = await loadBillingConfig(db);
+    expect(feeServiceFor((await getEncounter(db, await shapeEncounter("new", "opd")))!, cfg.chargeRules)).toBe(base.consultNewServiceId);
+    expect(feeServiceFor({ visitType: "new" } as Parameters<typeof feeServiceFor>[0], cfg.chargeRules)).toBe(base.consultNewServiceId);
   });
 
   it("a visit type outside the three OPD stamps has no rule at all: fee_not_applicable", async () => {

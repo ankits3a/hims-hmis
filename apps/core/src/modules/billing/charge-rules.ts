@@ -26,8 +26,14 @@ export const FEE_LINE_ID = "fee";
  * (2026-10-05; pass the rules through `chargeRulesAt` first): the null is the free branch, not a
  * missing mapping, which is why the gate treats it as "nothing to collect" rather than as an
  * error. A visit type outside the three OPD ships has no rule to apply at all.
+ *
+ * #1079 / decision 0003 ruling 2 — a consult fee belongs to an OPD CONSULTATION only. A visit whose kind
+ * (`opd_encounters.type`) is not `opd` — the lab's walk-in, the imaging desk's walk-in, the pharmacy's
+ * visit — carries no consult fee, ever, whatever its `visit_type`. A hand-shaped row that names no kind
+ * (`{ visitType, openedAt }`, several callers) is judged on its visit type alone, as it always was.
  */
 export function feeServiceFor(encounter: EncounterRow, rules: ChargeRules): string | null {
+  if (encounter.type !== undefined && encounter.type !== "opd") return null;
   const service = chargedServiceFor(encounter, rules);
   return service !== null && consultFeeSwitchedOff(encounter, rules) ? null : service;
 }
