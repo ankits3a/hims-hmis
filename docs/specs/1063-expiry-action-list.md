@@ -1,6 +1,6 @@
 ---
 issue: 1063
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Weekly expiry action list: return, move, at risk, write off (#1063)
@@ -46,3 +46,34 @@ pharmacy software study of 2026-11-14.
   risk with the leftover quantity and its value.
 - **D5** The page shows last run, next run and batches checked; Run now reruns and updates them.
 - **D6** A narcotic batch is listed apart and never drafted.
+
+## Built (2026-11-14)
+
+Where the build is more precise than the text above:
+
+- **Files.** List, run and Move: `apps/core/src/modules/pharmacy/expiry-actions.ts` (`expiryActionList`,
+  `runExpiryActionsNow`, `runWeeklyExpiryActions`, `moveExpiryBatch`). The stock read and the one-draft-per-supplier
+  writer are materials': `supplier-returns.ts` `expiryCandidates` and `topUpAgentReturns` (the existing draft writer,
+  split from `createSupplierReturn` / `updateSupplierReturn`; no second writer). Page: `apps/web/src/screens/pharmacy-office/expiring.tsx`
+  at `/pharmacy/office?view=returns&page=expiring`.
+- **Routes.** `GET /pharmacy/office/expiry-actions` and `POST /pharmacy/office/expiry-actions/run` on
+  `materials.returns.manage` (the returns page's own read right); `POST /pharmacy/office/expiry-actions/move` on
+  `materials.stock.issue`, the transfer writer's own right (without it the page shows the move as text).
+- **The run.** Scheduler job `runExpiryActions`, daily at 07:00 IST; it acts only when no run happened since the latest
+  Monday 07:00 IST (so a missed Monday catches up the next morning). One transaction under an advisory lock. Its log is the
+  event `expiry_actions.ran` (last run, trigger, batches checked, drafts): no table, no migration. A supplier whose open
+  agent draft no longer resolves (stock sold since) is skipped and named in the log, never given a second draft.
+- **Return** is `materials` `returnVerdict`: expired inside the vendor's window, near expiry within 90 days
+  (`NEAR_EXPIRY_RETURN_DAYS`), or recalled; real supplier, owned stock only.
+- **At risk** applies beyond those 90 days. Inside them, stock nobody takes back (opening, trial, donated) whose leftover
+  the sales will not clear is **Write off** (D2). The leftover is FEFO per counter and item: the earlier-expiring batches
+  sell first, at the counter's last-90-days rate, up to the last day of each batch's expiry month.
+- **Move** is offered from a counter's main shelf only (not its loose tray), for unexpired stock; the target is the other
+  counter's main store. A counter's loose and damage trays count in its sales.
+- **Write off** also takes: expired stock with no supplier, recalled stock with no supplier, and the damage tray whatever its
+  date (never returned, ruling 2026-10-03). The page's Write off opens the existing write-off sheet; an expiry write-off
+  takes expired stock only, so an unexpired row says "At expiry".
+- A batch on a live return or write-off is listed in that document's group with the document instead of an action.
+  "Batches checked" counts every store batch inside the horizon, NDPS included; a batch whose stock is all reserved is
+  checked but not listed.
+
