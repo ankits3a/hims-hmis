@@ -1,4 +1,5 @@
 import type { TFunction } from "i18next";
+import { packWordOf } from "../../../../packages/contracts/src/counter-pack";
 
 /**
  * ═══ ONE ROW PER DRUG (loose-MRP ruling, owner 2026-09-22) ═══
@@ -16,12 +17,18 @@ export type WireBillRow = {
   sacCode: string | null; rateBps: number | null; exempt: boolean | null;
 };
 
-/** "1 strip + 5 tablet", "2 strip", or "20 tablet" / "× 20" when the item has no pack. */
+/**
+ * "1 strip + 5 tablet", "2 strip", or "20 tablet" / "× 20" when the item has no pack. The pack is worded plainly
+ * (`packWordOf`, walk 2026-11-13): a patient's bill never reads "1 strip15".
+ */
 export function billQtyText(t: TFunction, qty: number, pack: WireBillRowPack | null | undefined, unit?: string): string {
   if (pack == null || pack.packs === 0) return unit === undefined ? `× ${String(qty)}` : t("pharmacyBill.unitsOnly", { qty, unit: pack?.baseUom ?? unit });
-  if (pack.loose === 0) return t("pharmacyBill.packsOnly", { packs: pack.packs, pack: pack.uom });
-  return t("pharmacyBill.packsLoose", { packs: pack.packs, pack: pack.uom, loose: pack.loose, unit: pack.baseUom });
+  if (pack.loose === 0) return t("pharmacyBill.packsOnly", { packs: pack.packs, pack: packWordOf(pack.uom) });
+  return t("pharmacyBill.packsLoose", { packs: pack.packs, pack: packWordOf(pack.uom), loose: pack.loose, unit: pack.baseUom });
 }
+
+/** The word a printed bill uses for a pack (`strip15` → `strip`); see `packWordOf`. */
+export { packWordOf };
 
 /**
  * What `qty` base units of a quoted batch cost: full packs at the pack's price (the server priced

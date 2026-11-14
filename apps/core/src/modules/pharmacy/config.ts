@@ -63,6 +63,11 @@ export const LICENCE_RENEWAL_NOTICE_DAYS = 60;
 
 /** R-4 — the schedule whose hand-over writes a register row (Rule 65(3)). */
 export const REGISTER_FLAGS = ["H1"] as const;
+/**
+ * Spec #1055, ruling 0094 — what the H1 register writes where the prescriber goes, for a Schedule H1 medicine the
+ * counter added by hand with no prescription ("not prescribed").
+ */
+export const NO_PRESCRIPTION_PRESCRIBER = "no prescription — added at the counter";
 
 /**
  * The IST calendar date of an instant, `YYYY-MM-DD` — what `serviceDate` means everywhere in OPD.

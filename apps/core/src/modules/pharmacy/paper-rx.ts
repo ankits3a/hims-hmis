@@ -162,7 +162,8 @@ function refuseOnChecks(outcome: RxCheckOutcome): void {
   if (disease.length > 0) throw new PharmacyError("drug_disease_block", "a diagnosis this patient carries rules a medicine out — back to the doctor", { count: disease.length });
 }
 
-const ORAL_FORMS = /tab|cap|syr|susp|drop|sachet|powder|granule|liquid|solution|elixir/i;
+/** The forms a line's route reads as oral — shared with a medicine added by hand (`add-line.ts`). */
+export const ORAL_FORMS = /tab|cap|syr|susp|drop|sachet|powder|granule|liquid|solution|elixir/i;
 
 export async function enterPaperPrescription(
   db: Db, cfg: AppConfig, documents: DocumentStore, actor: Actor, input: PaperRxInput, now: Date,
