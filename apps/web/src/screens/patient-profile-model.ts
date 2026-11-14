@@ -93,6 +93,8 @@ export type Labels = {
   clinical: boolean;
   /** Owner 2026-10-11 — the title of a lab counter walk-in visit row. */
   labVisit: string;
+  /** #1079 — the title of an imaging desk walk-in visit row (an outside slip, no OPD consultation). */
+  imagingVisit: string;
   visit: (visitNo: string) => string;
   medicines: (n: number) => string;
   labSigned: string;
@@ -130,13 +132,16 @@ export function buildTimeline(src: TimelineSources, l: Labels): TimelineRow[] {
     if (l.clinical && v.prescriptionLineCount > 0) parts.push(l.medicines(v.prescriptionLineCount));
     /** Owner 2026-10-11 — a lab walk-in is a LAB row with no OPD visit card (no token, no OPD papers). */
     const lab = v.type === "lab";
+    /** #1079 — the imaging desk's walk-in likewise: a RAD row, no OPD visit card. */
+    const imaging = v.type === "imaging";
     const codes = lab ? testCodesOf(src.labOrders, v.visitNo) : [];
     rows.push({
-      key: `opd-${v.encounterId}`, source: lab ? "LAB" : "OPD", day: v.serviceDate, at: v.openedAt,
-      ...(lab ? {} : { encounterId: v.encounterId }),
+      key: `opd-${v.encounterId}`, source: lab ? "LAB" : imaging ? "RAD" : "OPD", day: v.serviceDate, at: v.openedAt,
+      ...(lab || imaging ? {} : { encounterId: v.encounterId }),
       ...(lab && v.visitNo !== undefined && v.visitNo !== "" ? { labVisitNo: v.visitNo } : {}),
       ...(codes.length > 0 ? { tags: codes } : {}),
-      title: lab ? l.labVisit : who === "" ? "OPD" : who, sub: lab ? (who === "" ? null : who) : parts.length === 0 ? null : parts.join(" · "),
+      title: lab ? l.labVisit : imaging ? l.imagingVisit : who === "" ? "OPD" : who,
+      sub: lab || imaging ? (who === "" ? null : who) : parts.length === 0 ? null : parts.join(" · "),
       ...(v.visitNo !== undefined && v.visitNo !== "" ? { note: l.visit(v.visitNo) } : {}),
     });
   }
