@@ -160,6 +160,20 @@ IPD (the ipd module's eMAR `issueMed`) consumes straight from PHARM-OPD to the p
 from ER-SAT and prices through materials, a third price door. Neither uses indents, transfers or reservations, and this
 module has no view of either. Decision 0012: ward issue, ward returns, IP bill and MAR wait for IPD.
 
+### 4.5 Owner exception digest (#1065, ruling 0097)
+`exceptions.ts` `pharmacyExceptionsOn(db, istDay)` computes on read one day's exceptions from the records that already
+hold them: refunds and cancels, discounts approved above 10%, stock adjustments, write-offs, MRP revisions, leakage
+mismatches (`leakage.ts`; a mismatch a listed refund explains stays on the page but is counted once, under Refunds),
+blind-count cash short/over (pharmacy-role drawers, the day's last count), purchase lines above reference (#1061),
+supplier credit below our debit note, paper sales entered late. Rupees always positive, sorted biggest first; "who"
+is the approver where an approval let it through. Each row carries its own reference and the rights that open its
+target screen; the page links only when the viewer holds one (no right was added to the owner). Page
+`officeExceptions` (`pages.ts` key `exceptions`), right `EXCEPTIONS_VIEW` = `pharmacy.exceptions.view`, owner role only.
+`sendPharmacyExceptionDigest` (08:00 IST job) raises one bell notice per owner-role user, keyed by the day (alert kind
+`pharmacy_exception_digest`, ref type `pharmacy_exceptions_day`), sent to phones by the existing relay in category
+`reminder`; the phone builds the sentence from `Notice.figures` (`kernel/push/phone-push.ts` `figureSentence`), so no
+patient text leaves. A day with none sends nothing. Expiring stock (#1063) is not in it yet.
+
 ## 5. Invariants (do not break)
 - `stock_balances` is never negative (CHECK + ordered lock in `materials/ledger.ts` `postMovements`).
 - `pharmacy_reg_h1` and the controlled stock register refuse UPDATE/DELETE by trigger.
