@@ -1,6 +1,6 @@
 ---
 issue: 1086
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Move the consent schema and fasting constants from ot into the kernel (#1086)
