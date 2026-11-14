@@ -274,6 +274,17 @@ export type WirePurchaseAnalysis = {
   byVendor: { vendorId: string; vendorName: string; lines: number; extraPaise: number }[]; totalExtraPaise: number;
 };
 export const fetchPurchaseAnalysis = (r: RangeInput): Promise<WirePurchaseAnalysis> => api("GET", `${BASE}/purchase-analysis${query(r)}`);
+/** Spec #1064 — medicines asked for and not supplied: by item, and the names the catalogue lacks apart. */
+export type WireMissedSalesRow = {
+  itemId: string; itemCode: string; itemName: string; baseUom: string; timesAsked: number; qtyBase: number;
+  mrpUnitPaise: number | null; estimatedValuePaise: number | null; stockNow: number; openPoBase: number; lastAskedAt: string;
+};
+export type WireMissedSalesTyped = { name: string; medicineId: string | null; timesAsked: number; qtyBase: number; lastAskedAt: string };
+export type WireMissedSales = {
+  from: string; to: string; preset: string; rows: WireMissedSalesRow[]; typed: WireMissedSalesTyped[];
+  totals: { timesAsked: number; qtyBase: number; estimatedValuePaise: number };
+};
+export const fetchMissedSales = (r: RangeInput): Promise<WireMissedSales> => api("GET", `${BASE}/missed-sales${query(r)}`);
 export const fetchValuation = (asOf: string, store: string): Promise<WireValuation> => api("GET", `${BASE}/valuation${query({ asOf, store })}`);
 export const fetchNonMoving = (days: number, store: string): Promise<WireNonMoving> => api("GET", `${BASE}/non-moving${query({ days, store })}`);
 export const reconcileGstr2b = (input: { format: "json" | "csv"; content: string; preset: ReportPreset; from: string; to: string }): Promise<WireGstr2b> =>

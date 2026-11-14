@@ -336,6 +336,45 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
   });
 
   /**
+   * Spec #1064 — lost demand over HTTP: the walk-in counter's "Note as asked for" (gated like a sale; an item or a
+   * name), the desk decline's reason list (a code off the list is refused; "not in stock" records the demand), and
+   * the office's Missed sales report under the sales report's right. Every act runs at the wall clock; the report
+   * reads today.
+   */
+  it("spec #1064 — 'Note as asked for', the decline's reason code, and the Missed sales report", async () => {
+    await withTx(db, (tx) => createStore(tx, { type: "user", id: "01HMATERIALSHEAD00000000001" }, { code: RETAIL_PHARMACY_STORE_CODE, name: "Walk-in retail pharmacy" }));
+    const ph = as(fx.pharmacist.token);
+    const asked = "/pharmacy/retail/asked-for";
+    await as(fx.aide.token)(request(server()).post(asked).send({ source: "counter_search", typedName: "Ascoril LS syrup" })).expect(403);
+    await ph(request(server()).post(asked).send({ source: "counter_search" })).expect(400);
+    await ph(request(server()).post(asked).send({ source: "walk_in", typedName: "Ascoril LS syrup" })).expect(400);
+    const typed = await ph(request(server()).post(asked).send({ source: "counter_search", typedName: "Ascoril LS syrup", qtyBase: 2 })).expect(201);
+    expect(typed.body).toMatchObject({ demand: { itemId: null, typedName: "Ascoril LS syrup", qtyAskedBase: 2 }, shortBook: null });
+    const short = await ph(request(server()).post(asked).send({ source: "counter_short", itemId: fx.item.calpol, medicineId: fx.med.calpol, qtyBase: 5 })).expect(201);
+    expect(short.body).toMatchObject({ demand: { itemId: fx.item.calpol, source: "counter_short" }, shortBook: { created: true, entry: { source: "counter", askedCount: 1, askedQtyBase: 5 } } });
+
+    const { issued } = await issueRx(db, fx, [line({ drug: "Crocin 500", medicineId: fx.med.crocin })], { payFee: true });
+    const found = await ph(request(server()).get("/pharmacy/find").query({ q: issued.qrPayload })).expect(200);
+    const id = (found.body as { dispense: { id: string } }).dispense.id;
+    await ph(request(server()).post("/pharmacy/dispenses").set("idempotency-key", "claim-1064").send({ dispenseId: id, door: "rx_qr" })).expect(201);
+    await ph(request(server()).post(`/pharmacy/dispenses/${id}/lines/0/decline`).send({ reason: "gone", reasonCode: "lost" })).expect(400);
+    const declined = await ph(request(server()).post(`/pharmacy/dispenses/${id}/lines/0/decline`).send({ reason: "not in stock", reasonCode: "not_in_stock" })).expect(201);
+    expect((declined.body as { lines: { status: string }[] }).lines[0]).toMatchObject({ status: "declined" });
+
+    const report = "/pharmacy/office/reports/missed-sales";
+    await ph(request(server()).get(report).query({ preset: "today" })).expect(403);
+    await grantPermissionToRole(db, fx.registry, "pharmacy", "pharmacy.reports.read");
+    const missed = await ph(request(server()).get(report).query({ preset: "today" })).expect(200);
+    expect(missed.body).toMatchObject({
+      rows: expect.arrayContaining([
+        expect.objectContaining({ itemId: fx.item.calpol, timesAsked: 1, qtyBase: 5 }),
+        expect.objectContaining({ itemId: fx.item.crocin, timesAsked: 1 }),
+      ]),
+      typed: [expect.objectContaining({ name: "Ascoril LS syrup", timesAsked: 1, qtyBase: 2 })],
+    });
+  });
+
+  /**
    * PHARMACY P20 — a paper dispense over HTTP, signed with the key the API itself uses: the sheet is
    * checked, the entry is recorded at the time on the sheet, and the sheet is then spent.
    */

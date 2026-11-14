@@ -69,6 +69,8 @@ export const dispenseVerified = defineEvent("dispense.verified", MODULE, z.objec
 
 export const dispenseLineDeclined = defineEvent("dispense.line_declined", MODULE, z.object({
   dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id, reason: z.string().min(1),
+  /** Spec #1064 — the desk's short reason list; absent for a decline sent as words only. */
+  reasonCode: z.enum(["not_in_stock", "patient_declined", "cost", "other"]).optional(),
 }));
 
 /** D6 — a generic substitution with the patient's consent; the doctor is NOTIFIED, not asked. */
@@ -253,7 +255,7 @@ export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODU
  */
 export const shortBookNoted = defineEvent("short_book.noted", MODULE, z.object({
   entryId: id, storeResourceId: id, itemId: id.nullable(), drugName: z.string().min(1),
-  qtyWanted: z.number().int().positive().nullable(), source: z.enum(["desk", "agent", "reorder"]), dispenseId: id.nullable(),
+  qtyWanted: z.number().int().positive().nullable(), source: z.enum(["desk", "agent", "reorder", "counter"]), dispenseId: id.nullable(),
 }));
 
 /** P1 — a short-book entry was closed: ordered, received, or dismissed. */
