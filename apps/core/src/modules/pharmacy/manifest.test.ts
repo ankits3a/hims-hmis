@@ -57,6 +57,8 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
       "pharmacy.trays.check", "pharmacy.trays.manage",
       // #777 (owner 2026-10-13) — the pharmacy tab of Hospital numbers, read-only.
       "pharmacy.metrics.read",
+      // #1065 (ruling 0097) — the day's exceptions page and its 08:00 digest: the owner's.
+      "pharmacy.exceptions.view",
     ]);
     expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/desk", "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder", "/pharmacy/office", "/pharmacy/office/reports", "/pharmacy/registers/h1", "/pharmacy/leakage", "/pharmacy/retail", "/pharmacy/retail-licence", "/pharmacy/downtime"]);
     expect(pharmacyManifest.subscriptions).toEqual([

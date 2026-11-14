@@ -27,6 +27,7 @@ import * as rosterStaffNoticesMod from "../../modules/roster/staff-notices";
 import * as opdQueueNudgesMod from "../../modules/opd/queue-nudges";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as pharmacyExpiryActionsMod from "../../modules/pharmacy/expiry-actions";
+import * as pharmacyExceptionsMod from "../../modules/pharmacy/exceptions";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
@@ -446,6 +447,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sendUnitReports");
       return { sent: 0, failed: 0 };
     }),
+    // #1065 (ruling 0097) — the owner's pharmacy digest, stubbed on `modules/pharmacy/exceptions` (the file the index
+    // re-exports FROM). Its behaviour (every owner, once per day, nothing on a quiet day) is in the spec's acceptance test.
+    jest.spyOn(pharmacyExceptionsMod, "sendPharmacyExceptionDigest").mockImplementation(async () => {
+      invoked.push("sendPharmacyExceptionDigest");
+      return { day: "", count: 0, totalPaise: 0, notified: 0 };
+    }),
     // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
     jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {
       invoked.push("openDueTeleVisits");
@@ -545,6 +552,9 @@ const THE_EIGHTEEN = [
   "runRefillReminders",
   // #1063 — `dailyIst("07:00")`: the weekly expiry action list; it acts on a Monday (or the first tick after a missed one).
   "runExpiryActions",
+  // #1065 (ruling 0097) — the THIRTY-THIRD, `dailyIst("08:00")`: yesterday's pharmacy exceptions to the owner,
+  // registered beside the refill reminders. Past at the pin's 17:30 IST too, so it fires on the first tick.
+  "sendPharmacyExceptionDigest",
   // 18-S RS11 T3 — the TWENTY-THIRD, `every(3_600_000)`: the overdue-QA sweep (aerb).
   "sweepOverdueQa",
   // 18-S RS10 T2 — the TWENTY-FOURTH, `every(60_000)`: the HOD's escalations on the obligation spine.

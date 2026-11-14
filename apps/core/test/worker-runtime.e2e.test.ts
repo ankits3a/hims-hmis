@@ -198,6 +198,8 @@ const THE_EIGHTEEN = [
   "runRefillReminders",
   /** #1063 — `dailyIst("07:00")`: the weekly expiry action list, acting on Mondays. */
   "runExpiryActions",
+  /** #1065 (ruling 0097) — `dailyIst("08:00")`: yesterday's pharmacy exceptions, one bell row and phone notification per owner. */
+  "sendPharmacyExceptionDigest",
   /** 18-S RS11 T3 — `every(3_600_000)`: an overdue QA puts an available machine into `qa_blocked`. */
   "sweepOverdueQa",
   /** 18-S RS10 T2 — `every(60_000)`: the HOD's escalations raised on, and resolved off, the obligation spine. */

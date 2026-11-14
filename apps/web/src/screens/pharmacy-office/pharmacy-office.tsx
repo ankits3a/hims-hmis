@@ -25,6 +25,7 @@ import { StoreSettingsView } from "./store-settings";
 import { DeskSettingsView } from "./desk-settings";
 import { PayView } from "./pay";
 import { ReportsView } from "./reports";
+import { ExceptionsView } from "./exceptions";
 import { ReturnsView } from "./returns";
 import { ExpiringView } from "./expiring";
 import { Sheet } from "./sheet";
@@ -163,6 +164,7 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "adr": return <AdrRegisterView />;
     case "incidents": return <IncidentRegisterView />;
     case "reports": return <ReportsView />;
+    case "exceptions": return <ExceptionsView />;
     default: return null;
   }
 }

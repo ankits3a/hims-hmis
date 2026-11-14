@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fcmSender, loadServiceAccount, signedAssertion } from "./fcm";
-import { LIVE_PUSH_CATEGORIES, PUSH_CATEGORIES, PUSH_LINKS, categoriesFor, phoneMessage, pushTokenSchema, routeOfAlertKind, knownTo } from "./phone-push";
+import { LIVE_PUSH_CATEGORIES, PUSH_CATEGORIES, PUSH_LINKS, categoriesFor, figureSentence, kindSentence, phoneMessage, pushTokenSchema, routeOfAlertKind, knownTo } from "./phone-push";
 import { describePhonePush, phonePushSource } from "./sender";
 import type { FetchLike } from "./fcm";
 
@@ -91,6 +91,23 @@ describe("mobile M6b — what a phone is told carries no patient text", () => {
     expect(phoneMessage("personal", "reminders", "en")).toEqual({ title: "HMIS", body: "You have a reminder. Open HMIS to see it.", data: { category: "personal", link: "reminders" } });
     expect(LIVE_PUSH_CATEGORIES).not.toContain("personal");
     expect(knownTo("0.18.0 (30)", "alert,roster,queue,reminder,approvals,personal")).not.toContain("personal");
+  });
+
+  /** #1065 (ruling 0097) — the owner's pharmacy digest: two integers become the one line; nothing else can. */
+  it("says the pharmacy digest's count and rupees, in either language, and only from two whole numbers", () => {
+    expect(routeOfAlertKind("pharmacy_exception_digest")).toEqual({ category: "reminder", link: "pharmacyExceptions" });
+    expect(PUSH_LINKS).toContain("pharmacyExceptions");
+    expect(figureSentence("pharmacy_exception_digest", { count: 7, paise: 324_000 }, "en")).toBe("Pharmacy: 7 exceptions yesterday, ₹3,240");
+    expect(figureSentence("pharmacy_exception_digest", { count: 1, paise: 4_050 }, "en")).toBe("Pharmacy: 1 exception yesterday, ₹41");
+    expect(figureSentence("pharmacy_exception_digest", { count: 12, paise: 12_345_600 }, "hi")).toBe("फ़ार्मेसी: कल 12 अपवाद, ₹1,23,456");
+    // No figures, figures that are not whole numbers, or a kind that takes none: the plain sentence stands.
+    expect(figureSentence("pharmacy_exception_digest", undefined, "en")).toBeNull();
+    expect(figureSentence("pharmacy_exception_digest", { count: 1.5, paise: 100 }, "en")).toBeNull();
+    expect(figureSentence("pharmacy_exception_digest", { count: -1, paise: 100 }, "en")).toBeNull();
+    expect(figureSentence("roster_flag", { count: 3, paise: 100 }, "en")).toBeNull();
+    expect(kindSentence("pharmacy_exception_digest", "en")).toBe("Pharmacy exceptions of yesterday");
+    // One line on a 390 px phone (owner 2026-10-09): a big day still fits under fifty characters.
+    expect(figureSentence("pharmacy_exception_digest", { count: 999, paise: 9_999_999_900 }, "en")!.length).toBeLessThanOrEqual(50);
   });
 
   it("bounds what a phone may hand over as its address", () => {
