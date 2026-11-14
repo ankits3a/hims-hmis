@@ -23,6 +23,8 @@
         "buildType": "apk"
       },
       "ios": {
+        "distribution": "store",
+        "autoIncrement": true,
         "simulator": false,
         "node": "22.23.2"
       }
@@ -45,9 +47,17 @@
     "production": {
       "ios": {
         "bundleIdentifier": "com.crkmch.hmis",
-        "appName": "HMIS Staff",
+        "appName": "CRKMCH",
         "appleId": "ankit.sa3@gmail.com",
         "ascAppId": "6820855786",
+        "appleTeamId": "J9YMW2253U"
+      }
+    },
+    "preview": {
+      "ios": {
+        "bundleIdentifier": "com.crkmch.hmis.staging",
+        "appName": "CRKMCH Staging",
+        "appleId": "ankit.sa3@gmail.com",
         "appleTeamId": "J9YMW2253U"
       }
     }

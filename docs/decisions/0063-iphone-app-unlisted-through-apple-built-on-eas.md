@@ -16,6 +16,8 @@ sources: []
 
 - **Date:** 2026-10-10 (rulings given 2026-10-08)   **Status:** Ruled
 - **Area:** staff app (apps/mobile), iPhone
+- **Amended 2026-11-14 by [0095](0095-android-on-google-play-app-named-crkmch.md):** Android goes on Google Play too (point 5);
+  the app is named CRKMCH; the staging iPhone app stays in TestFlight.
 
 ## What is ruled (owner, 2026-10-08)
 

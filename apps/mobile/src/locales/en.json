@@ -30,8 +30,9 @@
     "mismatch": "The two new passwords do not match"
   },
   "mobile": {
+    "brand": "CRKMCH",
     "location": {
-      "why": "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises."
+      "why": "CRKMCH checks your location once when you mark attendance, to confirm you are on hospital premises."
     },
     "submitChange": "Change password",
     "wrongCurrent": "The current password is wrong",
@@ -48,7 +49,7 @@
       "touchId": "Touch ID is asked before a money approval. Recorded with your name, time and note.",
       "apple": "Touch ID / Face ID is asked before a money approval. Recorded with your name, time and note."
     },
-    "unlockTitle": "Unlock HMIS",
+    "unlockTitle": "Unlock CRKMCH",
     "unlockPrompt": "Confirm it is you",
     "unlockAgain": "Unlock",
     "usePassword": "Sign in with password instead",
@@ -61,7 +62,7 @@
       "scanHint": "Hold the code inside the frame. It reads by itself.",
       "scanAsk": "The camera is needed to scan a patient card.",
       "scanAllow": "Allow the camera",
-      "scanDenied": "The camera is switched off for HMIS. Allow it in the phone’s settings, or type the token number.",
+      "scanDenied": "The camera is switched off for CRKMCH. Allow it in the phone’s settings, or type the token number.",
       "scanCancel": "Cancel",
       "begin": "Begin",
       "asOf": "as of {{time}}",
@@ -96,7 +97,7 @@
       "camTitle": "Photograph the slip",
       "camAsk": "The camera is needed to photograph the slip.",
       "camAllow": "Allow the camera",
-      "camDenied": "The camera is switched off for HMIS. Allow it in the phone’s settings.",
+      "camDenied": "The camera is switched off for CRKMCH. Allow it in the phone’s settings.",
       "torchOn": "Light on",
       "torchOff": "Light off",
       "camFailed": "The photo could not be taken. Try again.",
@@ -642,7 +643,7 @@
       "open": "Open",
       "openSettings": "Open this phone’s settings",
       "kinds": "What this phone is told about",
-      "quiet": "HMIS has no quiet hours of its own: your phone’s Do Not Disturb is respected.",
+      "quiet": "CRKMCH has no quiet hours of its own: your phone’s Do Not Disturb is respected.",
       "bannerFallback": "Something needs you.",
       "checkAgain": "Check again",
       "haveAllowed": "I have allowed it — check again",
@@ -657,7 +658,7 @@
         "server": "Server reached",
         "linked": "This phone is linked to your sign-in",
         "canSend": "Hospital server can send notifications",
-        "permission": "This phone allows HMIS notifications",
+        "permission": "This phone allows CRKMCH notifications",
         "address": "Google gave this phone an address",
         "serverHasIt": "Server has this phone’s address",
         "lastTest": "Last test sent by the administrator",
@@ -700,7 +701,7 @@
         "notInBuild": "This build of the app was made before notifications were set up. An update will bring them.",
         "serverOff": "The hospital has not switched notifications on yet. The bell inside the app works meanwhile.",
         "off": "This phone is not told when something needs you. The bell inside the app still shows it.",
-        "denied": "Notifications for HMIS are switched off in this phone’s settings. Open the settings, allow notifications, and come back — the app finishes by itself.",
+        "denied": "Notifications for CRKMCH are switched off in this phone’s settings. Open the settings, allow notifications, and come back — the app finishes by itself.",
         "on": "This phone is told when something needs you."
       },
       "category": {
@@ -740,7 +741,7 @@
       "phone": "Phone",
       "phoneUnknown": "Not reported by this phone",
       "app": "App",
-      "appLine": "HMIS {{version}} (build {{code}})",
+      "appLine": "CRKMCH {{version}} (build {{code}})",
       "server": "Server",
       "lost": "If this phone is lost or changes hands, tell the administrator: they can sign this phone out without changing your password.",
       "limit": "You can be signed in on two phones at a time.",
@@ -955,7 +956,7 @@
         "recordingHint": "Tap to stop. Do not say the patient's name.",
         "typing": "Typing what you said…",
         "nothingHeard": "Nothing was heard. Hold the phone closer and try again, or type the note.",
-        "micRefused": "This phone has not allowed HMIS to use the microphone. Allow it in the phone's settings, or type the note.",
+        "micRefused": "This phone has not allowed CRKMCH to use the microphone. Allow it in the phone's settings, or type the note.",
         "noticeTitle": "Before you speak",
         "notice": "Your words are sent to an outside service (OpenAI) to be typed. The app sends no name as data — but a name you say travels in the recording, so avoid saying the patient's name. The recording is not kept. You read the text before it is saved.",
         "sent": "Sent",
@@ -1009,7 +1010,7 @@
       "title": "Scan a patient",
       "hint": "Slip, patient card or printed prescription",
       "looking": "Looking up…",
-      "denied": "The camera is not allowed for HMIS on this phone. Type the token, UHID or visit number instead.",
+      "denied": "The camera is not allowed for CRKMCH on this phone. Type the token, UHID or visit number instead.",
       "typeLabel": "or type token, UHID or visit no.",
       "typeHolder": "MED-9",
       "go": "Find",
@@ -3065,6 +3066,7 @@
     "suggestionsHospitalOff": "Off for the hospital",
     "account": "Account",
     "logout": "Log out of this phone",
+    "privacy": "Privacy policy",
     "offline": "No signal. Try again"
   },
   "myLeave": {

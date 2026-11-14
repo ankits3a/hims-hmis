@@ -67,7 +67,7 @@ describe("this phone and my account (M6a)", () => {
     expect(await screen.findByTestId("account-who")).toHaveTextContent("Signed in as asha.devi");
     // 03:30Z is 09:00 IST, Tuesday 6 October.
     expect(screen.getByTestId("account-since")).toHaveTextContent("since Tuesday 6 October, 09:00");
-    expect(screen.getByTestId("account-app")).toHaveTextContent(/^HMIS \d+\.\d+\.\d+ \(build \d+\)$/);
+    expect(screen.getByTestId("account-app")).toHaveTextContent(/^CRKMCH \d+\.\d+\.\d+ \(build \d+\)$/);
     expect(screen.getByTestId("account-server")).toHaveTextContent("stagehmis.crkmch.com");
     expect(screen.getByTestId("account-lost")).toHaveTextContent(/they can sign this phone out without changing your password/);
   });

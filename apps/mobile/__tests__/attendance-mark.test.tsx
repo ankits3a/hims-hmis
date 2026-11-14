@@ -152,7 +152,7 @@ describe("the permission sentence", () => {
     const w = world();
     await mount(w.fetcher, <Harness os="android" />);
     await fireEvent.press(await screen.findByTestId("att-mark-button"));
-    expect(await screen.findByTestId("att-mark-why-text")).toHaveTextContent("HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.");
+    expect(await screen.findByTestId("att-mark-why-text")).toHaveTextContent("CRKMCH checks your location once when you mark attendance, to confirm you are on hospital premises.");
     await fireEvent.press(screen.getByTestId("att-mark-cancel"));
     await waitFor(() => expect(screen.queryByTestId("att-mark-why")).toBeNull());
     expect(mockLoc.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
