@@ -172,11 +172,11 @@ describe("spec #1082 — the imaging copilot", () => {
       radiologist: ["radiology.worklist.read", "radiology.reports.write", "radiology.reports.read", "radiology.reports.sign", "radiology.criticals.ack"],
       radiographer: ["radiology.worklist.read", "radiology.schedule", "radiology.checkin", "radiology.gates.satisfy", "radiology.acquire"],
       doctor: ["radiology.reports.read"],
-      radiology_desk: ["radiology.schedule", "radiology.worklist.read"],
+      radiology_receptionist: ["radiology.schedule", "radiology.worklist.read"],
     };
-    await ensureRole(db, "radiology_desk");
+    await ensureRole(db, "radiology_receptionist");
     for (const [role, perms] of Object.entries(grants)) for (const p of perms) await grantPermissionToRole(db, registry, role, p);
-    ({ actor: desk } = await mkUser(db, "desk.anu", ["radiology_desk"]));
+    ({ actor: desk } = await mkUser(db, "desk.anu", ["radiology_receptionist"]));
     ({ actor: otherDoctor } = await mkUser(db, "dr.other", ["doctor"]));
   });
   afterEach(() => { fx.unregister(); });
@@ -346,8 +346,9 @@ describe("spec #1082 — the imaging copilot", () => {
 
     const refused = await confirmAs(db, otherDoctor, "radiology.mark_acted", option!);
     expect(refused.outcome).not.toBe("done");
+    /* The delivery row is written on the first read (`stampFirstRead`), so "nothing recorded" may be no row at all. */
     const [untouched] = await db.select().from(imagingReportDelivery).where(eq(imagingReportDelivery.reportId, s.reportId));
-    expect(untouched!.actedAt).toBeNull();
+    expect(untouched?.actedAt ?? null).toBeNull();
 
     const done = await confirmAs(db, fx.doctor, "radiology.mark_acted", option!);
     expect([done.outcome, done.answer.key]).toEqual(["done", "copilot.answer.radActedDone"]);
