@@ -203,6 +203,8 @@ it("Acquire → Send: CT dose above the DRL asks why (never blocks); repeat and 
   expect(bodiesOf("POST /api/radiology/studies/S1/acquisition/acquired")[0]).toEqual({
     imageSource: "no_pacs_images", doseCtdivol: 58, doseDlp: 1250, doseManual: true, drlReason: "Large patient",
     contrastGiven: false, contrastNotGivenReason: "Cannula tissued",
+    /** #1084 — the protocol worked from (the book's, kept) rides the acquisition. */
+    protocolName: "CT brain with contrast",
   });
 });
 

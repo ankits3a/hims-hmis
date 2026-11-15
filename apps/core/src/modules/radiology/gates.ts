@@ -161,6 +161,18 @@ export const RENAL_VALIDITY_DAYS_ADMITTED = 7;
 export const RENAL_VALIDITY_DAYS_CKD = 7;
 
 /**
+ * The window, as ONE rule: the gate, the prep bay's kidney card and the booking forecast (#1084) all ask
+ * this, so a creatinine the forecast calls valid for the slot is one the gate accepts on the day.
+ */
+export function renalValidityDays(
+  encounterNo: string, ckdFlagged = false,
+): { context: "opd" | "admitted"; validDays: number } {
+  const context = encounterNo.startsWith("V") ? "opd" : "admitted";
+  const base = context === "opd" ? RENAL_VALIDITY_DAYS_OPD : RENAL_VALIDITY_DAYS_ADMITTED;
+  return { context, validDays: ckdFlagged ? Math.min(base, RENAL_VALIDITY_DAYS_CKD) : base };
+}
+
+/**
  * Above this the gate cannot be SATISFIED and the radiologist's override is the only path. 176.8
  * µmol/L is 2.0 mg/dL, the cut most Indian departments hold gadolinium and iodinated contrast at.
  * The number is a threshold for a LANE, not a clinical decision — the decision is the override's
@@ -739,9 +751,7 @@ async function computeSatisfaction(
         parsed.sampledAt = latest.sampledAt.toISOString();
         parsed.source = "internal";
       }
-      const context = study.encounterNo.startsWith("V") ? "opd" : "admitted";
-      const base = context === "opd" ? RENAL_VALIDITY_DAYS_OPD : RENAL_VALIDITY_DAYS_ADMITTED;
-      const validDays = parsed.ckdFlagged ? Math.min(base, RENAL_VALIDITY_DAYS_CKD) : base;
+      const { context, validDays } = renalValidityDays(study.encounterNo, parsed.ckdFlagged);
       const ageDays = agedDays(now, parsed.sampledAt, "sampledAt");
 
       if (ageDays > validDays) {

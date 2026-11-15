@@ -9,10 +9,12 @@ import { RadiologyError } from "./errors";
 import { pregnancyPolicy } from "./gates";
 import { authorisationOf, encounterPayer, imagingFreeAt } from "./money";
 import { prepFor } from "./prep";
+import { creatinineOnFile, readinessForecast } from "./readiness-forecast";
 import { clearanceOf } from "./read";
 import { requireStudyType } from "./study-types";
 import type { DerivedGateSet } from "./checkin";
 import type { PrepKey } from "./prep";
+import type { ReadinessForecast } from "./readiness-forecast";
 import type { ImagingAuthorisation, ImagingGateKind } from "../../kernel/db/schema/radiology";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -29,6 +31,7 @@ import type { Actor } from "@hmis/contracts";
  *     check-in's, and satisfying is the prep bay's (the manifest's first separation).
  *   · **Prep** — what to do before the slot (`prepFor`, the one derivation the slip and the
  *     appointment message also read).
+ *   · **Forecast** (#1084) — `readinessForecast` for the slot: what the bay will find short, from facts on file.
  *   · **Bill** — who pays (`encounterPayer`) and whether this scan is authorised to start
  *     (`authorisationOf`, the rule acquisition applies at the machine). A null authorisation is
  *     exactly the `payment_required` the room would refuse with.
@@ -75,6 +78,11 @@ export type CounterView = {
     prep: PrepKey[];
   };
   addOns: CounterAddOn[];
+  /**
+   * #1084 — what the prep bay will find on the slot date, from facts on file (`readinessForecast`), for the
+   * lane's forecast line. An unbooked study is forecast for today, and again once it has a slot.
+   */
+  forecast: ReadinessForecast;
 };
 
 export async function counterView(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<CounterView> {
@@ -108,6 +116,8 @@ export async function counterView(db: Db, actor: Actor, studyId: string, now: Da
     ...(cd !== undefined ? [{ kind: "cd" as const, serviceId: cd.id, code: cd.code, name: cd.name }] : []),
   ];
 
+  const forecast = await readinessForecast(db, study.id, study.scheduledAt ?? now);
+
   await recordPhiAccess(db, { actor, patientId: study.patientId, surface: "imaging.worklist", reason: `imaging counter ${study.accessionNo}` });
 
   return {
@@ -135,7 +145,12 @@ export async function counterView(db: Db, actor: Actor, studyId: string, now: Da
       { intendedPayer },
       await imagingFreeAt(db, study.createdAt),
     ),
-    checks: { gates: derived.kinds, pregnancyReason: derived.pregnancyReason, policySource: source, prep: prepFor(studyType) },
+    checks: {
+      gates: derived.kinds, pregnancyReason: derived.pregnancyReason, policySource: source,
+      /** The slip and the appointment message say the same: no creatinine line when a valid one is on file. */
+      prep: prepFor(studyType, { creatinineOnFile: creatinineOnFile(forecast) }),
+    },
     addOns,
+    forecast,
   };
 }

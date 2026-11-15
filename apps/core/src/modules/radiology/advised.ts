@@ -8,6 +8,8 @@ import {
 } from "../../kernel/db/schema";
 import { RadiologyError } from "./errors";
 import { activeStudyTypes } from "./study-types";
+import { readinessForecast } from "./readiness-forecast";
+import type { ReadinessForecast } from "./readiness-forecast";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { AdvisedTest } from "../opd";
@@ -83,6 +85,8 @@ export type ImagingBookEntry = ImagingOrderable & {
   pricePaise: number | null;
 };
 
+export type ImagingStudyForecast = Pick<ReadinessForecast, "verdict" | "kinds" | "blocking" | "reviewReasons" | "slotAt">;
+
 export type ImagingVisitOrder = {
   orderId: string;
   orderNo: string;
@@ -96,7 +100,15 @@ export type ImagingVisitOrder = {
     serviceId: string;
     serviceName: string;
     status: string;
-    study: { studyId: string; accessionNo: string; status: string; scheduledAt: string | null } | null;
+    study: {
+      studyId: string; accessionNo: string; status: string; scheduledAt: string | null;
+      /**
+       * #1084 — the readiness forecast for the slot (today while unbooked), for a study not yet on the
+       * machine; null once it is. The card says "no creatinine in the valid window" and the doctor orders
+       * one — the system never does (DECIDED).
+       */
+      forecast: ImagingStudyForecast | null;
+    } | null;
   }[];
 };
 
@@ -221,6 +233,9 @@ export async function imagingBookWithPrices(
   return { types, book };
 }
 
+/** The study states the forecast speaks for: before the patient is on the machine. */
+const FORECAST_STATES: readonly string[] = ["scheduled", "checked_in", "ready"];
+
 export async function imagingDoorFor(
   db: Db,
   actor: Actor,
@@ -288,10 +303,20 @@ export async function imagingDoorFor(
       };
       byOrder.set(r.orderId, o);
     }
+    let forecast: ImagingStudyForecast | null = null;
+    if (r.studyId !== null && r.studyStatus !== null && FORECAST_STATES.includes(r.studyStatus)) {
+      /** The door must open even when the book no longer names an old study's type: no forecast, then. */
+      try {
+        const f = await readinessForecast(db, r.studyId, r.scheduledAt ?? now);
+        forecast = { verdict: f.verdict, kinds: f.kinds, blocking: f.blocking, reviewReasons: f.reviewReasons, slotAt: f.slotAt };
+      } catch (e) {
+        if (!(e instanceof RadiologyError)) throw e;
+      }
+    }
     o.items.push({
       itemId: r.itemId, serviceId: r.serviceId, serviceName: r.serviceName, status: r.itemStatus,
       study: r.studyId === null || r.accessionNo === null || r.studyStatus === null ? null
-        : { studyId: r.studyId, accessionNo: r.accessionNo, status: r.studyStatus, scheduledAt: r.scheduledAt?.toISOString() ?? null },
+        : { studyId: r.studyId, accessionNo: r.accessionNo, status: r.studyStatus, scheduledAt: r.scheduledAt?.toISOString() ?? null, forecast },
     });
   }
 
