@@ -53,21 +53,24 @@ Source: `apps/core/src/modules/opd/`
   - `visitOfDoctor(exec: Db | Tx, userId: string, encounterId: string): Promise<null | { id: string; patientId: string; visitNo: string; service…`
   - types: `CompletedVisitRow`, `DoctorDayLine`, `DoctorPaceToday`, `OpenVisitRow`
 - `encounters.ts`
+  - `IMAGING_VISIT_TYPE`
   - `LAB_DEPARTMENT_CODE`
   - `LAB_VISIT_TYPE`
   - `PHARMACY_VISIT_TYPE`
+  - `RAD_DEPARTMENT_CODE`
   - `counterState(db: Db, encounterId: string): Promise<CounterState | null>`
   - `findVisitByToken(db: Db, filter: { serviceDate: string; tokenNo: number }): Promise<EncounterRow | null>`
   - `getEncounter(db: Db | Tx, id: string): Promise<EncounterRow | null>`
   - `getVisit(db: Db, actor: Actor, encounterId: string): Promise<{ encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[];…`
   - `joinQueue(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<JoinQueueResult>`
   - `listVisits(db: Db, filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string; ty…`
+  - `openImagingWalkinInTx(tx: Tx, actor: Actor, input: OpenImagingWalkinInput & { chainIds: string[] }, now: Date): Promise<OpenImagingWalkinRe…`
   - `openLabWalkin(db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date()): Promise<OpenVisitDeferredResult>`
   - `openLabWalkinInTx(tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date): Promise<OpenVisitDeferredResult>`
   - `openPharmacyVisitInTx(tx: Tx, actor: Actor, input: { patientId: string; serviceDate: string }, now: Date): Promise<EncounterRow>`
   - `patientTimeline(db: Db, actor: Actor, patientId: string, limit = 50): Promise<TimelineItem[]>`
   - `reviewAnchorFor(db: Db | Tx, encounter: { patientId: string; departmentId: string | null; visitType: string; openedAt: Date; referredFromEn…`
-  - types: `EncounterRow`, `JoinQueueResult`, `OpenLabWalkinInput`, `OpenVisitResult`, `PrescriptionRow`, `QueueEntryRow`, `ReviewAnchor`, `TimelineItem`
+  - types: `EncounterRow`, `JoinQueueResult`, `OpenImagingWalkinInput`, `OpenImagingWalkinResult`, `OpenLabWalkinInput`, `OpenVisitResult`, `PrescriptionRow`, `QueueEntryRow`, `ReviewAnchor`, `TimelineItem`
 - `errors.ts`
   - `class OpdError`
   - types: `OpdErrorCode`

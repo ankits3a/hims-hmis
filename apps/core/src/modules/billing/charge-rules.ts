@@ -19,6 +19,9 @@ import type { Db } from "../../kernel/db/client";
 /** The preview's line id — nothing is persisted, so a stable id keeps a quote deterministic. */
 export const FEE_LINE_ID = "fee";
 
+/** #1079 / decision 0003 ruling 2 — the visit kinds that are never a consultation, so never carry a consult fee. */
+export const NO_CONSULT_FEE_VISIT_KINDS: ReadonlySet<string> = new Set(["lab", "imaging", "pharmacy"]);
+
 /**
  * The service a visit's consultation fee is charged against, or `null` when the visit is FREE.
  *
@@ -26,8 +29,15 @@ export const FEE_LINE_ID = "fee";
  * (2026-10-05; pass the rules through `chargeRulesAt` first): the null is the free branch, not a
  * missing mapping, which is why the gate treats it as "nothing to collect" rather than as an
  * error. A visit type outside the three OPD ships has no rule to apply at all.
+ *
+ * #1079 / decision 0003 ruling 2 — a consult fee belongs to an OPD CONSULTATION only. A visit whose kind
+ * (`opd_encounters.type`) is not `opd` — the lab's walk-in, the imaging desk's walk-in, the pharmacy's
+ * visit — carries no consult fee, ever, whatever its `visit_type`. A hand-shaped row that names no kind
+ * (`{ visitType, openedAt }`, several callers) is judged on its visit type alone, as it always was. The kinds
+ * are listed, not inferred: a kind added later (ipd, er, teleconsult) keeps today's fee rule until someone rules on it.
  */
 export function feeServiceFor(encounter: EncounterRow, rules: ChargeRules): string | null {
+  if (encounter.type !== undefined && NO_CONSULT_FEE_VISIT_KINDS.has(encounter.type)) return null;
   const service = chargedServiceFor(encounter, rules);
   return service !== null && consultFeeSwitchedOff(encounter, rules) ? null : service;
 }

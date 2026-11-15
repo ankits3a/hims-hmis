@@ -7,6 +7,7 @@ import { buildTimeline, dmy, dmyIst, duesSummary, groupByDay, maskMobile, openVi
 const L: Labels = {
   clinical: false,
   visit: (n) => `visit ${n}`, medicines: (n) => `${String(n)} medicines`, labSigned: "Report signed", labVisit: "Lab visit · walk-in",
+  imagingVisit: "Imaging visit · outside slip",
   labResults: (n) => `${String(n)} results`, labReportVersion: (n) => `version ${String(n)}`,
   paidDue: (p, d) => `${p} paid · ${d} due`, settled: "settled", onCredit: "on credit",
   pharmacy: (n) => `Pharmacy · ${String(n)} items`, docKind: (k) => k, docScanned: "scanned", high: "high", low: "low",
@@ -102,5 +103,19 @@ describe("owner 2026-10-11 — a lab counter walk-in is not an OPD visit", () =>
       labReports: { patient: { id: "p", uhid: "u", display: "d", restricted: false }, reports: [report("r1", "V2610110001"), report("r2", "OP-9")], pending: [] },
     }, L);
     expect(rows.map((r) => r.key).sort()).toEqual(["labr-r2", "opd-e-lab"]);
+  });
+});
+
+describe("#1079 — the imaging desk's walk-in is not an OPD visit", () => {
+  const imaging = {
+    encounterId: "e-rad", visitNo: "V2611140003", type: "imaging", serviceDate: "2026-11-14", openedAt: "2026-11-14T05:00:00Z", status: "registered",
+    visitType: "new", doctorId: "d", doctorName: "Dr Rao", departmentId: "x", departmentName: "Radiology",
+    diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+  };
+  it("its history row is a RAD row titled as an imaging visit, under its radiologist, with no OPD visit card", () => {
+    expect(openVisitsToday([imaging], "2026-11-14")).toEqual([]);
+    const [row] = buildTimeline({ visits: [imaging] }, L);
+    expect([row!.source, row!.title, row!.sub, row!.encounterId, row!.note])
+      .toEqual(["RAD", "Imaging visit · outside slip", "Radiology · Dr Rao", undefined, "visit V2611140003"]);
   });
 });

@@ -211,3 +211,90 @@ it("a patient with no visit today is told so, and a search that finds nobody poi
   await userEvent.click(screen.getByRole("button", { name: "Find" }));
   expect(await screen.findByText(/registered at Registration/)).toBeInTheDocument();
 });
+
+/* ── #1079 — an outside slip and no visit today: the imaging walk-in ── */
+
+const RAO = { doctorId: "D-RAD-1", displayName: "Dr Rao", userId: "U-RAD-1" };
+const KAPOOR = { doctorId: "D-RAD-2", displayName: "Dr Kapoor", userId: "U-RAD-2" };
+const WALKED_IN = { status: 201, body: { encounterNo: "V2609280011", visitOpened: true, orderId: "O11", orderNo: "R2609280011", itemIds: ["I11"], pcpndt: [] } };
+const walkIns = () => seen.filter((s) => s.key === "POST /api/radiology/desk/walk-in-order");
+
+async function findPatientWithNoVisit(): Promise<HTMLElement> {
+  await userEvent.type(screen.getByLabelText("UHID, phone, name or visit number"), "9800000007");
+  await userEvent.click(screen.getByRole("button", { name: "Find" }));
+  await screen.findByTestId("desk-door-no-visit");
+  return await screen.findByTestId("imaging-desk-walk-in");
+}
+
+it("#1079 no visit today: the outside slip is ordered from the walk-in leg, which opens the visit, and the door opens it", async () => {
+  mockRoutes({
+    "GET /api/patients/search": { status: 200, body: { items: [hit("P7", "Ravi Kumar", "HMS-7")] } },
+    "GET /api/radiology/desk/visits": { status: 200, body: { visits: [] } },
+    "GET /api/radiology/desk/walk-in": { status: 200, body: { bookActive: true, book: DOOR.book, radiologists: [RAO] } },
+    "POST /api/radiology/desk/walk-in-order": WALKED_IN,
+    "GET /api/radiology/advised": { status: 200, body: { ...DOOR, visit: { ...DOOR.visit, encounterNo: "V2609280011" } } },
+  });
+  renderWithProviders(<ImagingDeskDoor />);
+  const leg = await findPatientWithNoVisit();
+  expect(within(leg).getByTestId("walk-in-radiologist")).toHaveTextContent("Under Dr Rao");
+  expect(within(leg).getByText(/No consultation fee/)).toBeInTheDocument();
+
+  await userEvent.type(within(leg).getByLabelText("Add an imaging study"), "abdomen");
+  await userEvent.click(within(leg).getByRole("button", { name: /USG whole abdomen/ }));
+  const card = within(leg).getByTestId(`imaging-card-${USG}-out`);
+  await userEvent.type(within(card).getByLabelText("Clinical question (indication)"), "pain right upper abdomen");
+  await userEvent.click(within(card).getByRole("button", { name: "Place order" }));
+  expect(within(card).getByRole("alert")).toHaveTextContent("referring doctor's name and registration");
+  expect(walkIns()).toHaveLength(0);
+
+  await userEvent.type(within(card).getByLabelText("Referring doctor"), "Dr Anil Verma");
+  await userEvent.type(within(card).getByLabelText("Registration no."), "BMC/44117");
+  await userEvent.click(within(card).getByRole("button", { name: "Place order" }));
+  await waitFor(() => { expect(walkIns()).toHaveLength(1); });
+  expect(walkIns()[0]!.body).toEqual({
+    patientId: "P7", priority: "routine", indication: "pain right upper abdomen",
+    items: [{ serviceId: USG }], referrer: { name: "Dr Anil Verma", registrationNo: "BMC/44117" },
+  });
+  expect(seen.some((s) => s.key === "POST /api/radiology/orders")).toBe(false);
+
+  /** The visit the act opened is the door's now: its head, and the order's message. */
+  expect(await screen.findByTestId("imaging-desk-visit-head")).toBeInTheDocument();
+  expect(seen.find((s) => s.key === "GET /api/radiology/advised")!.url).toContain("encounterNo=V2609280011");
+  expect(await screen.findByText(/R2609280011 is at the imaging desk to book/)).toBeInTheDocument();
+});
+
+it("#1079 two radiologists: the clerk names the one who answers, and the act is told which", async () => {
+  mockRoutes({
+    "GET /api/patients/search": { status: 200, body: { items: [hit("P7", "Ravi Kumar", "HMS-7")] } },
+    "GET /api/radiology/desk/visits": { status: 200, body: { visits: [] } },
+    "GET /api/radiology/desk/walk-in": { status: 200, body: { bookActive: true, book: DOOR.book, radiologists: [RAO, KAPOOR] } },
+    "POST /api/radiology/desk/walk-in-order": WALKED_IN,
+    "GET /api/radiology/advised": { status: 200, body: DOOR },
+  });
+  renderWithProviders(<ImagingDeskDoor />);
+  const leg = await findPatientWithNoVisit();
+  expect(within(leg).queryByLabelText("Add an imaging study")).not.toBeInTheDocument();
+  await userEvent.selectOptions(within(leg).getByLabelText("Radiologist who answers"), "D-RAD-2");
+
+  await userEvent.type(within(leg).getByLabelText("Add an imaging study"), "chest");
+  await userEvent.click(within(leg).getByRole("button", { name: /X-ray chest PA/ }));
+  const card = within(leg).getByTestId(`imaging-card-${CHEST}-out`);
+  await userEvent.type(within(card).getByLabelText("Clinical question (indication)"), "cough for six weeks");
+  await userEvent.type(within(card).getByLabelText("Referring doctor"), "Dr R. Sharma");
+  await userEvent.type(within(card).getByLabelText("Registration no."), "DMC/12345");
+  await userEvent.click(within(card).getByRole("button", { name: "Place order" }));
+  await waitFor(() => { expect(walkIns()).toHaveLength(1); });
+  expect(walkIns()[0]!.body).toMatchObject({ patientId: "P7", doctorId: "D-RAD-2", items: [{ serviceId: CHEST }] });
+});
+
+it("#1079 no radiologist set up: said plainly, and nothing can be ordered", async () => {
+  mockRoutes({
+    "GET /api/patients/search": { status: 200, body: { items: [hit("P7", "Ravi Kumar", "HMS-7")] } },
+    "GET /api/radiology/desk/visits": { status: 200, body: { visits: [] } },
+    "GET /api/radiology/desk/walk-in": { status: 200, body: { bookActive: true, book: DOOR.book, radiologists: [] } },
+  });
+  renderWithProviders(<ImagingDeskDoor />);
+  const leg = await findPatientWithNoVisit();
+  expect(within(leg).getByTestId("walk-in-no-radiologist")).toHaveTextContent("No radiologist is set up");
+  expect(within(leg).queryByLabelText("Add an imaging study")).not.toBeInTheDocument();
+});
