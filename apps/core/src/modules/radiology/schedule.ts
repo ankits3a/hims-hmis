@@ -16,6 +16,7 @@ import { raiseBillDecision } from "./money";
 import { releaseResource } from "../../kernel/resources/registry";
 import { enqueueNotification, expireByRef } from "../../kernel/notify/enqueue";
 import { prepFor } from "./prep";
+import { creatinineOnFile, forecastAtBooking } from "./readiness-forecast";
 import { activeLicenceFor, assertDeviceLicensed } from "../aerb";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import type { StudyType } from "./definitions";
@@ -292,18 +293,26 @@ async function assertSlotFree(
  */
 export const APPOINTMENT_MESSAGE_REF = "imaging_study";
 
+/**
+ * #1084 — the booking's readiness forecast goes first (`forecastAtBooking`: a blocker is appended and the
+ * ordering doctor told), and the message asks for a creatinine report only when the lab holds none the
+ * kidney gate's window still covers on the slot date.
+ */
 async function queueAppointmentMessage(
   tx: Tx,
+  actor: Actor,
   study: typeof imagingStudies.$inferSelect,
   studyType: StudyType,
   scheduledAt: Date,
   now: Date = new Date(),
 ): Promise<void> {
+  const forecast = await forecastAtBooking(tx, actor, study, scheduledAt, now);
   await expireByRef(tx, APPOINTMENT_MESSAGE_REF, study.id, now);
   const slotStart = scheduledAt.toISOString();
+  const prep = study.formFRequired ? [] : prepFor(studyType, { creatinineOnFile: creatinineOnFile(forecast) });
   await enqueueNotification(tx, {
     templateKey: "imaging_appointment_booked",
-    params: { accessionNo: study.accessionNo, slotStart, prep: study.formFRequired ? [] : prepFor(studyType) },
+    params: { accessionNo: study.accessionNo, slotStart, prep },
     dedupeKey: `imaging_appointment_booked:${study.id}:${slotStart}:${String(now.getTime())}`,
     occurredAt: now,
     patientId: study.patientId,
@@ -426,7 +435,7 @@ export async function scheduleStudy(
     },
   }));
 
-  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt, input.now);
+  await queueAppointmentMessage(tx, actor, study, studyType, input.scheduledAt, input.now);
 
   return {
     studyId: study.id,
@@ -566,7 +575,7 @@ export async function rescheduleStudy(
     },
   }));
 
-  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt, input.now);
+  await queueAppointmentMessage(tx, actor, study, studyType, input.scheduledAt, input.now);
 
   return {
     studyId: study.id,

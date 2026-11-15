@@ -19,6 +19,8 @@ export type WireProtocol = {
   kv?: WireRange; mas?: WireRange; ct?: { slice_mm: number; pitch: number }; sequences?: string[];
   contrast?: { agent?: string; phase: string; ml_per_kg: number; max_ml: number; delay_s: number; rate_ml_s?: number };
   breath_hold?: { en: string; hi: string };
+  /** #1084 — the indication words that call for this protocol rather than the examination's default. */
+  indication_cues?: string[];
   paediatric?: { bands: { from_kg: number; to_kg: number; kv?: WireRange; mas?: WireRange; ml_per_kg?: number; note?: string }[] };
 };
 export type WireDrl = { study_type_code?: string; modality?: string; quantity: "ctdivol" | "dlp" | "dap" | "fluoro_seconds" | "agd"; value: number; source?: string };
@@ -37,7 +39,16 @@ export type WireRoomView = {
     allergies: string[]; weight: { kg: number; recordedAt: string } | null;
   };
   device: WireImagingDevice | null;
-  protocol: { book: "active" | "none"; version: number | null; matchedOn: "study_type" | "modality" | null; protocol: WireProtocol | null };
+  protocol: {
+    book: "active" | "none"; version: number | null;
+    /** #1084 — `indication_cue` when the order's indication called for a variant. */
+    matchedOn: "indication_cue" | "study_type" | "modality" | null;
+    /** The SUGGESTED protocol; the radiographer keeps it or picks another of `choices`. */
+    protocol: WireProtocol | null;
+    /** #1084 — absent from an older server. */
+    cue?: string | null;
+    choices?: WireProtocol[];
+  };
   drl: WireDrl[];
   renal: { creatinineUmolL: number | null; egfr: number | null; sampledAt: string | null } | null;
   repeats: { reason: RepeatReason; at: string }[];

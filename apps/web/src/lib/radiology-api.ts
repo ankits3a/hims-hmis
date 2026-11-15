@@ -103,7 +103,11 @@ export type WireImagingVisitOrder = {
   indication: string | null; placedAt: string;
   items: {
     itemId: string; serviceId: string; serviceName: string; status: string;
-    study: { studyId: string; accessionNo: string; status: string; scheduledAt: string | null } | null;
+    study: {
+      studyId: string; accessionNo: string; status: string; scheduledAt: string | null;
+      /** #1084 — before the patient is on the machine; absent from an older server. */
+      forecast?: WireStudyForecast | null;
+    } | null;
   }[];
 };
 export type WireImagingDoor = {
@@ -193,6 +197,22 @@ export const fetchDeviceDiary = (deviceResourceId: string) =>
 /* ── 18-S RS3 — the imaging front desk: counter read, desk acts, hall board ── */
 
 /** `counter.ts`'s `CounterView`, transcribed. */
+/**
+ * #1084 — `readinessForecast` (`radiology/readiness-forecast.ts`): what the prep bay will find on the slot
+ * date, from facts on file. `kinds` is headline-first and empty for `ready`.
+ */
+export type WireReadinessVerdict = "ready" | "radiologist_review" | "creatinine_missing" | "creatinine_stale" | "pregnancy_screen_due";
+export type WireStudyForecast = {
+  slotAt: string;
+  verdict: WireReadinessVerdict;
+  kinds: Exclude<WireReadinessVerdict, "ready">[];
+  blocking: boolean;
+  reviewReasons: string[];
+};
+export type WireReadinessForecast = WireStudyForecast & {
+  creatinine: { resultId: string; sampledAt: string; validDays: number; validAtSlot: boolean } | null;
+};
+
 export type WireCounterView = {
   studyId: string; accessionNo: string; status: string; priority: string;
   studyTypeCode: string; studyTypeName: string; modality: string; durationMin: number;
@@ -209,6 +229,8 @@ export type WireCounterView = {
     prep: string[];
   };
   addOns: { kind: "film" | "cd"; serviceId: string; code: string; name: string }[];
+  /** #1084 — absent from an older server. */
+  forecast?: WireReadinessForecast | null;
 };
 
 export const fetchCounter = (studyId: string) =>

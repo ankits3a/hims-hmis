@@ -119,7 +119,7 @@ describe("modality rooms (18-S RS6)", () => {
       studyId: study.studyId, deviceResourceId: fx.devices.ct!, scheduledAt: SLOT,
     }));
     const before = await roomView(db, fx.radiographer, study.studyId, NOW);
-    expect(before.protocol).toEqual({ book: "none", version: null, matchedOn: null, protocol: null });
+    expect(before.protocol).toEqual({ book: "none", version: null, matchedOn: null, protocol: null, cue: null, choices: [] });
     expect(before.patient.weight).toBeNull();
 
     await publishBook("imaging_protocols", { protocols: [CT_PROTOCOL] });

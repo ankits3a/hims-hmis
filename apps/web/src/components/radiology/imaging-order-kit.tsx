@@ -21,7 +21,9 @@ import type {
  *   · It never fills the indication (18a-iv D4): a CT with no stated question is a dose nobody can
  *     justify, and defaulting it to the diagnosis would be inventing a justification.
  *   · It never decides a gate. Contrast, pregnancy and PCPNDT are shown as what WILL be checked,
- *     from the book's own flags; the server's gates decide at the console.
+ *     from the book's own flags; the server's gates decide at the console. #1084: a placed study's line
+ *     carries the readiness forecast ("no creatinine in the valid window — order one"); the doctor orders
+ *     the creatinine, the card never does.
  *   · It never bills. Nothing is billed until the desk books (18-S RS2 DECIDED; D2's harm cannot
  *     happen because nothing bills before the desk).
  */
@@ -292,6 +294,14 @@ export function VisitOrders({ orders }: { orders: WireImagingVisitOrder[] }): Re
             <span style={{ overflowWrap: "anywhere" }}>{i.serviceName}</span>
             <span className="mo text-xs text-muted-foreground">{o.orderNo}{o.priority !== "routine" ? ` · ${t(`imagingOrder.priorities.${o.priority}`)}` : ""}</span>
             <span className="ml-auto text-xs font-medium">{studyStateText(t, i)}</span>
+            {(i.study?.forecast?.kinds.length ?? 0) > 0 && (
+              <span
+                className={`basis-full text-xs ${i.study!.forecast!.blocking ? "text-amber-800" : "text-muted-foreground"}`}
+                data-testid={`imaging-forecast-${i.itemId}`} data-verdict={i.study!.forecast!.verdict}
+              >
+                {[...new Set(i.study!.forecast!.kinds.map((k) => t(`imagingOrder.forecast.${k}`)))].join(" · ")}
+              </span>
+            )}
           </li>
         )))}
       </ul>

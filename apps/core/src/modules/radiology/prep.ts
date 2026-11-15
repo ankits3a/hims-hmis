@@ -32,9 +32,17 @@ export type PrepKey = (typeof PREP_KEYS)[number];
 
 const FULL_BLADDER = /(^|-)(KUB|PELVIS|OBS-EARLY)(-|$)/;
 
-export function prepFor(studyType: StudyType): PrepKey[] {
+/**
+ * #1084 — `creatinineOnFile`: the lab already holds a signed creatinine the kidney gate's window still
+ * covers on the slot date (`readinessForecast`), so the patient is not asked to bring one. Absent means
+ * "not known", and the line is asked for, as before.
+ */
+export function prepFor(studyType: StudyType, opts: { creatinineOnFile?: boolean } = {}): PrepKey[] {
   const out: PrepKey[] = [];
-  if (studyType.contrast_option === "required") out.push("nil_by_mouth_4h", "creatinine_report");
+  if (studyType.contrast_option === "required") {
+    out.push("nil_by_mouth_4h");
+    if (opts.creatinineOnFile !== true) out.push("creatinine_report");
+  }
   if (studyType.modality === "usg") {
     if (FULL_BLADDER.test(studyType.code)) out.push("full_bladder");
     else if (studyType.body_part === "abdomen") out.push("fasting_6h");
