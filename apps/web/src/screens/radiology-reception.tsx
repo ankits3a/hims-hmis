@@ -19,6 +19,7 @@ import {
 import type { SlotPick, TenderMode } from "../components/radiology/imaging-counter";
 import { istDay, istInputToIso, minutesSince, nextQuarterIstInput } from "../components/radiology/desk-time";
 import { CreditChip } from "../components/patient-credit";
+import { IMAGING_FLOOR_TOPIC, useImagingLive } from "../lib/radiology-live";
 
 /**
  * PLAN 18-S RS3 — **THE IMAGING COUNTER: Studies → Checks → Bill → Slot & slip.**
@@ -75,7 +76,8 @@ export function RadiologyReception(): React.ReactElement {
   const draft = useRef(draftId());
   const idem = useRef<string | null>(null);
 
-  const q = useQuery({ queryKey: ["radiology", "worklist", "floor"], queryFn: () => fetchWorklist("floor") });
+  const q = useQuery({ queryKey: ["radiology", "worklist", "floor"], queryFn: () => fetchWorklist("floor"), refetchInterval: 60_000 });
+  useImagingLive(IMAGING_FLOOR_TOPIC, [["radiology", "worklist", "floor"]]); // #1083: a frame reads the list now; the poll is the fallback
   const devicesQ = useQuery({ queryKey: ["radiology", "devices"], queryFn: fetchImagingDevices });
   const devices: WireImagingDevice[] = devicesQ.data?.devices ?? [];
   const rows = useMemo(() => q.data?.rows ?? [], [q.data]);

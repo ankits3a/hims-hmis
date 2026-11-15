@@ -1,6 +1,8 @@
 import { RadiologyPcpndtController } from "./radiology-pcpndt.controller";
-import { Module } from "@nestjs/common";
+import { Injectable, Module } from "@nestjs/common";
 import { eq } from "drizzle-orm";
+import { RealtimeGateway } from "../../kernel/realtime/gateway";
+import { RealtimeModule } from "../../kernel/realtime/realtime.module";
 import { imagingStudies } from "../../kernel/db/schema/radiology";
 import { registerFormFSubjectResolver } from "../pcpndt";
 import type { OnModuleInit } from "@nestjs/common";
@@ -25,6 +27,21 @@ import { RadiologyReleaseController } from "./radiology-release.controller";
 import { RadiologySupervisorController } from "./radiology-supervisor.controller";
 import { RadiologyReadingRoomController } from "./radiology-reading-room.controller";
 import { RadiologyMetricsController } from "./radiology-metrics.controller";
+import { RADIOLOGY_TOPIC_SPACES, radiologyTopicRouter } from "./realtime";
+
+/**
+ * #1083 — the imaging lists' live topics (`realtime.ts`). The gateway knows no module, so the module
+ * registers its space and its router at its own init: `LabRealtimeRegistrar`, one department over.
+ */
+@Injectable()
+export class RadiologyRealtimeRegistrar implements OnModuleInit {
+  constructor(private readonly gateway: RealtimeGateway) {}
+
+  onModuleInit(): void {
+    for (const space of RADIOLOGY_TOPIC_SPACES) this.gateway.registerTopicSpace(space);
+    this.gateway.registerRouter(radiologyTopicRouter);
+  }
+}
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -50,6 +67,7 @@ import { RadiologyMetricsController } from "./radiology-metrics.controller";
  * that call them and the end-to-end proof through the REAL manifest.
  */
 @Module({
+  imports: [RealtimeModule],
   controllers: [
     RadiologyOrdersController,
     RadiologyDefinitionsController,
@@ -84,6 +102,7 @@ import { RadiologyMetricsController } from "./radiology-metrics.controller";
     // #777 — imaging numbers: counts and turnaround times, read-only.
     RadiologyMetricsController,
   ],
+  providers: [RadiologyRealtimeRegistrar],
 })
 export class RadiologyModule implements OnModuleInit {
   onModuleInit(): void {
