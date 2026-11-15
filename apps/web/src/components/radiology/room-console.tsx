@@ -120,6 +120,8 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   const bandBox = useRef<HTMLInputElement | null>(null);
   /* Protocol */
   const [lang, setLang] = useState<"en" | "hi">(i18n.language === "hi" ? "hi" : "en");
+  /** #1084 — the protocol the radiographer chose instead of the suggested one; null keeps the suggestion. */
+  const [protocolPick, setProtocolPick] = useState<string | null>(null);
   const [weight, setWeight] = useState("");
   /* Bedside checklist (T3) */
   const [bay, setBay] = useState({ distance: false, apron: false, pregnancy: false });
@@ -182,7 +184,10 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
     onError: fail,
   });
 
-  const protocol: WireProtocol | null = v?.protocol.protocol ?? null;
+  const suggested: WireProtocol | null = v?.protocol.protocol ?? null;
+  const choices: WireProtocol[] = v?.protocol.choices ?? [];
+  const protocol: WireProtocol | null = (protocolPick === null ? undefined : choices.find((p) => p.name === protocolPick)) ?? suggested;
+  const kept = protocol !== null && suggested !== null && protocol.name === suggested.name;
   const kg = num(weight);
   const suggestion = protocol === null ? null : suggestedContrastMl(protocol, kg);
   const doseFields = v === undefined || !v.ionising ? [] : DOSE_FIELDS[v.modality] ?? [];
@@ -201,6 +206,8 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
 
   const body = (): AcquiredBody => {
     const b: AcquiredBody = { imageSource: source };
+    /** #1084 — the protocol worked from rides the acquisition event beside the server's own suggestion. */
+    if (protocol !== null) b.protocolName = protocol.name;
     if (source === "pacs") {
       const u = (uid ?? v?.mintedStudyInstanceUid ?? "").trim();
       if (u !== "" && u !== v?.mintedStudyInstanceUid) b.studyInstanceUid = u;
@@ -395,7 +402,18 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
 
         {step === "acquire" && protocol !== null && (
               <>
-                <Card testid="protocol-card" title={<>{protocol.name}{v.protocol.matchedOn === "modality" ? <span className="ml-2 text-xs font-normal text-muted-foreground">{t("radiology.room.protocol.default")}</span> : null}<span className="mo ml-2 text-xs font-normal text-muted-foreground">v{v.protocol.version}</span></>}>
+                <Card testid="protocol-card" title={<>{protocol.name}{kept && v.protocol.matchedOn === "modality" ? <span className="ml-2 text-xs font-normal text-muted-foreground">{t("radiology.room.protocol.default")}</span> : null}<span className="mo ml-2 text-xs font-normal text-muted-foreground">v{v.protocol.version}</span></>}>
+                  {kept && v.protocol.matchedOn === "indication_cue" && (v.protocol.cue ?? null) !== null && (
+                    <p className="m-0 mt-2 text-xs text-muted-foreground" data-testid="protocol-cue">{t("radiology.room.protocol.suggestedFor", { cue: v.protocol.cue })}</p>
+                  )}
+                  {choices.length > 1 && (
+                    <label className="mt-2 block text-xs text-muted-foreground">
+                      {t("radiology.room.protocol.choose")}
+                      <select className={field} data-testid="protocol-choice" value={protocol.name} onChange={(e) => setProtocolPick(e.target.value)}>
+                        {choices.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                      </select>
+                    </label>
+                  )}
                   <p className="my-2 whitespace-pre-line text-sm">{protocol.technique}</p>
                   <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 pb-2 text-sm">
                     {protocol.preset !== undefined && <><dt className="text-muted-foreground">{t("radiology.room.protocol.preset")}</dt><dd className="m-0 mo">{protocol.preset}</dd></>}

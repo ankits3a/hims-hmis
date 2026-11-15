@@ -3020,7 +3020,9 @@
         "readsOverdue_one": "Study overdue",
         "readsOverdue_other": "Studies overdue",
         "unreadMine_one": "Imaging unread",
-        "unreadMine_other": "Imaging unread"
+        "unreadMine_other": "Imaging unread",
+        "followupsDue_one": "Imaging follow-up to book",
+        "followupsDue_other": "Imaging follow-ups to book"
       },
       "alerts": {
         "unanswered_one": "Alert unanswered",
@@ -3048,7 +3050,8 @@
       "radiology": {
         "criticalsMine": "On computer · Consult",
         "readsOverdue": "On computer · Reading room",
-        "unreadMine": "On computer · Consult"
+        "unreadMine": "On computer · Consult",
+        "followupsDue": "On computer · Consult"
       }
     }
   },

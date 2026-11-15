@@ -3020,7 +3020,9 @@
         "readsOverdue_one": "स्टडी देर से",
         "readsOverdue_other": "स्टडी देर से",
         "unreadMine_one": "इमेजिंग नहीं खोली",
-        "unreadMine_other": "इमेजिंग नहीं खोलीं"
+        "unreadMine_other": "इमेजिंग नहीं खोलीं",
+        "followupsDue_one": "इमेजिंग फ़ॉलो-अप बुक करें",
+        "followupsDue_other": "इमेजिंग फ़ॉलो-अप बुक करें"
       },
       "alerts": {
         "unanswered_one": "अलर्ट जवाब बाकी",
@@ -3048,7 +3050,8 @@
       "radiology": {
         "criticalsMine": "कंप्यूटर पर · कंसल्ट",
         "readsOverdue": "कंप्यूटर पर · रीडिंग रूम",
-        "unreadMine": "कंप्यूटर पर · कंसल्ट"
+        "unreadMine": "कंप्यूटर पर · कंसल्ट",
+        "followupsDue": "कंप्यूटर पर · कंसल्ट"
       }
     }
   },
