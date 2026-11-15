@@ -19,6 +19,7 @@ import { PatientFacts } from "../components/radiology/patient-facts";
 import { PacsInboxView } from "./radiology-pacs-inbox";
 import { IrSuiteView } from "./radiology-ir";
 import { CreditChip } from "../components/patient-credit";
+import { IMAGING_FLOOR_TOPIC, useImagingLive } from "../lib/radiology-live";
 
 /**
  * PLAN 18-S RS6 — **THE MODALITY ROOMS: the technologist's station.**
@@ -147,6 +148,7 @@ function ConsoleView({ views, picker, machine, studyId, devicesError }: {
     enabled: machine !== null,
     refetchInterval: 30_000,
   });
+  useImagingLive(IMAGING_FLOOR_TOPIC, [["radiology", "room-list", machine?.id ?? ""]]); // #1083: a frame reads the list now
   const rows = useMemo(() => orderRoomList(listQ.data?.rows ?? []), [listQ.data]);
   const inHand = rows.find((r) => r.studyId === studyId) ?? null;
 
