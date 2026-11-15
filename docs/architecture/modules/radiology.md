@@ -30,7 +30,7 @@ Source: `apps/core/src/modules/radiology/`
 - `advised.ts`
   - `ADVISORY_DUPLICATE_DAYS`
   - `imagingDoorFor(db: Db, actor: Actor, encounterNo: string, now: Date = new Date()): Promise<ImagingDoorView>`
-  - types: `AdvisedImagingLine`, `ImagingBookEntry`, `ImagingDoorView`, `ImagingOrderable`, `ImagingRecentItem`, `ImagingVisitOrder`
+  - types: `AdvisedImagingLine`, `ImagingBookEntry`, `ImagingDoorView`, `ImagingOrderable`, `ImagingRecentItem`, `ImagingStudyForecast`, `ImagingVisitOrder`
 - `applicability.ts`
   - `PCPNDT_AGE_MAX_YEARS`
   - `PCPNDT_AGE_MIN_YEARS`
@@ -127,11 +127,13 @@ Source: `apps/core/src/modules/radiology/`
   - `activeReadingPools(exec: Db | Tx): Promise<ReadingPool[]>`
   - `draftDefinition(tx: Tx, actor: Actor, input: { kind: ImagingDefinitionKind; body: unknown }): Promise<{ definitionId: string; version: numb…`
   - `parseDefinitionBody(kind: K, body: unknown): z.infer<(typeof SCHEMA_BY_KIND)[K]>`
+  - `protocolsFor(body: ImagingProtocolsBody, studyTypeCode: string, modality: string): ImagingProtocol[]`
   - `publishDefinition(db: Db, actor: Actor, input: { definitionId: string; approvalId: string }): Promise<{ kind: ImagingDefinitionKind; versio…`
   - `readingPoolFor(pools: readonly ReadingPool[], type: Pick<StudyType, "modality" | "body_part">): string | null`
   - `requestDefinitionPublish(tx: Tx, actor: Actor, definitionId: string): Promise<{ approvalId: string }>`
+  - `suggestProtocol(body: ImagingProtocolsBody, studyTypeCode: string, modality: string, indication: string | null): ProtocolSuggestion | null`
   - `templatesFor(body: ReportTemplatesBody, studyTypeCode: string, modality: string): GovernedReportTemplate[]`
-  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReadingPool`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
+  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `ImagingProtocol`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ProtocolSuggestion`, `ReadingPool`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
 - `desk.ts`
   - `DESK_COLLECT_ROUTE`
   - `DESK_WALK_IN_ROUTE`
@@ -189,6 +191,8 @@ Source: `apps/core/src/modules/radiology/`
   - `IR_COAGULATION_VERDICTS`
   - `IR_SKIN_DOSE_LEVELS`
   - `RADIOLOGY_EVENTS`
+  - `READINESS_FORECAST_KINDS`
+  - `READINESS_REVIEW_REASONS`
   - `REPEAT_REASON_CODES`
   - `imagingAutomationSwitched`
   - `imagingBedsideRequested`
@@ -212,6 +216,7 @@ Source: `apps/core/src/modules/radiology/`
   - `imagingMediaRequested`
   - `imagingOutsideStudyRegistered`
   - `imagingOverreadRecorded`
+  - `imagingReadinessForecast`
   - `imagingReadingClaimed`
   - `imagingReportActedUpon`
   - `imagingReportHandedOver`
@@ -221,7 +226,7 @@ Source: `apps/core/src/modules/radiology/`
   - `imagingReportUnread`
   - `imagingStudyAcquired`
   - `imagingStudyScheduled`
-  - types: `RepeatReasonCode`
+  - types: `ReadinessForecastKind`, `ReadinessReviewReason`, `RepeatReasonCode`
 - `followups.ts`
   - `FOLLOWUP_SWEEP_ACTOR: Actor`
   - `addInterval(day: string, interval: FollowupDraft["interval"]): string`
@@ -382,6 +387,11 @@ Source: `apps/core/src/modules/radiology/`
   - `studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null>`
   - `worklist(db: Db, actor: Actor, opts: { view?: WorklistView; deviceResourceId?: string; limit?: number; now?: Date } = {}): Promise<Worklist…`
   - types: `ReportView`, `StudyView`, `WorklistRow`, `WorklistView`
+- `readiness-forecast.ts`
+  - `BLOCKING_FORECAST_KINDS: readonly ReadinessForecastKind[]`
+  - `READINESS_ALERT_KIND`
+  - `readinessForecast(exec: Db | Tx, studyId: string, slotAt: Date): Promise<ReadinessForecast>`
+  - types: `ReadinessForecast`
 - `reading-claim.ts`
   - `assignReader(tx: Tx, actor: Actor, input: { studyId: string; readerId: string | null; now?: Date }): Promise<{ studyId: string; assignedRea…`
   - `claimReading(tx: Tx, actor: Actor, input: { studyId: string; now?: Date; takeOver?: boolean }): Promise<ClaimResult>`

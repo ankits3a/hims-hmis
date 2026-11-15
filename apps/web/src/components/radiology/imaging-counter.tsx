@@ -125,6 +125,25 @@ export function CounterStudies({ studies, views, inRoom }: {
 
 /* ═══════════════════════ THE LANE · CHECKS ═══════════════════════ */
 
+/**
+ * #1084 — the readiness forecast for the slot (`readinessForecast`): what the prep bay will find short, from
+ * facts on file. A line, never a control — the desk asks the doctor; nothing here orders or clears anything.
+ */
+function ForecastLine({ studyId, forecast }: { studyId: string; forecast: NonNullable<WireCounterView["forecast"]> }): React.ReactElement {
+  const { t } = useTranslation();
+  const words = forecast.kinds.length === 0
+    ? t("radiology.forecast.ready")
+    : forecast.kinds.map((k) => t(`radiology.forecast.${k}`)).join(" · ");
+  return (
+    <p
+      data-testid={`forecast-${studyId}`} data-verdict={forecast.verdict}
+      className={`m-0 rounded border p-2 text-sm ${forecast.blocking ? "border-amber-300 bg-amber-50" : "border-green-300 bg-green-50"}`}
+    >
+      <span className="tag mr-1">{t("radiology.forecast.title")}</span>{words}
+    </p>
+  );
+}
+
 export function CounterChecks({ studies, views, opened }: {
   studies: WireWorklistRow[];
   views: Record<string, WireCounterView | undefined>;
@@ -144,6 +163,7 @@ export function CounterChecks({ studies, views, opened }: {
         return (
           <div key={s.studyId} data-acc={s.accessionNo} className="rounded border bg-card p-3 space-y-2">
             <b>{v.studyTypeName}</b>
+            {v.forecast != null && <ForecastLine studyId={s.studyId} forecast={v.forecast} />}
             <div>
               <h4 className="tag m-0">{already !== undefined ? t("radiology.counter.gatesOpen") : t("radiology.counter.gatesWillOpen")}</h4>
               <ul className="m-0 mt-1 list-disc pl-5 text-sm">

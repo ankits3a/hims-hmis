@@ -3,12 +3,13 @@ import { imagingBillDecisions, imagingSafetyScreenings, imagingStudies } from ".
 import { patients } from "../../kernel/db/schema/patients";
 import { opdVitals } from "../../kernel/db/schema/opd";
 import { events } from "../../kernel/db/schema/events";
+import { orders } from "../../kernel/db/schema/orders";
 import { users } from "../../kernel/db/schema/auth";
 import { resources } from "../../kernel/db/schema/resources";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { displayName, listAllergies } from "../patients";
-import { activeDefinitionRow, parseDefinitionBody, protocolFor } from "./definitions";
+import { activeDefinitionRow, parseDefinitionBody, protocolsFor, suggestProtocol } from "./definitions";
 import { imagingDevices } from "./devices";
 import { RadiologyError } from "./errors";
 import { imagingExposureRepeated, REPEAT_REASON_CODES } from "./events";
@@ -33,7 +34,8 @@ import type { Actor } from "@hmis/contracts";
  *   · **the patient in hand** — age and sex from the master, ACTIVE allergies from `listAllergies`
  *     (the same read the contrast gate performs), the last charted weight from OPD vitals, and the
  *     creatinine the `renal_function` gate was satisfied with (the one the prep bay accepted);
- *   · **the protocol** — `protocolFor` over the ACTIVE `imaging_protocols` book; `book: "none"` when
+ *   · **the protocol** — `suggestProtocol` over the ACTIVE `imaging_protocols` book and the order's
+ *     indication (#1084: a cue in the indication picks a variant, else the default); `book: "none"` when
  *     nothing is published, which the console says plainly (the book is guidance, never a gate);
  *   · **the DRL** — the published levels that apply to this examination, so the dose fields can
  *     show the level beside the number. The verdict itself is still `recordAcquired`'s.
@@ -73,8 +75,14 @@ export type RoomView = {
   protocol: {
     book: "active" | "none";
     version: number | null;
-    matchedOn: "study_type" | "modality" | null;
+    /** #1084 — `indication_cue` when the doctor's indication called for a variant (`suggestProtocol`). */
+    matchedOn: "indication_cue" | "study_type" | "modality" | null;
+    /** The SUGGESTED protocol; the radiographer keeps it or picks another of `choices`. */
     protocol: ImagingProtocol | null;
+    /** #1084 — the cue the indication matched, as the book spells it. */
+    cue: string | null;
+    /** #1084 — every protocol the console may offer for this examination (`protocolsFor`). */
+    choices: ImagingProtocol[];
   };
   drl: DoseReferenceLevel[];
   renal: { creatinineUmolL: number | null; egfr: number | null; sampledAt: string | null } | null;
@@ -140,9 +148,10 @@ export async function roomView(db: Db, actor: Actor, studyId: string, now: Date 
    * showed "no protocol" would hide it.
    */
   const bookRow = await activeDefinitionRow(db, "imaging_protocols");
-  const match = bookRow === undefined
-    ? null
-    : protocolFor(parseDefinitionBody("imaging_protocols", bookRow.body), study.studyTypeCode, studyType.modality);
+  const book = bookRow === undefined ? null : parseDefinitionBody("imaging_protocols", bookRow.body);
+  /** #1084 — the doctor's indication (the order's justification) chooses among the examination's protocols. */
+  const [order] = book === null ? [] : await db.select({ indication: orders.indication }).from(orders).where(eq(orders.id, study.orderId));
+  const match = book === null ? null : suggestProtocol(book, study.studyTypeCode, studyType.modality, order?.indication ?? null);
 
   let drl: DoseReferenceLevel[] = [];
   if (studyType.ionising) {
@@ -217,6 +226,8 @@ export async function roomView(db: Db, actor: Actor, studyId: string, now: Date 
       version: bookRow?.version ?? null,
       matchedOn: match?.matchedOn ?? null,
       protocol: match?.protocol ?? null,
+      cue: match?.cue ?? null,
+      choices: book === null ? [] : protocolsFor(book, study.studyTypeCode, studyType.modality),
     },
     drl,
     renal,

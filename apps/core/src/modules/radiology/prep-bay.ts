@@ -16,7 +16,7 @@ import {
 } from "./egfr";
 import {
   IMAGING_TERMINAL_GATE_STATES, NEVER_OVERRIDABLE_KINDS, NEVER_WAIVABLE_KINDS, RENAL_CREATININE_CEILING_UMOL_L,
-  RENAL_VALIDITY_DAYS_ADMITTED, RENAL_VALIDITY_DAYS_OPD, isContrastAllergen, studyGates,
+  isContrastAllergen, renalValidityDays, studyGates,
 } from "./gates";
 import { gateOverrideRequests } from "./override-requests";
 import { clearanceOf } from "./read";
@@ -265,7 +265,7 @@ export async function prepStudyView(
         resultId: crea.resultId, umolL: crea.valueUmolL, reported: crea.reported, sampledAt: crea.sampledAt,
       },
       egfr: crea === null ? null : assessEgfr(crea.valueUmolL, { sex: row.sex, ageYears }),
-      validDays: s.encounterNo.startsWith("V") ? RENAL_VALIDITY_DAYS_OPD : RENAL_VALIDITY_DAYS_ADMITTED,
+      validDays: renalValidityDays(s.encounterNo).validDays,
       ceilingUmolL: RENAL_CREATININE_CEILING_UMOL_L,
       hydrationInstruction: IV_HYDRATION_INSTRUCTION,
       metforminNote: METFORMIN_NOTE,

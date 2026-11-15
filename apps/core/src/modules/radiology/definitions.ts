@@ -247,6 +247,13 @@ export const imagingProtocolSchema = z.object({
   technique: z.string().min(1).max(2000),
   /** The machine's own stored protocol name, when the console should just pick it. */
   preset: z.string().min(1).max(80).optional(),
+  /**
+   * #1084 — words in the doctor's indication that call for THIS protocol rather than the examination's
+   * default ("renal colic" → CT KUB plain). A protocol with cues is a variant; the one without is the
+   * default. Matched whole-word, any case (`suggestProtocol`). Optional, so a book written before cues
+   * existed publishes as it did.
+   */
+  indication_cues: z.array(z.string().trim().min(2).max(60)).min(1).max(20).optional(),
   kv: range.optional(),
   mas: range.optional(),
   /** CT only — reconstructed slice thickness and pitch. */
@@ -283,12 +290,23 @@ export const imagingProtocolSchema = z.object({
   message: "a protocol must name a study_type_code or a modality",
 });
 
+/** A protocol's key: the examination it is for, or the modality it is the department's default for. */
+const protocolKey = (p: { study_type_code?: string; modality?: string }): string =>
+  `${p.study_type_code ?? ""}|${p.study_type_code === undefined ? p.modality ?? "" : ""}`;
+
 export const imagingProtocolsBodySchema = z.object({
   protocols: z.array(imagingProtocolSchema).min(1),
 }).refine(
-  (b) => new Set(b.protocols.map((p) => `${p.study_type_code ?? ""}|${p.study_type_code === undefined ? p.modality ?? "" : ""}`)).size
-    === b.protocols.length,
+  /** #1084 — the DEFAULTS (no cues) stay one per key; variants with cues sit beside their default. */
+  (b) => {
+    const defaults = b.protocols.filter((p) => p.indication_cues === undefined).map(protocolKey);
+    return new Set(defaults).size === defaults.length;
+  },
   { message: "two protocols share a key — the console would have two answers for one examination" },
+).refine(
+  /** The console offers the protocols for one examination by name, and records the choice by name. */
+  (b) => new Set(b.protocols.map((p) => `${protocolKey(p)}|${p.name}`)).size === b.protocols.length,
+  { message: "two protocols for one examination share a name — the console could not tell them apart" },
 );
 
 export type ImagingProtocolsBody = z.infer<typeof imagingProtocolsBodySchema>;
@@ -301,10 +319,56 @@ export type ImagingProtocol = z.infer<typeof imagingProtocolSchema>;
 export function protocolFor(
   body: ImagingProtocolsBody, studyTypeCode: string, modality: string,
 ): { protocol: ImagingProtocol; matchedOn: "study_type" | "modality" } | null {
-  const own = body.protocols.find((p) => p.study_type_code === studyTypeCode);
+  /** #1084 — the examination's DEFAULT is its protocol without cues; a cue variant is a suggestion only. */
+  const own = body.protocols.find((p) => p.study_type_code === studyTypeCode && p.indication_cues === undefined);
   if (own !== undefined) return { protocol: own, matchedOn: "study_type" };
-  const dflt = body.protocols.find((p) => p.study_type_code === undefined && p.modality === modality);
+  const dflt = body.protocols.find((p) => p.study_type_code === undefined && p.modality === modality && p.indication_cues === undefined);
   return dflt === undefined ? null : { protocol: dflt, matchedOn: "modality" };
+}
+
+/**
+ * #1084 — every protocol the console may offer for one examination: the study type's own (default and
+ * variants) or, when the book has none of its own, the modality's. The study type wins where both exist,
+ * as in `protocolFor`; an examination with variants but no default of its own also gets the modality's
+ * default, which is what `protocolFor` answers for it. Book order.
+ */
+export function protocolsFor(body: ImagingProtocolsBody, studyTypeCode: string, modality: string): ImagingProtocol[] {
+  const own = body.protocols.filter((p) => p.study_type_code === studyTypeCode);
+  const dept = body.protocols.filter((p) => p.study_type_code === undefined && p.modality === modality);
+  if (own.length === 0) return dept;
+  if (own.some((p) => p.indication_cues === undefined)) return own;
+  const dflt = dept.find((p) => p.indication_cues === undefined);
+  return dflt === undefined ? own : [...own, dflt];
+}
+
+/** Lower case, every run of anything but a letter or a digit one space, padded — so a cue matches whole words only. */
+const words = (text: string): string => ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+
+export type ProtocolSuggestion = {
+  protocol: ImagingProtocol;
+  matchedOn: "indication_cue" | "study_type" | "modality";
+  /** The cue, as the book spells it, that the indication matched; null when the default stands. */
+  cue: string | null;
+};
+
+/**
+ * #1084 (A6, L1) — **THE PROTOCOL THE INDICATION CALLS FOR, AND WHICH WORDS SAID SO.** Among this
+ * examination's protocols (`protocolsFor`), the first in book order with a cue found whole-word in the
+ * doctor's indication; otherwise the default (`protocolFor`). Pure. It decides nothing: the radiographer
+ * keeps or changes it, and the choice rides `imaging.study_acquired`.
+ */
+export function suggestProtocol(
+  body: ImagingProtocolsBody, studyTypeCode: string, modality: string, indication: string | null,
+): ProtocolSuggestion | null {
+  const said = indication === null ? "" : words(indication);
+  if (said.trim() !== "") {
+    for (const p of protocolsFor(body, studyTypeCode, modality)) {
+      const cue = (p.indication_cues ?? []).find((c) => words(c).trim() !== "" && said.includes(words(c)));
+      if (cue !== undefined) return { protocol: p, matchedOn: "indication_cue", cue };
+    }
+  }
+  const dflt = protocolFor(body, studyTypeCode, modality);
+  return dflt === null ? null : { ...dflt, cue: null };
 }
 
 /**

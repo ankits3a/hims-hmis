@@ -45,8 +45,13 @@ export type {
 /** 18-S RS2 — the ordering door's read (the consult and the imaging desk). */
 export { ADVISORY_DUPLICATE_DAYS, imagingDoorFor } from "./advised";
 export type {
-  AdvisedImagingLine, ImagingBookEntry, ImagingDoorView, ImagingOrderable, ImagingRecentItem, ImagingVisitOrder,
+  AdvisedImagingLine, ImagingBookEntry, ImagingDoorView, ImagingOrderable, ImagingRecentItem, ImagingStudyForecast, ImagingVisitOrder,
 } from "./advised";
+/** #1084 (IM6b) — the readiness forecast at booking, the protocol the indication suggests. */
+export { BLOCKING_FORECAST_KINDS, READINESS_ALERT_KIND, readinessForecast } from "./readiness-forecast";
+export type { ReadinessForecast } from "./readiness-forecast";
+export { protocolsFor, suggestProtocol } from "./definitions";
+export type { ImagingProtocol, ProtocolSuggestion } from "./definitions";
 export {
   IMAGING_DEFINITION_KINDS, VIEWER_URL_PLACEHOLDERS, activateSeededDefinition, activeDefinition, activeDefinitionRow, draftDefinition,
   parseDefinitionBody, publishDefinition, requestDefinitionPublish,

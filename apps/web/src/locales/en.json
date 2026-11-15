@@ -7045,7 +7045,9 @@
         "needWeight": "Type the weight for the volume",
         "suggest": "Suggested volume: {{ml}} mL (the price includes the contrast)",
         "band": "Child in the {{from}}–{{to}} kg band",
-        "say": "Say to the patient"
+        "say": "Say to the patient",
+        "suggestedFor": "Suggested for “{{cue}}” in the indication",
+        "choose": "Protocol"
       },
       "phase": {
         "non_contrast": "Plain",
@@ -7657,6 +7659,14 @@
       "logTitle_other": "Closed in the last 48 hours ({{count}})",
       "logEmpty": "Nothing closed in the last 48 hours.",
       "closedBy": "read back by {{name}} at {{at}}"
+    },
+    "forecast": {
+      "title": "By the slot",
+      "ready": "Ready by the slot, on what is on file",
+      "creatinine_missing": "No creatinine in the valid window — ask the doctor to order one",
+      "creatinine_stale": "No creatinine in the valid window by the slot — ask the doctor to order one",
+      "radiologist_review": "Radiologist reviews contrast before the slot",
+      "pregnancy_screen_due": "Pregnancy question at the prep bay"
     }
   },
   "pcpndt": {
@@ -14929,6 +14939,12 @@
       "radiologist": "Radiologist who answers",
       "pick": "Choose a radiologist",
       "noRadiologist": "No radiologist is set up in the Radiology (RAD) department. Ask the administrator."
+    },
+    "forecast": {
+      "creatinine_missing": "No creatinine in the valid window — order one",
+      "creatinine_stale": "No creatinine in the valid window — order one",
+      "radiologist_review": "Radiologist reviews contrast first",
+      "pregnancy_screen_due": "Pregnancy screen at the prep bay"
     }
   },
   "profile": {
@@ -16863,7 +16879,9 @@
         "readsOverdue_one": "study past its reading time",
         "readsOverdue_other": "studies past their reading time",
         "unreadMine_one": "imaging report unread",
-        "unreadMine_other": "imaging reports unread"
+        "unreadMine_other": "imaging reports unread",
+        "followupsDue_one": "imaging follow-up to book",
+        "followupsDue_other": "imaging follow-ups to book"
       },
       "alerts": {
         "unanswered_one": "alert not answered",
