@@ -73,6 +73,17 @@ export const imagingStudyAcquired = defineEvent("imaging.study_acquired", MODULE
   imageSource: z.string().min(1), deviceResourceId: id,
   /** 18b T2 — the DICOM identity 18b-ii's reconciliation joins on; null when no DICOM study exists. */
   studyInstanceUid: z.string().nullable(),
+  /**
+   * #1084 (A6) — the protocol book's version, the protocol the radiographer worked from (`chosen`, null
+   * when not stated), what the indication suggested and the cue that suggested it. Null when no book is
+   * published; absent on events written before #1084.
+   */
+  protocol: z.object({
+    version: z.number().int().positive(),
+    chosen: z.string().min(1).nullable(),
+    suggested: z.string().min(1).nullable(),
+    cue: z.string().min(1).nullable(),
+  }).nullable().optional(),
 }));
 
 /**
@@ -364,6 +375,29 @@ export const imagingInvoiceCarried = defineEvent("imaging.invoice_carried", MODU
   fromStudyId: id, toStudyId: id, invoiceLineId: id,
 }));
 
+/**
+ * #1084 (IM6b) — what the booking found the patient short of, from facts on file, for the slot date.
+ * `kinds` is headline-first; `verdict` is its head. Codes only: the creatinine travels as a POINTER (the
+ * lab result id), never its value, and the eGFR not at all.
+ */
+export const READINESS_FORECAST_KINDS = ["radiologist_review", "creatinine_missing", "creatinine_stale", "pregnancy_screen_due"] as const;
+export type ReadinessForecastKind = (typeof READINESS_FORECAST_KINDS)[number];
+export const READINESS_REVIEW_REASONS = ["egfr_below_hold", "creatinine_above_ceiling", "past_contrast_reaction", "contrast_allergy"] as const;
+export type ReadinessReviewReason = (typeof READINESS_REVIEW_REASONS)[number];
+
+/**
+ * #1084 — a blocker found at booking (L3 notice): the desk sees it in its lane, the ordering doctor on the
+ * order card and by a bell. Appended by the booking's own transaction, once per booking or move that finds
+ * one; the forecast itself decides nothing and writes to no gate.
+ */
+export const imagingReadinessForecast = defineEvent("imaging.readiness_forecast", MODULE, z.object({
+  studyId: id, scheduledAt: z.string().min(1),
+  verdict: z.enum(READINESS_FORECAST_KINDS),
+  kinds: z.array(z.enum(READINESS_FORECAST_KINDS)).min(1),
+  reviewReasons: z.array(z.enum(READINESS_REVIEW_REASONS)),
+  creatinineResultId: z.string().nullable(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -396,5 +430,6 @@ export const RADIOLOGY_EVENTS = [
   imagingReportPrinted,
   imagingReadingClaimed,
   imagingAutomationSwitched,
+  imagingReadinessForecast,
   imagingInvoiceCarried,
 ] as const;

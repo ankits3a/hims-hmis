@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { imagingStudies } from "../../kernel/db/schema/radiology";
-import { orderItems } from "../../kernel/db/schema/orders";
+import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { assignResource, releaseResource } from "../../kernel/resources/registry";
 import { transition } from "../../kernel/workflow/instances";
@@ -17,7 +17,9 @@ import { evaluateReadiness } from "./gates";
 import { assertContrastPermissible } from "./contrast";
 import { authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, raiseBillDecision } from "./money";
 import { activeDoseReferenceLevels, drlFor, requireStudyType } from "./study-types";
-import { activeReadingPools, readingPoolFor } from "./definitions";
+import {
+  activeDefinitionRow, activeReadingPools, parseDefinitionBody, protocolsFor, readingPoolFor, suggestProtocol,
+} from "./definitions";
 import { attachHeldAtSend, heldArrivalFor, pendingDoseFor, settlePendingDose } from "./pacs";
 import { assertIrSendable, assertIrStartable, raiseSkinDoseAlerts } from "./ir";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -64,6 +66,41 @@ export type StartAcquisitionResult = {
   authorisedBy: string;
   deviceResourceId: string;
 };
+
+/**
+ * #1084 (A6) — **THE PROTOCOL CHOICE, AS IT RIDES THE ACQUISITION EVENT.** The server works out the
+ * suggestion itself (`suggestProtocol` over the active book and the order's indication) so the record does
+ * not depend on what a client claims was suggested; the client says only which protocol was worked from.
+ * A name the active book does not hold for this examination is refused before anything is written — the
+ * console offers only the book's own (`protocolsFor`). With no book published there is nothing to record.
+ * The book is guidance: sending no name never refuses a scan.
+ */
+async function protocolChoice(
+  tx: Tx, study: { orderId: string; studyTypeCode: string; id: string }, modality: string, chosen: string | null,
+): Promise<{ version: number; chosen: string | null; suggested: string | null; cue: string | null } | null> {
+  const row = await activeDefinitionRow(tx, "imaging_protocols");
+  if (row === undefined) {
+    if (chosen !== null) {
+      throw new RadiologyError(
+        "evidence_invalid",
+        "no protocol book is published, so the scan cannot name a protocol — send it without one",
+        { studyId: study.id, protocolName: chosen },
+      );
+    }
+    return null;
+  }
+  const book = parseDefinitionBody("imaging_protocols", row.body);
+  if (chosen !== null && !protocolsFor(book, study.studyTypeCode, modality).some((p) => p.name === chosen)) {
+    throw new RadiologyError(
+      "evidence_invalid",
+      `"${chosen}" is not one of this examination's protocols in the published book (v${String(row.version)}) — reopen the console`,
+      { studyId: study.id, protocolName: chosen, version: row.version },
+    );
+  }
+  const [order] = await (tx as unknown as Db).select({ indication: orders.indication }).from(orders).where(eq(orders.id, study.orderId));
+  const suggestion = suggestProtocol(book, study.studyTypeCode, modality, order?.indication ?? null);
+  return { version: row.version, chosen, suggested: suggestion?.protocol.name ?? null, cue: suggestion?.cue ?? null };
+}
 
 async function loadStudy(exec: Db | Tx, studyId: string) {
   const rows = await (exec as Db).select().from(imagingStudies).where(eq(imagingStudies.id, studyId));
@@ -290,6 +327,12 @@ export type RecordAcquiredInput = {
   contrastNotGivenReason?: string | null;
   /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is DERIVED from it, never typed. */
   acquiredAt?: Date;
+  /**
+   * #1084 — the protocol the radiographer worked from, by its name in the ACTIVE book: the suggested one
+   * kept, or another of the examination's protocols. Recorded on `imaging.study_acquired` beside the
+   * suggestion and the cue; absent records "not stated".
+   */
+  protocolName?: string | null;
   now?: Date;
 };
 
@@ -367,6 +410,7 @@ export async function recordAcquired(
   await assertFormFRecorded(tx, study.id, study.formFRequired);
 
   const studyType = await requireStudyType(tx, study.studyTypeCode);
+  const protocol = await protocolChoice(tx, study, studyType.modality, input.protocolName ?? null);
 
   /**
    * ═══ F18 — `ionising` IS SNAPSHOTTED HERE, AND UNTIL THIS COMMIT NOTHING WROTE IT ═══
@@ -654,6 +698,7 @@ export async function recordAcquired(
       serviceId: study.serviceId, contrastGiven, repeatOfStudyId: repeatOf,
       imageSource: input.imageSource, deviceResourceId: study.deviceResourceId!,
       studyInstanceUid,
+      protocol,
     },
   }));
 
