@@ -29,14 +29,16 @@ import type {
 export type Side = "" | "right" | "left" | "both";
 export type Priority = "routine" | "urgent" | "stat";
 
-/** The side is carried IN the indication: the order envelope has no side column, and the
- *  `laterality_confirm` gate confirms it against the patient at the console. English on purpose —
- *  the order is a clinical record, not a screen string. */
-const SIDE_WORDS: Record<Exclude<Side, "">, string> = { right: "Right", left: "Left", both: "Both sides" };
+/**
+ * #1080 — the side is an ORDER FIELD (`order_items.laterality`), never words in the indication: the
+ * server refuses a sided study without it and writes it onto the study, and the console's
+ * `laterality_confirm` compares the patient's pointing against it. The indication is the doctor's
+ * question only.
+ */
+const SIDE_FIELD: Record<Exclude<Side, "">, "left" | "right" | "bilateral"> = { right: "right", left: "left", both: "bilateral" };
 
-export function composeIndication(side: Side, question: string): string {
-  const q = question.trim();
-  return side === "" ? q : `${SIDE_WORDS[side]} — ${q}`;
+export function sideField(side: Side): "left" | "right" | "bilateral" | null {
+  return side === "" ? null : SIDE_FIELD[side];
 }
 
 /** A 22c-A zod 400 carries an ARRAY of issues as `message`; everything else is the server's sentence. */
@@ -111,15 +113,17 @@ export function StudyCard(p: StudyCardProps): React.ReactElement {
 
   const send = useMutation({
     mutationFn: async () => {
+      const laterality = p.orderable.lateralityApplicable ? sideField(side) : null;
       const body: PlaceImagingOrderBody = {
         patientId: p.view.visit.patient.id,
         encounterNo: p.view.visit.encounterNo,
         serviceDate: istToday(),
         orderingClinicianId: p.clinicianUserId ?? "",
         priority,
-        indication: composeIndication(side, question),
+        indication: question.trim(),
         items: [{
           serviceId: p.serviceId,
+          ...(laterality !== null ? { laterality } : {}),
           ...(needsReason ? { duplicateOfItemId: dupItemId, duplicateReason: reason.trim() } : {}),
         }],
         ...(p.outside === true

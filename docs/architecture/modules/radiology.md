@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
 - **Used by modules:** `abdm`, `doctor-desk`, `ordering`
-- **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `config`, `consent`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
 ## Public API (`index.ts`), by declaring file
@@ -111,14 +111,6 @@ Source: `apps/core/src/modules/radiology/`
   - `requestDefinitionPublish(tx: Tx, actor: Actor, definitionId: string): Promise<{ approvalId: string }>`
   - `templatesFor(body: ReportTemplatesBody, studyTypeCode: string, modality: string): GovernedReportTemplate[]`
   - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReadingPool`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
-- `desk.ts`
-  - `DESK_COLLECT_ROUTE`
-  - `arriveAtDesk(db: Db, actor: Actor, input: { encounterNo: string; now?: Date }): Promise<DeskArrival>`
-  - `collectAtDesk(db: Db, actor: Actor, input: DeskCollectInput, idempotencyKey: string, now: Date = new Date()): Promise<DeskCollectResult>`
-  - `deskVisitsToday(db: Db, actor: Actor, input: { patientId: string; now?: Date }): Promise<DeskVisit[]>`
-  - `proposeSlot(db: Db, actor: Actor, input: { studyId: string; now?: Date }): Promise<SlotProposal | null>`
-  - `walkInNow(db: Db, actor: Actor, input: { studyId: string; now?: Date }): Promise<DeskWalkIn>`
-  - types: `DeskArrival`, `DeskCollectInput`, `DeskCollectResult`, `DeskTender`, `DeskVisit`, `DeskWalkIn`
 - `devices.ts`
   - `imagingDevices(db: Db, onDate: string, opts: { includeRetired?: boolean } = {}): Promise<ImagingDeviceRow[]>`
   - types: `ImagingDeviceRow`
@@ -382,16 +374,13 @@ Source: `apps/core/src/modules/radiology/`
   - `signsAsResident(tx: Tx, actor: Actor): Promise<boolean>`
   - types: `SignChecksRecord`
 - `schedule.ts`
-  - `PROPOSAL_HORIZON_DAYS`
-  - `SLOT_STEP_MINUTES`
   - `autoSlotWalkIn(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<ScheduleResult>`
   - `cancelStudy(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; reason?: string | null }): Promise<{ studyId: …`
   - `deviceDiary(exec: Db, actor: Actor, deviceResourceId: string): Promise<DiaryEntry[]>`
   - `markNoShow(tx: Tx, actor: Actor, studyId: string, reason?: string | null): Promise<{ studyId: string; status: string }>`
-  - `proposeFreeSlot(exec: Db | Tx, input: { studyId: string; from: Date }): Promise<SlotProposal | null>`
   - `rescheduleStudy(tx: Tx, actor: Actor, input: ScheduleInput & { reason?: string | null }): Promise<ScheduleResult>`
   - `scheduleStudy(tx: Tx, actor: Actor, input: ScheduleInput): Promise<ScheduleResult>`
-  - types: `ScheduleInput`, `ScheduleResult`, `SlotProposal`
+  - types: `ScheduleInput`, `ScheduleResult`
 - `setup.ts`
   - `INVESTIGATION_GST_CATEGORY`
   - `RADIOLOGY_RULED_SERVICES`
@@ -462,7 +451,6 @@ Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 - `radiology-acquisition.controller.ts` — `/radiology/studies`
 - `radiology-bill-decisions.controller.ts` — `/radiology/bill-decisions`
 - `radiology-definitions.controller.ts` — `/radiology/definitions`
-- `radiology-desk.controller.ts` — `/radiology/desk`
 - `radiology-floor.controller.ts` — `/radiology/devices`, `/radiology/display`, `/radiology/portable`
 - `radiology-images.controller.ts` — `/radiology/studies`
 - `radiology-ir.controller.ts` — `/radiology/ir`, `/radiology/studies`

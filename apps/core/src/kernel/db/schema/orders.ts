@@ -74,12 +74,18 @@ export const ORDER_ITEM_STATUSES = ["placed", "in_progress", "completed", "cance
 export const ORDER_PRIORITIES = ["routine", "urgent", "stat"] as const;
 export const ORDER_AUTHORITIES = ["clinician", "external_prescription", "self", "protocol"] as const;
 export const ORDER_ITEM_ORIGINS = ["direct", "addon", "reflex", "duplicate_confirmed"] as const;
+/**
+ * #1080 — the side an item asks for (a left knee, a right kidney). `null` is "the study has no side";
+ * there is no `na` here, because an absent side is an absent fact and not a fourth value.
+ */
+export const ORDER_ITEM_LATERALITIES = ["left", "right", "bilateral"] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export type OrderItemStatus = (typeof ORDER_ITEM_STATUSES)[number];
 export type OrderPriority = (typeof ORDER_PRIORITIES)[number];
 export type OrderAuthority = (typeof ORDER_AUTHORITIES)[number];
 export type OrderItemOrigin = (typeof ORDER_ITEM_ORIGINS)[number];
+export type OrderItemLaterality = (typeof ORDER_ITEM_LATERALITIES)[number];
 
 /**
  * ONE ORDER IS ONE KIND (DD2), and `order_group_id` is what joins the act.
@@ -213,6 +219,13 @@ export const orderItems = pgTable(
      * `orders.read.restricted`; the claiming module's extension may be stricter, never looser.
      */
     restricted: boolean("restricted").notNull().default(false),
+    /**
+     * #1080 — the SIDE, decided by whoever orders: one order can hold a left knee and a chest, so it
+     * is the item's and not the header's. Kind-neutral on purpose (theatre and lab orders may use it).
+     * The claiming module says which of its services need one; imaging refuses a side-applicable
+     * study without it and copies it onto the study at creation.
+     */
+    laterality: text("laterality"),
     /** DD5 — the state the item LEFT. `null` unless it was cancelled. */
     cancelledFrom: text("cancelled_from"),
     cancelReason: text("cancel_reason"),
@@ -232,6 +245,10 @@ export const orderItems = pgTable(
     index("order_items_service_created_idx").on(t.serviceId, t.createdAt),
     check("order_items_status_ck", sql`${t.status} in ('placed', 'in_progress', 'completed', 'cancelled')`),
     check("order_items_origin_ck", sql`${t.origin} in ('direct', 'addon', 'reflex', 'duplicate_confirmed')`),
+    check(
+      "order_items_laterality_ck",
+      sql`${t.laterality} is null or ${t.laterality} in ('left', 'right', 'bilateral')`,
+    ),
     /**
      * DD5, and it is a CHECK rather than a guard because O-4's money consequence depends on it:
      * billing must be able to read "was this cancelled after analysis started, and why" as ONE

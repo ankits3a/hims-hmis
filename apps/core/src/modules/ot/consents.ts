@@ -1,33 +1,18 @@
-import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
-import type { Actor } from "@hmis/contracts";
 import { otCases } from "../../kernel/db/schema";
+import { consentSchema } from "../../kernel/consent";
 import { guardiansWithAuthority } from "../patients";
 import { OtError } from "./errors";
+import type { ConsentEvidence } from "../../kernel/consent";
 import type { Tx } from "../../kernel/db/client";
 
 /**
  * PLAN 15 T4 / DD5 — **CONSENT: what a signature has to carry to be one.**
  *
- * ═══ THE SHAPE IS THE POINT (H6, E7, K2, K4, G2) ═══
- *
- * A consent gate satisfied by a boolean is a consent gate that proves nothing. Every field below is
- * a real refusal somewhere:
- *
- *   · `procedureCode` + `templateVersion` — H6. A consent signed against last year's template for a
- *     different operation is not consent to this one, and without both fields nobody can ever tell.
- *   · `language` + `interpreter` — E7. A Hindi-only patient signing an English form needs an
- *     interpreter named on the record; the alternative is a signature nobody can defend.
- *   · `thumbImpression` + `witness` — K4. A patient who cannot write signs with a thumb, and a thumb
- *     impression without a witness is the commonest way an Indian consent form fails in court.
- *   · `laterality` — A3/A7. THE SITE-MARKING TRIPLE EQUALITY'S THIRD OPERAND. The marking is
- *     compared to the case AND to this, which is why laterality lives on the consent at all.
- *   · `conversionCovered` — G2/N11. "If we get in and it has to become an open procedure, may we?"
- *     `procedure.converted` records whether it was covered; a conversion without it is a finding,
- *     not a block, because the surgeon is already inside the patient.
- *   · `signer` + `guardianId` — E15/A11. A minor's consent is the guardian's, and only a guardian
- *     with `consents` authority AT THIS MOMENT.
+ * The SHAPE — `consentSchema`, its `ConsentEvidence` type and the `consentEvidence` blob a satisfied
+ * gate carries — lives in `kernel/consent/consent.ts` (#1086), with the reason for every field; imaging
+ * takes consent by the same shape. `index.ts` re-exports those objects under the same names. What stays
+ * here is theatre's: which gate kinds are consents, and the check of a consent against an OT case.
  *
  * ═══ CONSENT IS RECORDED, THEN A GATE IS SATISFIED — TWO ACTS, NOT ONE ═══
  *
@@ -35,44 +20,10 @@ import type { Tx } from "../../kernel/db/client";
  * They are separate because a consent is taken at the desk or the bedside, minutes or hours before
  * anybody looks at a gate, and because ONE consent may satisfy the procedure gate while the
  * anaesthesia consent is still outstanding.
- *
- * **The consent lives on the GATE's `evidence` jsonb, not in a table of its own.** DD5 makes a gate
- * a child workflow instance carrying evidence, and a consent that is not attached to a gate is a
- * document nothing reads. `documentId` points at the scanned paper when there is one.
  */
 
 export const CONSENT_KINDS = ["consent_procedure", "consent_anaesthesia"] as const;
 export type ConsentKind = (typeof CONSENT_KINDS)[number];
-
-export const consentSchema = z.object({
-  procedureCode: z.string().min(1),
-  templateVersion: z.string().min(1),
-  language: z.string().min(1),
-  signer: z.enum(["patient", "guardian"]),
-  guardianId: z.string().min(1).optional(),
-  interpreter: z.string().min(1).optional(),
-  witness: z.string().min(1).optional(),
-  thumbImpression: z.boolean().default(false),
-  /** A3/A7's third operand. Null for a non-lateral procedure. */
-  laterality: z.enum(["left", "right", "bilateral"]).nullable().default(null),
-  conversionCovered: z.boolean(),
-  documentId: z.string().min(1).optional(),
-  signedAt: z.string().min(1),
-}).superRefine((consent, ctx) => {
-  // K4 — a thumb impression with no witness is the commonest way an Indian consent fails in court.
-  if (consent.thumbImpression && consent.witness === undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "a thumb-impression consent requires a named witness (K4)" });
-  }
-  // E15 — a guardian-signed consent must name WHICH guardian; `satisfyGate` then checks authority.
-  if (consent.signer === "guardian" && consent.guardianId === undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "a guardian-signed consent must name the guardian (E15)" });
-  }
-  if (consent.signer === "patient" && consent.guardianId !== undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "a patient-signed consent must not name a guardian" });
-  }
-});
-
-export type ConsentEvidence = z.infer<typeof consentSchema>;
 
 /**
  * Validates a consent against the case it is for, and against the signer's authority.
@@ -139,9 +90,4 @@ export async function validateConsent(
     }
   }
   return consent;
-}
-
-/** The `evidence` blob a satisfied consent gate carries, plus who attached it. */
-export function consentEvidence(consent: ConsentEvidence, actor: Actor): Record<string, unknown> {
-  return { kind: "consent", consent, recordedBy: actor.id, recordedAt: new Date().toISOString(), evidenceId: newId() };
 }

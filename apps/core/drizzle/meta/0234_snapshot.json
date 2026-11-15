@@ -1,6 +1,6 @@
 {
-  "id": "09771e65-7e0a-4dd7-b352-6f3c4bfb92ec",
-  "prevId": "dcdeb210-166e-4183-be77-351a9aa3ba25",
+  "id": "62fef09b-0d22-451e-9201-76809240d0dc",
+  "prevId": "9b5cd542-daeb-48ed-912f-70ab66d1b7a9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -29507,6 +29507,12 @@
           "notNull": true,
           "default": false
         },
+        "laterality": {
+          "name": "laterality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cancelled_from": {
           "name": "cancelled_from",
           "type": "text",
@@ -29622,6 +29628,10 @@
         "order_items_origin_ck": {
           "name": "order_items_origin_ck",
           "value": "\"order_items\".\"origin\" in ('direct', 'addon', 'reflex', 'duplicate_confirmed')"
+        },
+        "order_items_laterality_ck": {
+          "name": "order_items_laterality_ck",
+          "value": "\"order_items\".\"laterality\" is null or \"order_items\".\"laterality\" in ('left', 'right', 'bilateral')"
         },
         "order_items_cancelled_from_ck": {
           "name": "order_items_cancelled_from_ck",
@@ -37077,18 +37087,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "drafted_by": {
-          "name": "drafted_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "autosaved_at": {
-          "name": "autosaved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "published_at": {
           "name": "published_at",
           "type": "timestamp with time zone",
@@ -37621,30 +37619,6 @@
         "cancel_reason": {
           "name": "cancel_reason",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reading_pool": {
-          "name": "reading_pool",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "assigned_reader_id": {
-          "name": "assigned_reader_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reading_claimed_by": {
-          "name": "reading_claimed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reading_claimed_at": {
-          "name": "reading_claimed_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
