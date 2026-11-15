@@ -1,6 +1,6 @@
 {
-  "id": "842380da-6dde-4c08-9d39-3344d318a2b7",
-  "prevId": "09771e65-7e0a-4dd7-b352-6f3c4bfb92ec",
+  "id": "9fe9163d-7b23-40f7-abbb-d78baa1e14c9",
+  "prevId": "62fef09b-0d22-451e-9201-76809240d0dc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -29507,6 +29507,12 @@
           "notNull": true,
           "default": false
         },
+        "laterality": {
+          "name": "laterality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cancelled_from": {
           "name": "cancelled_from",
           "type": "text",
@@ -29622,6 +29628,10 @@
         "order_items_origin_ck": {
           "name": "order_items_origin_ck",
           "value": "\"order_items\".\"origin\" in ('direct', 'addon', 'reflex', 'duplicate_confirmed')"
+        },
+        "order_items_laterality_ck": {
+          "name": "order_items_laterality_ck",
+          "value": "\"order_items\".\"laterality\" is null or \"order_items\".\"laterality\" in ('left', 'right', 'bilateral')"
         },
         "order_items_cancelled_from_ck": {
           "name": "order_items_cancelled_from_ck",
@@ -34202,129 +34212,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.imaging_automation_runs": {
-      "name": "imaging_automation_runs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "day": {
-          "name": "day",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "counts": {
-          "name": "counts",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "ran_at": {
-          "name": "ran_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "imaging_automation_runs_kind_day_ux": {
-          "name": "imaging_automation_runs_kind_day_ux",
-          "columns": [
-            {
-              "expression": "kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "day",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "imaging_automation_runs_kind_ck": {
-          "name": "imaging_automation_runs_kind_ck",
-          "value": "\"imaging_automation_runs\".\"kind\" in ('no_show_sweep', 'patient_reminders', 'hod_digest', 'register_completeness')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.imaging_automation_settings": {
-      "name": "imaging_automation_settings",
-      "schema": "",
-      "columns": {
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "changed_by": {
-          "name": "changed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "changed_at": {
-          "name": "changed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "imaging_automation_settings_kind_ck": {
-          "name": "imaging_automation_settings_kind_ck",
-          "value": "\"imaging_automation_settings\".\"kind\" in ('no_show_sweep', 'patient_reminders', 'hod_digest', 'register_completeness')"
-        },
-        "imaging_automation_settings_reason_ck": {
-          "name": "imaging_automation_settings_reason_ck",
-          "value": "char_length(btrim(\"imaging_automation_settings\".\"reason\")) >= 3"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.imaging_bill_decisions": {
