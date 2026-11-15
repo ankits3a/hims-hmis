@@ -89,7 +89,6 @@
     "labBench": "Bench",
     "labVerify": "Verify & report",
     "radiologyReception": "Imaging reception",
-    "radiologyWorklist": "Imaging worklist",
     "vitalsBay": "Vitals bay",
     "labReports": "Report centre",
     "labQuick": "Quick lab",
@@ -122,9 +121,7 @@
     "pharmacyOffice": "Pharmacy office",
     "pharmacyReports": "Pharmacy reports",
     "radiologyRoom": "Modality rooms",
-    "radiologyPortable": "Portable round",
     "radiologySetup": "Imaging setup",
-    "radiologyDiary": "Imaging diary",
     "radiologyDisplay": "Imaging hall display",
     "radiologyReading": "Reading room",
     "radiologyPrep": "Prep & safety bay",
@@ -6518,6 +6515,36 @@
       "sealed": "sealed record",
       "truncated": "Only the newest 300 are shown; pick a single day to see the rest."
     },
+    "desk": {
+      "views": {
+        "counter": "Counter",
+        "diary": "Diary"
+      },
+      "hallDisplay": "Open hall display"
+    },
+    "asks": {
+      "view_one": "Override asks ({{count}})",
+      "view_other": "Override asks ({{count}})",
+      "title": "Override asks",
+      "place": "The prep bay asks the radiologist",
+      "listTitle": "Waiting on you",
+      "listSummary_one": "{{count}} ask waiting",
+      "listSummary_other": "{{count}} asks waiting",
+      "clockLine_one": "{{count}} override ask waiting — open it",
+      "clockLine_other": "{{count}} override asks waiting — open them",
+      "none": "No override request waiting",
+      "row": "{{gate}} · asked by {{who}}",
+      "inHand": "Ask in hand",
+      "askedBy": "asked by {{who}} at {{at}}",
+      "theyWrote": "They wrote:",
+      "reason": "Your reason (kept with your name)",
+      "refuse": "Refuse",
+      "grant": "Grant the override",
+      "grantHint": "Granting runs the override with your reason; the patient moves on when every gate is closed.",
+      "granted": "Granted — the override is recorded.",
+      "refused": "Refused — the gate stays open.",
+      "stat": "Asks waiting"
+    },
     "station": {
       "department": "Imaging",
       "stats": "Today at this station",
@@ -6924,9 +6951,9 @@
       "noMachine": "No machine set up",
       "machine": "Machine",
       "machineAlert": "needs attention",
-      "toPortable": "Portable round →",
       "views": {
         "console": "Room console",
+        "portable": "Portable round",
         "ir": "IR suite",
         "dose": "Dose log",
         "rejects": "Rejects & repeats",
@@ -6991,7 +7018,7 @@
         "desk": "Open the imaging front desk",
         "prep": "Open the prep bay",
         "pcpndt": "Open the PCPNDT registration",
-        "formF": "Open the study's Form F",
+        "formF": "Open Form F at the ultrasound station",
         "irSuite": "Open the IR suite"
       },
       "prepOpen": "The prep bay still owes: {{gates}}. The patient goes back to prep before anything starts here.",
@@ -7159,7 +7186,6 @@
         "noPrior": "none on record",
         "prior_one": "{{count}} study in {{months}} months · {{over}} above DRL",
         "prior_other": "{{count}} studies in {{months}} months · {{over}} above DRL",
-        "studyPage": "Open the study page",
         "clear": "Clear the table"
       },
       "rejects": {
@@ -7306,7 +7332,6 @@
         "outside": "Outside images"
       },
       "openImages": "Open images",
-      "classic": "Classic report screen",
       "templates": "Templates",
       "builtIn": "built-in",
       "insertNormal": "Insert “normal study” for {{name}}",

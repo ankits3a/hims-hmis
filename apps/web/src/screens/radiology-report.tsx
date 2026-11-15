@@ -24,6 +24,9 @@ import { RadiologyStation } from "./radiology-station";
  * `signReport` sends a report id and nothing else. The freshness comes off the SESSION on the
  * server, so there is no field here to fill in and no way for the client to attest to it — which is
  * what §11.19-D-27 requires and what a `secondFactorAt` input would quietly destroy.
+ *
+ * #1087 (IM8) — NO ROUTE MOUNTS THIS SCREEN NOW: `/radiology/studies/$studyId/report` opens the same study
+ * in the reading room (`/radiology/read?study=`), whose workspace drafts, signs, publishes and amends.
  */
 export function RadiologyReport(): React.ReactElement {
   const { t } = useTranslation();

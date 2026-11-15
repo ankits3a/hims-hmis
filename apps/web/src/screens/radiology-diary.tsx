@@ -27,6 +27,9 @@ import { istDay, istInputToIso, isoToIstInput } from "../components/radiology/de
  * Money: a cancel before the room raises nothing here. Whatever the patient paid is refunded by the
  * billing office's existing refund request (`/billing/refunds/request`), not by this screen; a cancel
  * after the scan started is the room's act, and raises `performed_then_cancelled` there.
+ *
+ * #1087 (IM8) — the diary is a header view of the Desk (`/radiology/reception?view=diary`), not a station
+ * of its own; `/radiology/diary` forwards there. The Desk hands in its header views.
  */
 
 const DAY_START_H = 7;
@@ -49,7 +52,7 @@ const TONE: Record<string, string> = {
   in_acquisition: "bg-sky-50 border-sky-600",
 };
 
-export function RadiologyDiary(): React.ReactElement {
+export function RadiologyDiary({ views }: { views?: React.ReactNode } = {}): React.ReactElement {
   const { t, i18n } = useTranslation();
   const tEn = i18n.getFixedT("en");
   const qc = useQueryClient();
@@ -131,7 +134,8 @@ export function RadiologyDiary(): React.ReactElement {
 
   return (
     <RadiologyStation
-      station="diary"
+      station="desk"
+      views={views}
       title={t("radiology.diary.title")}
       place={t("radiology.diary.place")}
       stats={[
