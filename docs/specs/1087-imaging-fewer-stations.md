@@ -1,6 +1,6 @@
 ---
 issue: 1087
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging: fewer stations per seat (#1087)
