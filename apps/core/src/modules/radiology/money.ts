@@ -1,9 +1,10 @@
-import { and, asc, eq, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { imagingBillDecisions, imagingStudies } from "../../kernel/db/schema/radiology";
 import { daycareEncounters } from "../../kernel/db/schema/ot";
+import { opdEncounters } from "../../kernel/db/schema/opd";
 import { invoiceLines, invoices } from "../../kernel/db/schema/billing";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { getEncounter } from "../opd";
@@ -111,6 +112,34 @@ export async function encounterPayer(exec: Db | Tx, encounterNo: string): Promis
   }
   const encounter = await getEncounter(exec as Db, encounterNo);
   return { intendedPayer: encounter?.intendedPayer ?? "self" };
+}
+
+/**
+ * #1076 — `encounterPayer` for many encounters in at most two reads (day-care by number; OPD by visit
+ * number, or by row id as `getEncounter` also reads it). An encounter nobody holds answers `self`, as the
+ * one-encounter reader does.
+ */
+export async function encounterPayers(exec: Db | Tx, encounterNos: readonly string[]): Promise<Map<string, string>> {
+  const nos = [...new Set(encounterNos)];
+  const daycare = nos.filter((n) => n.startsWith(EPISODE_SERIES.daycare));
+  const visits = nos.filter((n) => !n.startsWith(EPISODE_SERIES.daycare));
+  const found = new Map<string, string>();
+  if (daycare.length > 0) {
+    const rows = await (exec as Db)
+      .select({ no: daycareEncounters.encounterNo, payer: daycareEncounters.payerClass })
+      .from(daycareEncounters).where(inArray(daycareEncounters.encounterNo, daycare));
+    for (const r of rows) found.set(r.no, r.payer);
+  }
+  if (visits.length > 0) {
+    const rows = await (exec as Db)
+      .select({ id: opdEncounters.id, visitNo: opdEncounters.visitNo, payer: opdEncounters.intendedPayer })
+      .from(opdEncounters).where(or(inArray(opdEncounters.visitNo, visits), inArray(opdEncounters.id, visits)));
+    for (const r of rows) {
+      if (visits.includes(r.visitNo)) found.set(r.visitNo, r.payer);
+      else if (visits.includes(r.id) && !found.has(r.id)) found.set(r.id, r.payer);
+    }
+  }
+  return new Map(nos.map((n) => [n, found.get(n) ?? "self"] as const));
 }
 
 /**

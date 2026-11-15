@@ -9,8 +9,9 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { abortAcquisition, recordAcquired, startAcquisition } from "./acquisition";
-import { contrastAdministrationsFor, recordContrastAdministration } from "./contrast";
-import { contrastReactionsFor, recordContrastReaction } from "./reactions";
+import { recordContrastAdministration } from "./contrast";
+import { recordContrastReaction } from "./reactions";
+import { studyContrastAdministrations, studyContrastReactions } from "./read";
 import { linkInvoiceLine } from "./money";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
@@ -222,12 +223,15 @@ export class RadiologyAcquisitionController {
     } catch (e) { toHttp(e); }
   }
 
-  /** The register for one study. Codes and volumes; no name, no finding — nothing `worklist` hides. */
+  /**
+   * The register for one study. Codes and volumes; no name, no finding — nothing `worklist` hides.
+   * #1076 — read through the study reader (`read.ts`): the study's own rule and an access row per read.
+   */
   @Get(":studyId/contrast")
   @RequirePermission("radiology.worklist.read", "hospital")
-  async contrastRegister(@Param("studyId") studyId: string): Promise<unknown> {
+  async contrastRegister(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
     try {
-      return { administrations: await contrastAdministrationsFor(this.db, studyId) };
+      return { administrations: (await studyContrastAdministrations(this.db, actor, studyId)) ?? [] };
     } catch (e) { toHttp(e); }
   }
 
@@ -257,12 +261,15 @@ export class RadiologyAcquisitionController {
     } catch (e) { toHttp(e); }
   }
 
-  /** The reactions on one study. The manifestation IS here — this is the clinical record, not an event. */
+  /**
+   * The reactions on one study. The manifestation IS here — this is the clinical record, not an event.
+   * #1076 — read through the study reader, as the register above.
+   */
   @Get(":studyId/contrast-reactions")
   @RequirePermission("radiology.worklist.read", "hospital")
-  async reactions(@Param("studyId") studyId: string): Promise<unknown> {
+  async reactions(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
     try {
-      return { reactions: await contrastReactionsFor(this.db, studyId) };
+      return { reactions: (await studyContrastReactions(this.db, actor, studyId)) ?? [] };
     } catch (e) { toHttp(e); }
   }
 

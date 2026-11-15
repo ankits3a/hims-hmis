@@ -75,6 +75,15 @@ describe("the critical-call ladder (18-S RS8b T2)", () => {
 
   /* ═══════════════════════ the read-back names the finding ═══════════════════════ */
 
+  it("#1076: a Devanagari read-back is matched by the term it transliterates, and a negated one is refused", () => {
+    const report = { impression: "Large left pneumothorax with mediastinal shift.", findings: null };
+    expect(readBackNamesFinding("बायाँ न्यूमोथोरेक्स, ड्रेन डाल रहे हैं", report)).toBe(true);
+    expect(readBackNamesFinding("न्यूमोथोरैक्स नहीं है", report)).toBe(false);
+    expect(readBackNamesFinding("ठीक है, देख लेंगे", report)).toBe(false);
+    const edh = { impression: "Acute extradural haematoma, right temporal.", findings: null };
+    expect(readBackNamesFinding("एक्स्ट्राड्यूरल हीमैटोमा — ओटी ले जा रहे हैं", edh)).toBe(true);
+  });
+
   it("readBackNamesFinding: the clinician's words must name what the report found", () => {
     const report = { impression: "Large left extradural haematoma with midline shift.", findings: null };
     expect(readBackNamesFinding("left EDH — extradural hematoma, taking to theatre", report)).toBe(true);

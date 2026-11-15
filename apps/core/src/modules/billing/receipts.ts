@@ -64,6 +64,24 @@ export async function enteredInErrorDocIds(exec: Db | Tx, docType: string, docId
   return new Set(rows.map((r) => r.docId));
 }
 
+/**
+ * #1076 — `invoiceSettlement` for many invoices in three reads (net payable, credits, allocations) instead
+ * of three per invoice: the same `settlementState` over the same ledger terms. Additive; the one-invoice
+ * reader keeps its signature. An unknown invoice id is simply absent from the map.
+ */
+export async function invoiceSettlements(exec: Db | Tx, invoiceIds: readonly string[]): Promise<Map<string, Settlement>> {
+  const ids = [...new Set(invoiceIds)];
+  if (ids.length === 0) return new Map();
+  const [heads, credited, allocated] = await Promise.all([
+    exec.select({ id: invoices.id, netPayablePaise: invoices.netPayablePaise }).from(invoices).where(inArray(invoices.id, ids)),
+    creditedByInvoice(exec, ids),
+    allocatedByInvoice(exec, ids),
+  ]);
+  return new Map(heads.map((h) => [
+    h.id, settlementState(h.netPayablePaise, credited.get(h.id) ?? 0, allocated.get(h.id) ?? 0),
+  ] as const));
+}
+
 /** Effective allocation per invoice: Sigma apply - Sigma reverse (D1). */
 export async function allocatedByInvoice(exec: Db | Tx, invoiceIds: string[]): Promise<Map<string, number>> {
   if (invoiceIds.length === 0) return new Map();

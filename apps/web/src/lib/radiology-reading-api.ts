@@ -14,6 +14,8 @@ export type WireReadingRow = {
   studyId: string; accessionNo: string; status: string; priority: string;
   studyTypeCode: string; studyTypeName: string; modality: string; bodyPart: string;
   patientId: string; patientName: string; patientSex: string; patientAge: number | null;
+  /** #1076 — the full list row (absent from older servers). */
+  uhid?: string; ageYears?: number | null; sex?: string;
   restricted: boolean; formFRequired: boolean;
   acquiredAt: string | null;
   tatClass: TatClass; targetMinutes: number; dueAt: string | null;

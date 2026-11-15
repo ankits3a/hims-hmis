@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccessMany } from "../../kernel/phi/audit";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import {
   imagingOutsideStudies, imagingReports, imagingStudies, imagingTeleReads,
@@ -265,12 +265,8 @@ export async function teleBoard(db: Db, actor: Actor, now: Date = new Date()): P
     .limit(500);
   const awaitingOlder = await db.select({ id: imagingTeleReads.id }).from(imagingTeleReads)
     .where(and(eq(imagingTeleReads.state, "awaiting")));
-  const seen = new Set<string>();
-  for (const r of rows) {
-    if (seen.has(r.patientId)) continue;
-    seen.add(r.patientId);
-    await recordPhiAccess(db, { actor, patientId: r.patientId, surface: "imaging.report", reason: "the night-read over-read queue", now });
-  }
+  /** #1076 / ruling 0098 — a list: once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(db, { actor, patientIds: rows.map((r) => r.patientId), surface: "imaging.report", reason: "the night-read over-read queue", now });
   const view = rows.map((r): TeleQueueRow => {
     const t = r.t;
     const tat = t.imagesAt === null ? null : Math.max(0, Math.round((t.prelimAt.getTime() - t.imagesAt.getTime()) / 60_000));
@@ -345,9 +341,7 @@ async function teleRowsById(db: Db, actor: Actor, ids: string[], canSeeConfident
     .innerJoin(imagingReports, eq(imagingReports.id, imagingTeleReads.prelimReportId))
     .where(inArray(imagingTeleReads.id, ids))
     .orderBy(asc(imagingTeleReads.prelimAt));
-  for (const r of rows) {
-    await recordPhiAccess(db, { actor, patientId: r.patientId, surface: "imaging.report", reason: "the night-read over-read queue", now });
-  }
+  await recordPhiAccessMany(db, { actor, patientIds: rows.map((r) => r.patientId), surface: "imaging.report", reason: "the night-read over-read queue", now });
   return rows.map((r) => {
     const t = r.t;
     const tat = t.imagesAt === null ? null : Math.max(0, Math.round((t.prelimAt.getTime() - t.imagesAt.getTime()) / 60_000));

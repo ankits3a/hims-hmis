@@ -8,7 +8,7 @@ import { users } from "../../kernel/db/schema/auth";
 import { resources } from "../../kernel/db/schema/resources";
 import { workflowInstances } from "../../kernel/db/schema/workflow";
 import { appendEvent } from "../../kernel/events/append";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccess, recordPhiAccessMany } from "../../kernel/phi/audit";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { newId } from "@hmis/contracts";
 import { displayName, guardiansWithAuthority } from "../patients";
@@ -819,8 +819,7 @@ export async function irCaseList(db: Db, actor: Actor, now: Date = new Date()): 
     return (a.scheduledAt?.getTime() ?? 0) - (b.scheduledAt?.getTime() ?? 0);
   });
   const reason = `IR suite list, ${String(out.length)} rows`;
-  for (const patientId of new Set(out.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  /** #1076 / ruling 0098 — a list: once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(db, { actor, patientIds: out.map((r) => r.patientId), surface: "imaging.worklist", reason, now });
   return out;
 }

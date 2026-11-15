@@ -13,9 +13,9 @@ import { allocateReceipt, billingManifest, invoiceSettlement, recordReceipt } fr
 import { tariffManifest } from "../tariff";
 import { patientsManifest } from "../patients";
 import { registerRadiologyApprovalTypes } from "./approval-types";
-import { draftReport, publishReport, signReport } from "./reports";
+import { amendReport, draftReport, publishReport, signReport } from "./reports";
 import { reportView } from "./read";
-import { handOverReport, markMediaPrinted, releaseRegister, requestMedia } from "./release";
+import { handOverReport, handoverPrintView, markMediaPrinted, releaseRegister, requestMedia } from "./release";
 import { requestUnpaidRelease } from "./held";
 import { handleSettlementEvent } from "./ready-on-payment";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
@@ -240,5 +240,40 @@ describe("the held patient copy and the ready message on payment (18-S RS9b)", (
     const all = await db.select().from(events).where(eq(events.name, "payment.received"));
     for (const e of all) expect((await withTx(db, (tx) => handleSettlementEvent(tx, e))).queued).toEqual([]);
     expect(await ready(s.reportId)).toEqual([]);
+  });
+
+  /* ───────────────── #1076 — the hand-over desk prints the report in hand ───────────────── */
+
+  const deskMayPrint = async () => {
+    const registry = new ModuleRegistry();
+    registry.install({ key: "radiology", title: "Rad", menu: [], permissions: ["radiology.schedule"], subscriptions: [] });
+    await syncPermissions(db, registry);
+    await grantPermissionToRole(db, registry, "radiographer", "radiology.schedule");
+  };
+
+  it("#1076: the desk's print refuses a copy held for dues, prints it once paid, and records the print", async () => {
+    await deskMayPrint();
+    const s = await releasedUnpaid();
+    await expect(handoverPrintView(db, fx.radiographer, s.reportId, NOW)).rejects.toMatchObject({ code: "report_held_for_dues" });
+    expect(await db.select().from(events).where(eq(events.name, "imaging.report_printed"))).toEqual([]);
+
+    await pay(s.invoiceId!, s.netPayablePaise);
+    const page = await handoverPrintView(db, fx.radiographer, s.reportId, NOW);
+    expect(page?.reportId).toBe(s.reportId);
+    expect(await db.select().from(events).where(eq(events.name, "imaging.report_printed"))).toHaveLength(1);
+  });
+
+  it("#1076: the desk prints only the current released version, and only with radiology.schedule", async () => {
+    const s = await releasedUnpaid({ billed: false });
+    await expect(handoverPrintView(db, fx.radiographer, s.reportId, NOW)).rejects.toMatchObject({ code: "forbidden" });
+    await deskMayPrint();
+    expect((await handoverPrintView(db, fx.radiographer, s.reportId, NOW))?.reportId).toBe(s.reportId);
+    await expect(handoverPrintView(db, fx.doctor, s.reportId, NOW)).rejects.toMatchObject({ code: "forbidden" });
+
+    const v2 = await withTx(db, (tx) => amendReport(tx, fx.radiologist, {
+      studyId: s.studyId, secondFactorAt: FRESH, reason: "Corrected", now: NOW, body: { findings: "Corrected." }, impression: "Corrected.",
+    }));
+    expect(await handoverPrintView(db, fx.radiographer, s.reportId, NOW)).toBeNull();
+    expect((await handoverPrintView(db, fx.radiographer, v2.reportId, NOW))?.reportId).toBe(v2.reportId);
   });
 });

@@ -3,7 +3,7 @@ import { imagingStudies } from "../../kernel/db/schema/radiology";
 import { resources } from "../../kernel/db/schema/resources";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccessMany } from "../../kernel/phi/audit";
 import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { clearanceOf } from "./read";
@@ -848,9 +848,8 @@ export async function deviceDiary(
     .orderBy(imagingStudies.scheduledAt);
 
   const reason = `device diary ${deviceResourceId}, ${String(rows.length)} studies`;
-  for (const patientId of new Set(rows.map((r) => r.patientId))) {
-    await recordPhiAccess(exec, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  /** #1076 / ruling 0098 — a list: once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(exec, { actor, patientIds: rows.map((r) => r.patientId), surface: "imaging.worklist", reason });
   return rows.map((row) => ({
     studyId: row.studyId, accessionNo: row.accessionNo, scheduledAt: row.scheduledAt, status: row.status,
     durationMin: row.durationMin, studyTypeCode: row.studyTypeCode, priority: row.priority,
