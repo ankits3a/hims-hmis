@@ -59,10 +59,11 @@ describe("the prep bay's override request (18-S RS5 T2)", () => {
     ] } }).where(eq(imagingDefinitions.kind, "study_types"));
   };
 
-  const arrive = async (serviceCode: string, deviceKey: string) => {
+  /** #1080 — a sided study is ordered with its side (the never-override test makes the X-ray sided). */
+  const arrive = async (serviceCode: string, deviceKey: string, laterality?: "left" | "right" | "bilateral") => {
     seq += 1;
     const study = await placeAndCreateStudy(
-      db, fx, serviceCode, `ovr${String(seq)}`, new Date(NOW.getTime() + seq * 25 * 3_600_000),
+      db, fx, serviceCode, `ovr${String(seq)}`, new Date(NOW.getTime() + seq * 25 * 3_600_000), { laterality },
     );
     await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
       studyId: study.studyId, deviceResourceId: fx.devices[deviceKey]!,
@@ -112,7 +113,7 @@ describe("the prep bay's override request (18-S RS5 T2)", () => {
       "XR-CHEST": { laterality_applicable: true },
     });
     const usg = await arrive("USG-ABDO", "usg");
-    const xr = await arrive("XR-CHEST", "xray");
+    const xr = await arrive("XR-CHEST", "xray", "left");
     await expect(ask(usg, "form_f", "the sonologist is away")).rejects.toMatchObject({ code: "gate_not_overridable" });
     await expect(ask(xr, "laterality_confirm", "patient unsure")).rejects.toMatchObject({ code: "gate_not_overridable" });
     expect(await db.select().from(approvals)).toEqual([]);
@@ -169,7 +170,7 @@ describe("the prep bay's override request (18-S RS5 T2)", () => {
     const studyId = await arrive("CT-HEAD", "ct");
     // Everything but the kidney gate, by the nurse and the technologist.
     await withTx(db, async (tx) => satisfyGate(tx, fx.radiographer, await gateId(studyId, "identity_two_factor"),
-      { secondIdentifier: "uhid", value: "HMS-00000001-5" }, NOW));
+      { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true }, NOW));
     await withTx(db, async (tx) => satisfyGate(tx, nurse, await gateId(studyId, "prior_contrast_reaction"), {}, NOW));
     await withTx(db, async (tx) => satisfyGate(tx, nurse, await gateId(studyId, "contrast_consent"), {
       procedureCode: "CT-HEAD", templateVersion: "rad-contrast-v1", language: "hi", signer: "patient",

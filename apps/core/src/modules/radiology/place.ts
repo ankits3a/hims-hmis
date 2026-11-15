@@ -20,7 +20,7 @@ import { studyTypeByService as studyTypeByServiceOwned } from "./study-types";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
-import type { OrderItemOrigin } from "../../kernel/db/schema/orders";
+import type { OrderItemLaterality, OrderItemOrigin } from "../../kernel/db/schema/orders";
 
 /**
  * PLAN 18a T3 / DD9 + DD10 + DD14 — **PLACING AN IMAGING ORDER.**
@@ -67,6 +67,13 @@ export type PlaceImagingItemInput = {
    * without `attributes.portable` is then refused `device_not_portable` until the desk clears it.
    */
   bedsideLocation?: string | null;
+  /**
+   * #1080 — the side the doctor orders (`left`, `right`, `bilateral`). REQUIRED when the book marks
+   * the study type `laterality_applicable` (`laterality_required` otherwise); stored on the order item
+   * and copied onto the study by the `radiology.order_placed` consumer, so the console's
+   * `laterality_confirm` compares the patient's pointing against the ORDER's side.
+   */
+  laterality?: OrderItemLaterality | null;
 };
 
 type PlaceImagingOrderBase = {
@@ -368,6 +375,20 @@ export async function placeImagingOrder(
             now,
           );
           const verdict = onServiceDate.applicable ? onServiceDate : onToday;
+          /**
+           * #1080 — A SIDED STUDY IS ORDERED WITH ITS SIDE. Before this the side travelled as words in
+           * the indication and only the ordering card asked for it, so every other door (the ordering
+           * seam, a follow-up, the API) placed a knee X-ray with no side and the study sat at `na`
+           * until the patient pointed — E3's "left knee ordered, right imaged" had nothing to compare
+           * against. The book decides which studies have a side; the order says which one.
+           */
+          if (studyType.laterality_applicable && (item.laterality ?? null) === null) {
+            throw new RadiologyError(
+              "laterality_required",
+              `${studyType.name} is ordered for one side — say left, right or both`,
+              { serviceId: item.serviceId, studyTypeCode: studyType.code },
+            );
+          }
           return { item, studyType, verdict };
         });
 
@@ -415,6 +436,7 @@ export async function placeImagingOrder(
           parentItemId: item.parentItemId ?? null,
           duplicateOfItemId: item.duplicateOfItemId ?? null,
           duplicateReason: item.duplicateReason ?? null,
+          laterality: item.laterality ?? null,
         }));
 
         const common = {

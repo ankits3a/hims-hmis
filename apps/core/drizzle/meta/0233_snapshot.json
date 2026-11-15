@@ -1,5 +1,5 @@
 {
-  "id": "dcdeb210-166e-4183-be77-351a9aa3ba25",
+  "id": "9b5cd542-daeb-48ed-912f-70ab66d1b7a9",
   "prevId": "9fde1a32-f5ef-4e46-83c9-05ca9c510c46",
   "version": "7",
   "dialect": "postgresql",
@@ -29507,6 +29507,12 @@
           "notNull": true,
           "default": false
         },
+        "laterality": {
+          "name": "laterality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cancelled_from": {
           "name": "cancelled_from",
           "type": "text",
@@ -29622,6 +29628,10 @@
         "order_items_origin_ck": {
           "name": "order_items_origin_ck",
           "value": "\"order_items\".\"origin\" in ('direct', 'addon', 'reflex', 'duplicate_confirmed')"
+        },
+        "order_items_laterality_ck": {
+          "name": "order_items_laterality_ck",
+          "value": "\"order_items\".\"laterality\" is null or \"order_items\".\"laterality\" in ('left', 'right', 'bilateral')"
         },
         "order_items_cancelled_from_ck": {
           "name": "order_items_cancelled_from_ck",
@@ -37706,21 +37716,6 @@
           "columns": [
             {
               "expression": "order_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "imaging_studies_encounter_no_idx": {
-          "name": "imaging_studies_encounter_no_idx",
-          "columns": [
-            {
-              "expression": "encounter_no",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
