@@ -1,6 +1,6 @@
 ---
 issue: 1084
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging: readiness forecast at booking, protocol suggestion, follow-ups before they fall due (#1084)
