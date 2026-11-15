@@ -1,0 +1,2 @@
+ALTER TABLE "order_items" ADD COLUMN "laterality" text;--> statement-breakpoint
+ALTER TABLE "order_items" ADD CONSTRAINT "order_items_laterality_ck" CHECK ("order_items"."laterality" is null or "order_items"."laterality" in ('left', 'right', 'bilateral'));

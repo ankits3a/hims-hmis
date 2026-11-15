@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { acquireStudy, setupRadiologyFixture } from "../../../test/helpers/radiology";
+import { acquireStudy, setupRadiologyFixture, studyTypeRow } from "../../../test/helpers/radiology";
 import { mkUser } from "../../../test/helpers/opd";
-import { events, imagingFollowups, imagingStudies, orders } from "../../kernel/db/schema";
+import { events, imagingDefinitions, imagingFollowups, imagingStudies, orderItems, orders } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { amendReport, cosignReport, draftReport, signReport } from "./reports";
 import {
@@ -173,6 +173,25 @@ describe("follow-ups — the tracker (18-S RS8c T1)", () => {
     expect([after!.state, after!.bookedOrderId, after!.bookedBy]).toEqual(["booked", out.orderId, fx.doctor.id]);
     await expect(bookFollowup(db, fx.doctor, fx.decls, { followupId: row!.id, now: later })).rejects.toMatchObject({ code: "already_resolved" });
     expect(await db.select().from(events).where(eq(events.name, "imaging.followup_booked"))).toHaveLength(1);
+  });
+
+  /** #1080 — a sided study's follow-up is of the same side; without it the sided order is refused. */
+  it("BOOK IT on a sided study orders the SAME side the original study carried", async () => {
+    await db.update(imagingDefinitions).set({ body: { types: [
+      studyTypeRow({ code: "USG-ABDO", service_id: fx.services["USG-ABDO"]!, modality: "usg", laterality_applicable: true }),
+      studyTypeRow({ code: "XR-CHEST", service_id: fx.services["XR-CHEST"]!, modality: "xray", ionising: true }),
+      studyTypeRow({ code: "CT-HEAD", service_id: fx.services["CT-HEAD"]!, modality: "ct", ionising: true }),
+      studyTypeRow({ code: "MRI-BRAIN", service_id: fx.services["MRI-BRAIN"]!, modality: "mri" }),
+    ] } }).where(eq(imagingDefinitions.kind, "study_types"));
+    seq += 1;
+    const at = new Date(NOW.getTime() + seq * 25 * 3_600_000);
+    const s = await acquireStudy(db, fx, { idemKey: `fu${String(seq)}`, now: at, slot: new Date(SLOT.getTime() + seq * 3_600_000), laterality: "left" });
+    const d = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: s.studyId, body: BIRADS3, impression: "As above.", laterality: "left" }));
+    await withTx(db, (tx) => signReport(tx, fx.radiologist, { studyId: s.studyId, reportId: d.reportId, secondFactorAt: new Date(at.getTime() - 60_000), now: at }));
+    const [row] = await rowsOf(s.studyId);
+    const out = await bookFollowup(db, fx.doctor, fx.decls, { followupId: row!.id, now: new Date(at.getTime() + 60 * 86_400_000) });
+    const items = await db.select({ laterality: orderItems.laterality }).from(orderItems).where(eq(orderItems.orderId, out.orderId));
+    expect(items).toEqual([{ laterality: "left" }]);
   });
 
   it("booking is an ORDER: somebody who may not place one (the radiologist) books nothing", async () => {

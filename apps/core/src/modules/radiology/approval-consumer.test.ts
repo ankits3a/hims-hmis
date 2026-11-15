@@ -43,9 +43,10 @@ describe("the approval.granted consumer applies an inbox grant (18-S RS10 T3)", 
   });
   afterEach(() => { fx.unregister(); });
 
-  const arrive = async (): Promise<string> => {
+  /** #1080 — one test makes this USG sided, and a sided study is ordered with its side. */
+  const arrive = async (laterality?: "left" | "right" | "bilateral"): Promise<string> => {
     seq += 1;
-    const s = await placeAndCreateStudy(db, fx, "USG-ABDO", `grant${String(seq)}`, new Date(NOW.getTime() + seq * 25 * 3_600_000));
+    const s = await placeAndCreateStudy(db, fx, "USG-ABDO", `grant${String(seq)}`, new Date(NOW.getTime() + seq * 25 * 3_600_000), { laterality });
     await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
       studyId: s.studyId, deviceResourceId: fx.devices.usg!, scheduledAt: new Date(SLOT.getTime() + seq * 3_600_000),
     }));
@@ -106,7 +107,7 @@ describe("the approval.granted consumer applies an inbox grant (18-S RS10 T3)", 
       studyTypeRow({ code: "CT-HEAD", service_id: fx.services["CT-HEAD"]!, modality: "ct", ionising: true }),
       studyTypeRow({ code: "MRI-BRAIN", service_id: fx.services["MRI-BRAIN"]!, modality: "mri" }),
     ] } }).where(eq(imagingDefinitions.kind, "study_types"));
-    const studyId = await arrive();
+    const studyId = await arrive("left");
     const side = await requireStudyGate(db, studyId, "laterality_confirm");
     // Filed straight on the kernel (the radiology route refuses to file it): the grant must still not override the side.
     const { approvalId } = await withTx(db, (tx) => requestApproval(tx, fx.radiographer, {
