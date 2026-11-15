@@ -13,6 +13,7 @@ import { Refusal } from "../components/radiology/imaging-counter";
 import type { WirePrepGate, WirePrepRow, WirePrepStudy } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
 import { PatientFacts } from "../components/radiology/patient-facts";
+import { IMAGING_FLOOR_TOPIC, useImagingLive } from "../lib/radiology-live";
 
 /**
  * PLAN 18-S RS5 T3 — **THE PREP & SAFETY BAY.** The approved board's `st-prep`: the bay closes the
@@ -71,6 +72,7 @@ export function RadiologyPrep(): React.ReactElement {
   useEffect(() => { if (search.study !== undefined) setHand(search.study); }, [search.study]);
 
   const listQ = useQuery({ queryKey: ["radiology", "prep"], queryFn: fetchPrepBay, refetchInterval: 30_000 });
+  useImagingLive(IMAGING_FLOOR_TOPIC, [["radiology", "prep"]]); // #1083: a frame reads the list now
   const viewQ = useQuery({
     queryKey: ["radiology", "prep", "study", hand],
     queryFn: () => fetchPrepStudy(hand!),
