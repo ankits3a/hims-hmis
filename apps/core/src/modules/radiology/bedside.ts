@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccessMany } from "../../kernel/phi/audit";
 import { imagingStudies } from "../../kernel/db/schema/radiology";
 import { orderItems } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
@@ -117,9 +117,8 @@ async function bedsideRows(
     .limit(500);
 
   const reason = `${opts.surfaceReason}, ${String(rows.length)} rows`;
-  for (const patientId of new Set(rows.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  /** #1076 / ruling 0098 — a list: once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(db, { actor, patientIds: rows.map((r) => r.patientId), surface: "imaging.worklist", reason });
 
   return rows.map((r) => ({
     studyId: r.studyId,

@@ -41,6 +41,8 @@ export const RADIOLOGY_ERROR_CODES = [
   "unknown_study_type",
   /** 18-S RS2 — an outside prescription placed without the referrer's name and registration. */
   "referrer_required",
+  /** #1080 — a study whose type has a side (a knee, a kidney) ordered without saying which. */
+  "laterality_required",
   /** Consult v2 — the patient-scoped reports read: no such patient, or one this reader may not see. */
   "unknown_patient",
   /** Consult v2 — a patient's reports are read by a person, never an agent or device credential. */
@@ -274,6 +276,32 @@ export const RADIOLOGY_ERROR_CODES = [
   "tele_reader_prelim_only",
   "unknown_tele_read",
   "overread_not_consultant",
+  /**
+   * ── #1081 — the reading room ──
+   *
+   * `drafted_number_unsourced`: a drafter's proposal carries a number that appears in none of the
+   * source rows its section names ("AI never writes numbers"); refused like the lockout, no override.
+   * `not_a_reader`: a study was assigned to somebody who does not write imaging reports.
+   */
+  "drafted_number_unsourced",
+  "not_a_reader",
+  /**
+   * ── #1078 — the desk's collect act (`desk.ts`) ──
+   *
+   * `study_not_on_visit`: a named study is not on the visit being billed, or is another patient's — one
+   * bill names one person and one visit (FD-35), so nothing is priced. `not_collectable`: a named study
+   * is not the desk's to bill (already linked or otherwise authorised, already on the machine, closed),
+   * or a film / CD the tariff does not offer for it. `price_changed`: billing's price is not the amount
+   * the desk showed and collected — the clerk reads the new total before taking money.
+   */
+  "study_not_on_visit",
+  "not_collectable",
+  "price_changed",
+  /**
+   * #1085 — the morning sweep's actor (`radiology-automation`) asked for a clinical act: a gate, a
+   * signature, a critical acknowledgement or an order. Those are a person's; 403, a refusal about WHO.
+   */
+  "automation_refused",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -295,6 +323,7 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   unknown_study: 404,
   unknown_study_type: 422,
   referrer_required: 422,
+  laterality_required: 422,
   unknown_patient: 404,
   user_actor_required: 403,
 
@@ -394,6 +423,15 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   tele_reader_prelim_only: 403,
   unknown_tele_read: 404,
   overread_not_consultant: 403,
+
+  drafted_number_unsourced: 422,
+  not_a_reader: 422,
+
+  study_not_on_visit: 422,
+  not_collectable: 409,
+  price_changed: 409,
+
+  automation_refused: 403,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

@@ -76,8 +76,10 @@ export type OpenVisitInput = {
    * OWNER 2026-10-11 — `"lab"` is the lab counter's walk-in: a visit to the LABORATORY that is not an
    * OPD consultation. Every OPD reader (doctor lists, OPD reports, fee hooks, the front desk) reads
    * `type = 'opd'`, the way the pharmacy's own visit (`type = 'pharmacy'`) is kept out of them.
+   * #1079 — `"imaging"` is the imaging desk's walk-in for an outside referral, kept out the same way
+   * (`openImagingWalkinInTx`).
    */
-  encounterType?: "opd" | "lab";
+  encounterType?: "opd" | "lab" | "imaging";
   /**
    * Spec #1031 (owner 2026-11-03) — set ONLY by the vitals seat's department move: the new token's
    * slips are not queued to the front desk's printer. No route body declares it, so zod strips it.
@@ -221,7 +223,8 @@ async function openVisitCore(
   const [encounter] = await tx.insert(opdEncounters).values({
     id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
     appointmentId: input.appointment?.id ?? null, serviceDate, visitType,
-    ...(input.encounterType === "lab" ? { type: LAB_VISIT_TYPE } : {}),
+    ...(input.encounterType === "lab" ? { type: LAB_VISIT_TYPE }
+      : input.encounterType === "imaging" ? { type: IMAGING_VISIT_TYPE } : {}),
     ...(tele ? { consultMode: "tele" } : {}),
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
     referredFromEncounterId: input.referredFromEncounterId ?? null,
@@ -578,15 +581,7 @@ export async function openLabWalkinInTx(
 ): Promise<OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
 
-  const dept = (await tx.select().from(opdDepartments).where(eq(opdDepartments.code, LAB_DEPARTMENT_CODE)))[0];
-  if (!dept) {
-    throw new OpdError(
-      "unknown_department",
-      `no opd_departments row with code "${LAB_DEPARTMENT_CODE}" — a lab walk-in is a visit to the ` +
-        "laboratory, and this hospital has not declared one",
-    );
-  }
-  if (!dept.active) throw new OpdError("department_inactive", `department ${LAB_DEPARTMENT_CODE} is inactive`);
+  const dept = await walkinDepartmentInTx(tx, LAB_DEPARTMENT_CODE, "a lab walk-in is a visit to the laboratory");
 
   /**
    * ═══ 17d T4 — ONE OPEN LAB WALK-IN PER PATIENT PER DAY, ON THE SERVER (17c §8.9's may-carry) ═══
@@ -653,43 +648,8 @@ export async function openLabWalkinInTx(
     );
   }
 
-  /**
-   * THE PATHOLOGIST OF RECORD. Named by the caller, or the sole ACTIVE doctor in the department.
-   *
-   * **Ambiguity refuses rather than picks.** `ordering_clinician_id` is the doctor answerable for
-   * the test in a medico-legal chain; choosing one of two pathologists by row order would put a
-   * name on a report by accident. A lab with two of them names one at the counter.
-   */
-  const labDoctors = await tx
-    .select()
-    .from(opdDoctors)
-    .where(and(eq(opdDoctors.departmentId, dept.id), eq(opdDoctors.active, true)))
-    .orderBy(asc(opdDoctors.id));
-  let doctorId: string;
-  if (input.doctorId !== undefined) {
-    const named = labDoctors.find((d) => d.id === input.doctorId);
-    if (!named) {
-      const anywhere = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
-      if (!anywhere) throw new OpdError("unknown_doctor", `unknown doctor ${input.doctorId}`);
-      if (!anywhere.active) throw new OpdError("doctor_inactive", `doctor ${input.doctorId} is inactive`);
-      throw new OpdError("doctor_department_mismatch", `doctor ${input.doctorId} is not in ${LAB_DEPARTMENT_CODE}`);
-    }
-    doctorId = named.id;
-  } else if (labDoctors.length === 0) {
-    throw new OpdError(
-      "unknown_doctor",
-      `no active doctor in department ${LAB_DEPARTMENT_CODE} — the pathologist of record is the ` +
-        "responsible clinician on a walk-in (DD15), and this hospital has named none",
-    );
-  } else if (labDoctors.length > 1) {
-    throw new OpdError(
-      "unknown_doctor",
-      `department ${LAB_DEPARTMENT_CODE} has ${labDoctors.length} active doctors — name the ` +
-        "pathologist of record for this walk-in rather than letting the counter choose one",
-    );
-  } else {
-    doctorId = labDoctors[0]!.id;
-  }
+  /** THE PATHOLOGIST OF RECORD — `doctorOfRecordInTx` below, the one rule both walk-ins use. */
+  const doctorId = await doctorOfRecordInTx(tx, dept.id, LAB_DEPARTMENT_CODE, input.doctorId, "pathologist");
 
   /**
    * OWNER 2026-10-11 — "if the visit in lab was walkin then how came an OPD slip is created? … if the
@@ -709,6 +669,150 @@ export async function openLabWalkinInTx(
     referralSource: input.referralSource ?? "external_rmp",
     referrerName: input.referrerName,
   }, now);
+}
+
+/** A walk-in's department, by its code: absent and inactive are NAMED refusals (T4 A9's reasoning above). */
+async function walkinDepartmentInTx(tx: Tx, code: string, what: string): Promise<typeof opdDepartments.$inferSelect> {
+  const dept = (await tx.select().from(opdDepartments).where(eq(opdDepartments.code, code)))[0];
+  if (!dept) {
+    throw new OpdError(
+      "unknown_department",
+      `no opd_departments row with code "${code}" — ${what}, and this hospital has not declared one`,
+    );
+  }
+  if (!dept.active) throw new OpdError("department_inactive", `department ${code} is inactive`);
+  return dept;
+}
+
+/**
+ * THE DOCTOR OF RECORD ON A WALK-IN — the pathologist for the lab's, the radiologist for imaging's (#1079).
+ * Named by the caller, or the sole ACTIVE doctor in the department.
+ *
+ * **Ambiguity refuses rather than picks.** `ordering_clinician_id` is the doctor answerable for the
+ * test in a medico-legal chain; choosing one of two pathologists (or radiologists) by row order would
+ * put a name on a report by accident. A department with two of them names one at the counter.
+ *
+ * ONE definition for both walk-ins: a rule added to one copy of it would be a hole in the other.
+ */
+async function doctorOfRecordInTx(
+  tx: Tx, departmentId: string, code: string, named: string | undefined, role: "pathologist" | "radiologist",
+): Promise<string> {
+  const doctors = await tx
+    .select()
+    .from(opdDoctors)
+    .where(and(eq(opdDoctors.departmentId, departmentId), eq(opdDoctors.active, true)))
+    .orderBy(asc(opdDoctors.id));
+  if (named !== undefined) {
+    const found = doctors.find((d) => d.id === named);
+    if (found) return found.id;
+    const anywhere = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, named)))[0];
+    if (!anywhere) throw new OpdError("unknown_doctor", `unknown doctor ${named}`);
+    if (!anywhere.active) throw new OpdError("doctor_inactive", `doctor ${named} is inactive`);
+    throw new OpdError("doctor_department_mismatch", `doctor ${named} is not in ${code}`);
+  }
+  if (doctors.length === 0) {
+    throw new OpdError(
+      "unknown_doctor",
+      `no active doctor in department ${code} — the ${role} of record is the ` +
+        "responsible clinician on a walk-in (DD15), and this hospital has named none",
+    );
+  }
+  if (doctors.length > 1) {
+    throw new OpdError(
+      "unknown_doctor",
+      `department ${code} has ${doctors.length} active doctors — name the ` +
+        `${role} of record for this walk-in rather than letting the counter choose one`,
+    );
+  }
+  return doctors[0]!.id;
+}
+
+/**
+ * ═══ #1079 (IM2b) — THE IMAGING WALK-IN: AN OUTSIDE REFERRAL'S VISIT TO RADIOLOGY ═══
+ *
+ * Spec docs/specs/1079-imaging-walk-in-visit.md. A patient with no visit today brings an outside
+ * doctor's slip to the imaging desk. An imaging order needs a `V…` (or `D…`) encounter and a doctor
+ * here who stays answerable, so — the lab walk-in's reasoning, above — the desk opens a `V` visit in
+ * the `RAD` department under the RADIOLOGIST of record (`doctorOfRecordInTx`, the lab's own rule), and
+ * places the order on it in the caller's one transaction (`radiology/desk.ts` `placeWalkInOrder`).
+ *
+ * What it shares with the lab walk-in, deliberately: the deferred open (no session, no token, no OPD
+ * queue entry, no OPD paper), the visit type that keeps it off every OPD reader (`type = 'imaging'`:
+ * `listVisits` by default, the OPD reports, flow, pace, range and recording counts, the cashier's
+ * worklist and the fee hook all read `type = 'opd'`), `external_rmp` as the referral source, and the
+ * advisory lock that serialises two clerks on one patient.
+ *
+ * What differs, and why:
+ *   · **A second walk-in the same day REUSES the open visit (D2)** rather than refusing as the lab
+ *     does. The lab's second visit is "always a mistake — a walk-in is one draw"; a second outside slip
+ *     for imaging the same day (an X-ray after the ultrasound) is a second ORDER on the one attendance,
+ *     and refusing would send the clerk looking for a visit number to type.
+ *   · The reuse reads `type = 'imaging'` as well as the department, so a consultation a radiologist
+ *     holds in the RAD department (an interventional clinic) is never mistaken for the walk-in.
+ *
+ * No consult fee, ever (decision 0003 ruling 2): nothing here quotes one, and the visit is outside
+ * every fee reader scoped to `type = 'opd'`. Standing the department up is a runbook step
+ * (`docs/runbooks/radiology-go-live.md`): until the `RAD` row and its radiologist exist this refuses
+ * `unknown_department` / `unknown_doctor`, which say exactly what to create.
+ */
+export const RAD_DEPARTMENT_CODE = "RAD";
+/** #1079 — the imaging desk's walk-in visit type (see `openImagingWalkinInTx`). */
+export const IMAGING_VISIT_TYPE = "imaging";
+
+export type OpenImagingWalkinInput = {
+  patientId: string;
+  /** Named by the caller when radiology has more than one radiologist of record. Ignored on reuse. */
+  doctorId?: string;
+  intendedPayer?: OpenVisitInput["intendedPayer"];
+  /** The slip's doctor, recorded on the visit as the lab walk-in records it. Ignored on reuse. */
+  referrerName?: string;
+};
+export type OpenImagingWalkinResult = {
+  encounter: EncounterRow;
+  /** False when the patient's open imaging walk-in of today was reused (D2). */
+  opened: boolean;
+};
+
+/** The states in which an imaging walk-in is OVER, so a new one is a new attendance (the lab's pair). */
+const IMAGING_WALKIN_CLOSED_STATES = ["completed", "abandoned"] as const;
+
+/** Tx-first, so the walk-in and the order it exists for are ONE transaction. `patientId` MUST be canonical. */
+export async function openImagingWalkinInTx(
+  tx: Tx, actor: Actor, input: OpenImagingWalkinInput & { chainIds: string[] }, now: Date,
+): Promise<OpenImagingWalkinResult> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required");
+  const dept = await walkinDepartmentInTx(tx, RAD_DEPARTMENT_CODE, "an imaging walk-in is a visit to radiology");
+
+  /** The lab's lock, on its own key: the read below and the open after it are one decision. */
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`imaging_walkin:${input.patientId}:${dept.id}:${istDate(now)}`}))`);
+
+  const [open] = await tx
+    .select()
+    .from(opdEncounters)
+    .where(and(
+      inArray(opdEncounters.patientId, input.chainIds),
+      eq(opdEncounters.departmentId, dept.id),
+      eq(opdEncounters.type, IMAGING_VISIT_TYPE),
+      eq(opdEncounters.serviceDate, istDate(now)),
+      notInArray(opdEncounters.status, [...IMAGING_WALKIN_CLOSED_STATES]),
+    ))
+    .orderBy(asc(opdEncounters.openedAt))
+    .limit(1);
+  if (open) return { encounter: open, opened: false };
+
+  const doctorId = await doctorOfRecordInTx(tx, dept.id, RAD_DEPARTMENT_CODE, input.doctorId, "radiologist");
+  const visit = await openVisitInTx(tx, actor, {
+    join: "defer",
+    encounterType: "imaging",
+    patientId: input.patientId,
+    chainIds: input.chainIds,
+    departmentId: dept.id,
+    doctorId,
+    intendedPayer: input.intendedPayer,
+    referralSource: "external_rmp",
+    referrerName: input.referrerName,
+  }, now);
+  return { encounter: visit.encounter, opened: true };
 }
 
 /**
@@ -1349,7 +1453,7 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
     departmentId: r.encounter.departmentId, departmentName: r.departmentName,
     /** Owner 2026-10-11 — `LAB` marks the lab desk's walk-in visit, which the front desk must not treat as OPD. */
     departmentCode: r.departmentCode,
-    /** `opd`, `lab` (the lab counter's walk-in) or `pharmacy` — what kind of visit this row is. */
+    /** `opd`, `lab` (the lab counter's walk-in), `imaging` (the imaging desk's walk-in, #1079) or `pharmacy` — what kind of visit this row is. */
     type: r.encounter.type,
     diagnosis: r.encounter.diagnosis, icd10Code: r.encounter.icd10Code,
     prescriptionLineCount: lineCounts.get(r.encounter.id) ?? 0, dangerFlagged: r.encounter.dangerFlagged,

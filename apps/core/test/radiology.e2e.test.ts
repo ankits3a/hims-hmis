@@ -316,7 +316,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     const satisfy = (kind: string, evidence: unknown) =>
       post(`/radiology/studies/${study!.id}/gates/${kind}/satisfy`, radiographer.token, evidence);
 
-    expect((await satisfy("identity_two_factor", { secondIdentifier: "uhid", value: "HMS-00000001-5" })).status).toBe(201);
+    expect((await satisfy("identity_two_factor", { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true })).status).toBe(201);
     expect((await satisfy("pregnancy_screen", {
       declared: true, lmpDate: new Date(Date.now() - 5 * 86_400_000).toISOString(),
     })).status).toBe(201);
@@ -439,7 +439,9 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     // 18b T1 — the worklist pulls above are the third surface, and every one of them is the bridge's.
     expect(new Set(phiRows.map((r) => r.surface))).toEqual(new Set(["imaging.study", "imaging.report", "imaging.worklist"]));
     const pulls = phiRows.filter((r) => r.surface === "imaging.worklist");
-    expect(pulls).toHaveLength(2); // C15 — one patient, two authorised pulls: exactly two
+    // C15 as amended by ruling 0098 (#1076): list reads are logged once per reader, patient and surface per
+    // 30-minute window, so the bridge's two pulls of one patient seconds apart leave exactly one row.
+    expect(pulls).toHaveLength(1);
     expect(new Set(pulls.map((r) => r.actorId))).toEqual(new Set([bridge.id]));
   }, 120_000);
 
@@ -497,7 +499,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
 
     expect((await post(`/radiology/studies/${study!.id}/gates/form_f/satisfy`, radiographer.token, {})).status).toBe(201);
     expect((await post(`/radiology/studies/${study!.id}/gates/identity_two_factor/satisfy`, radiographer.token, {
-      secondIdentifier: "uhid", value: "HMS-00000001-5",
+      secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true,
     })).status).toBe(201);
     const last = await post(`/radiology/studies/${study!.id}/gates/chaperone_present/satisfy`, radiographer.token, {
       chaperoneUserId: radiologist.id,
@@ -750,7 +752,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
 
     const satisfy = (kind: string, evidence: unknown) =>
       post(`/radiology/studies/${study!.id}/gates/${kind}/satisfy`, radiographer.token, evidence);
-    await satisfy("identity_two_factor", { secondIdentifier: "uhid", value: "HMS-00000001-5" });
+    await satisfy("identity_two_factor", { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true });
     await satisfy("pregnancy_screen", { declared: true, lmpDate: new Date(Date.now() - 5 * 86_400_000).toISOString() });
     await satisfy("renal_function", { creatinineUmolL: 72, sampledAt: new Date().toISOString(), source: "internal" });
     await satisfy("prior_contrast_reaction", {});

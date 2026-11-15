@@ -4,10 +4,10 @@ import { imagingReportHandovers, imagingStudies } from "../../kernel/db/schema/r
 import { invoiceLines, invoices } from "../../kernel/db/schema/billing";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { requestApproval } from "../../kernel/approvals/requests";
-import { invoiceSettlement } from "../billing";
+import { invoiceSettlement, invoiceSettlements } from "../billing";
 import { IMAGING_RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
 import { RadiologyError } from "./errors";
-import { encounterPayer } from "./money";
+import { encounterPayer, encounterPayers } from "./money";
 import { requireReleased } from "./closed-loop";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -56,29 +56,39 @@ export function rupees(paise: number): string {
  * A spent grant is history, not a release: a second hand-over needs a second decision.
  */
 async function unspentRelease(exec: Db | Tx, studyId: string): Promise<HoldRelease> {
+  return (await unspentReleases(exec, [studyId])).get(studyId) ?? { state: "none" };
+}
+
+/** The same answer for many studies in two reads (#1076, the register's batched dues). */
+async function unspentReleases(exec: Db | Tx, studyIds: readonly string[]): Promise<Map<string, HoldRelease>> {
+  const out = new Map<string, HoldRelease>();
+  if (studyIds.length === 0) return out;
   const rows = await (exec as Db)
     .select({
-      id: approvals.id, status: approvals.status, requestedAt: approvals.requestedAt,
+      id: approvals.id, subjectId: approvals.subjectId, status: approvals.status, requestedAt: approvals.requestedAt,
       decidedAt: approvals.decidedAt, decisionNote: approvals.decisionNote,
     })
     .from(approvals)
     .where(and(
       eq(approvals.typeKey, IMAGING_RELEASE_UNPAID_APPROVAL_TYPE),
       eq(approvals.subjectType, RELEASE_SUBJECT),
-      eq(approvals.subjectId, studyId),
+      inArray(approvals.subjectId, [...studyIds]),
     ))
     .orderBy(desc(approvals.requestedAt));
-  if (rows.length === 0) return { state: "none" };
+  if (rows.length === 0) return out;
   const spent = await (exec as Db).select({ id: imagingReportHandovers.releaseApprovalId })
     .from(imagingReportHandovers)
     .where(and(isNotNull(imagingReportHandovers.releaseApprovalId),
       inArray(imagingReportHandovers.releaseApprovalId, rows.map((r) => r.id))));
   const used = new Set(spent.map((s) => s.id));
-  const live = rows.find((r) => !used.has(r.id));
-  if (live === undefined) return { state: "none" };
-  if (live.status === "granted") return { state: "granted", approvalId: live.id, decidedAt: live.decidedAt?.toISOString() ?? null };
-  if (live.status === "pending") return { state: "pending", approvalId: live.id, askedAt: live.requestedAt.toISOString() };
-  return { state: "refused", approvalId: live.id, decidedAt: live.decidedAt?.toISOString() ?? null, note: live.decisionNote ?? null };
+  for (const studyId of studyIds) {
+    const live = rows.find((r) => r.subjectId === studyId && !used.has(r.id));
+    if (live === undefined) continue;
+    if (live.status === "granted") out.set(studyId, { state: "granted", approvalId: live.id, decidedAt: live.decidedAt?.toISOString() ?? null });
+    else if (live.status === "pending") out.set(studyId, { state: "pending", approvalId: live.id, askedAt: live.requestedAt.toISOString() });
+    else out.set(studyId, { state: "refused", approvalId: live.id, decidedAt: live.decidedAt?.toISOString() ?? null, note: live.decisionNote ?? null });
+  }
+  return out;
 }
 
 export const RELEASE_SUBJECT = "imaging_study";
@@ -88,9 +98,9 @@ export const RELEASE_SUBJECT = "imaging_study";
  * query), then the payer, then the ledger — the register calls this per row.
  */
 export async function patientCopyHold(exec: Db | Tx, study: StudyFacts): Promise<PatientCopyHold> {
-  if (study.encounterNo.startsWith(EPISODE_SERIES.daycare) || study.bedsideLocation !== null) return { held: false, why: "ipd" };
-  if (study.priority === "stat") return { held: false, why: "stat" };
-  if (study.invoiceLineId === null) return { held: false, why: "no_bill" };
+  const cheap = cheapHold(study);
+  /** `cheapHold` already answers a study with no bill line; the second test is for the type checker. */
+  if (cheap !== null || study.invoiceLineId === null) return cheap ?? { held: false, why: "no_bill" };
   const payer = await encounterPayer(exec, study.encounterNo);
   if (payer.intendedPayer !== "self") return { held: false, why: "payer" };
   const line = (await (exec as Db)
@@ -104,6 +114,62 @@ export async function patientCopyHold(exec: Db | Tx, study: StudyFacts): Promise
     held: true, outstandingPaise: settlement.outstandingPaise, invoiceId: line.invoiceId, invoiceNo: line.invoiceNo,
     release: await unspentRelease(exec, study.id),
   };
+}
+
+/** The rules that need no query, in `patientCopyHold`'s order. Null when the ledger must answer. */
+function cheapHold(study: StudyFacts): PatientCopyHold | null {
+  if (study.encounterNo.startsWith(EPISODE_SERIES.daycare) || study.bedsideLocation !== null) return { held: false, why: "ipd" };
+  if (study.priority === "stat") return { held: false, why: "stat" };
+  if (study.invoiceLineId === null) return { held: false, why: "no_bill" };
+  return null;
+}
+
+/**
+ * ═══ #1076 — `patientCopyHold` FOR A WHOLE REGISTER, IN A FIXED NUMBER OF READS ═══
+ *
+ * The release register asked the ledger once per row (payer, line, settlement, release: four to six
+ * queries a row, every poll). This answers the same question for every study at once — the same rules in
+ * the same order, the payer, the lines, the settlements (billing's additive `invoiceSettlements`) and the
+ * owner's releases each read once. Keyed by study id.
+ */
+export async function patientCopyHolds(exec: Db | Tx, studies: readonly StudyFacts[]): Promise<Map<string, PatientCopyHold>> {
+  const out = new Map<string, PatientCopyHold>();
+  const ledger: (StudyFacts & { invoiceLineId: string })[] = [];
+  for (const s of studies) {
+    const cheap = cheapHold(s);
+    if (cheap !== null) out.set(s.id, cheap);
+    else ledger.push(s as StudyFacts & { invoiceLineId: string });
+  }
+  if (ledger.length === 0) return out;
+  const payers = await encounterPayers(exec, ledger.map((s) => s.encounterNo));
+  const selfPay = ledger.filter((s) => {
+    if (payers.get(s.encounterNo) === "self") return true;
+    out.set(s.id, { held: false, why: "payer" });
+    return false;
+  });
+  if (selfPay.length === 0) return out;
+  const lines = await (exec as Db)
+    .select({ id: invoiceLines.id, invoiceId: invoiceLines.invoiceId, invoiceNo: invoices.invoiceNo })
+    .from(invoiceLines).innerJoin(invoices, eq(invoices.id, invoiceLines.invoiceId))
+    .where(inArray(invoiceLines.id, selfPay.map((s) => s.invoiceLineId)));
+  const lineOf = new Map(lines.map((l) => [l.id, l]));
+  const settlements = await invoiceSettlements(exec, lines.map((l) => l.invoiceId));
+  const held: { study: StudyFacts; invoiceId: string; invoiceNo: string; outstandingPaise: number }[] = [];
+  for (const s of selfPay) {
+    const line = lineOf.get(s.invoiceLineId);
+    const settlement = line === undefined ? undefined : settlements.get(line.invoiceId);
+    if (line === undefined || settlement === undefined) { out.set(s.id, { held: false, why: "no_bill" }); continue; }
+    if (settlement.state === "settled") { out.set(s.id, { held: false, why: "settled" }); continue; }
+    held.push({ study: s, invoiceId: line.invoiceId, invoiceNo: line.invoiceNo, outstandingPaise: settlement.outstandingPaise });
+  }
+  const releases = await unspentReleases(exec, held.map((h) => h.study.id));
+  for (const h of held) {
+    out.set(h.study.id, {
+      held: true, outstandingPaise: h.outstandingPaise, invoiceId: h.invoiceId, invoiceNo: h.invoiceNo,
+      release: releases.get(h.study.id) ?? { state: "none" },
+    });
+  }
+  return out;
 }
 
 /**

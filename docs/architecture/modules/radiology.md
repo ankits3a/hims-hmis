@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
 - **Used by modules:** `abdm`, `doctor-desk`, `ordering`
-- **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `consent`, `copilot`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `realtime`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
 ## Public API (`index.ts`), by declaring file
@@ -46,6 +46,22 @@ Source: `apps/core/src/modules/radiology/`
   - `IMAGING_RELEASE_UNPAID_APPROVAL_TYPE`
   - `RADIOLOGY_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
   - `registerRadiologyApprovalTypes(db: Db, activator: Actor): Promise<void>`
+- `automation-actor.ts`
+  - `AUTOMATION_ACTOR: Actor`
+  - `assertNotAutomation(actor: Actor, act: ClinicalAct): void`
+  - `isAutomationActor(actor: Actor): boolean`
+  - types: `ClinicalAct`
+- `automation.ts`
+  - `AUTOMATION_DEFAULTS: Readonly<Record<ImagingAutomationKind, boolean>>`
+  - `NO_SHOW_REASON`
+  - `REMINDER_MIN_DAYS_AHEAD`
+  - `automationEnabled(exec: Db | Tx, kind: ImagingAutomationKind): Promise<boolean>`
+  - `automationSettings(db: Db): Promise<AutomationSetting[]>`
+  - `noShowsToRebook(db: Db, actor: Actor, now: Date = new Date()): Promise<NoShowToRebook[]>`
+  - `sendPatientReminders(db: Db, now: Date): Promise<ReminderSweep>`
+  - `sweepNoShows(db: Db, now: Date): Promise<NoShowSweep>`
+  - `switchAutomation(tx: Tx, actor: Actor, input: { kind: string; enabled: boolean; reason: string; now?: Date }): Promise<{ kind: ImagingAutom…`
+  - types: `AutomationSetting`, `NoShowSweep`, `NoShowToRebook`, `ReminderSweep`
 - `bedside.ts`
   - `bedsideStudiesFor(db: Db, actor: Actor, locationPrefix: string): Promise<BedsideStudyRow[]>`
   - `portableRound(db: Db, actor: Actor): Promise<BedsideStudyRow[]>`
@@ -74,6 +90,11 @@ Source: `apps/core/src/modules/radiology/`
   - `isTreatingDoctor(exec: Db | Tx, actor: Actor, studyId: string): Promise<boolean>`
   - `treatingDoctorsOf(exec: Db | Tx, studyId: string): Promise<TreatingDoctors | null>`
   - types: `InboxRow`, `TreatingDoctors`
+- `completeness.ts`
+  - `REGISTER_GAPS_ALERT_KIND`
+  - `registerCompleteness(db: Db | Tx, input: { day: string }): Promise<RegisterCompleteness>`
+  - `sweepRegisterCompleteness(db: Db, now: Date): Promise<CompletenessSweep>`
+  - types: `CompletenessSweep`, `RegisterCompleteness`, `RegisterGap`, `RegisterGapKind`
 - `consumers.ts`
   - `RADIOLOGY_ORDER_PLACED_CONSUMER`
   - `handleOrderPlaced(tx: Tx, payload: OrderPlacedPayload): Promise<CreatedStudy[]>`
@@ -93,6 +114,9 @@ Source: `apps/core/src/modules/radiology/`
   - `readBackNamesFinding(readBack: string, report: { impression: string | null; findings: string | null }): boolean`
   - `recordCallAttempt(tx: Tx, actor: Actor, input: { criticalId: string; rung: number; calledUserId?: string | null; calledName?: string | null…`
   - types: `CriticalCallView`, `LadderRungView`
+- `criticals.ts`
+  - `acknowledgeCritical(tx: Tx, actor: Actor, input: { criticalId: string; acknowledgedByClinicianId: string; readBack?: string | null; now?: D…`
+  - `flagCritical(tx: Tx, actor: Actor, input: { reportId: string; category: ImagingCriticalCategory; communicatedTo?: string | null; now?: Date…`
 - `definitions.ts`
   - `IMAGING_DEFINITION_KINDS`
   - `REPORT_SECTION_KEYS`
@@ -100,20 +124,43 @@ Source: `apps/core/src/modules/radiology/`
   - `activateSeededDefinition(db: Db, actor: Actor, definitionId: string): Promise<{ kind: ImagingDefinitionKind; version: number; supersededVer…`
   - `activeDefinition(exec: Db | Tx, kind: K): Promise<z.infer<(typeof SCHEMA_BY_KIND)[K]>>`
   - `activeDefinitionRow(exec: Db | Tx, kind: ImagingDefinitionKind): Promise<ImagingDefinitionRow | undefined>`
+  - `activeReadingPools(exec: Db | Tx): Promise<ReadingPool[]>`
   - `draftDefinition(tx: Tx, actor: Actor, input: { kind: ImagingDefinitionKind; body: unknown }): Promise<{ definitionId: string; version: numb…`
   - `parseDefinitionBody(kind: K, body: unknown): z.infer<(typeof SCHEMA_BY_KIND)[K]>`
   - `publishDefinition(db: Db, actor: Actor, input: { definitionId: string; approvalId: string }): Promise<{ kind: ImagingDefinitionKind; versio…`
+  - `readingPoolFor(pools: readonly ReadingPool[], type: Pick<StudyType, "modality" | "body_part">): string | null`
   - `requestDefinitionPublish(tx: Tx, actor: Actor, definitionId: string): Promise<{ approvalId: string }>`
   - `templatesFor(body: ReportTemplatesBody, studyTypeCode: string, modality: string): GovernedReportTemplate[]`
-  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
+  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReadingPool`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
+- `desk.ts`
+  - `DESK_COLLECT_ROUTE`
+  - `DESK_WALK_IN_ROUTE`
+  - `arriveAtDesk(db: Db, actor: Actor, input: { encounterNo: string; now?: Date }): Promise<DeskArrival>`
+  - `collectAtDesk(db: Db, actor: Actor, input: DeskCollectInput, idempotencyKey: string, now: Date = new Date()): Promise<DeskCollectResult>`
+  - `deskVisitsToday(db: Db, actor: Actor, input: { patientId: string; now?: Date }): Promise<DeskVisit[]>`
+  - `deskWalkInView(db: Db, actor: Actor, input: { now?: Date } = {}): Promise<DeskWalkInView>`
+  - `placeWalkInOrder(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: DeskWalkInOrderInput, idemKey?: string, now: Date = new Date…`
+  - `proposeSlot(db: Db, actor: Actor, input: { studyId: string; now?: Date }): Promise<SlotProposal | null>`
+  - `walkInNow(db: Db, actor: Actor, input: { studyId: string; now?: Date }): Promise<DeskWalkIn>`
+  - types: `DeskArrival`, `DeskCollectInput`, `DeskCollectResult`, `DeskTender`, `DeskVisit`, `DeskWalkIn`, `DeskWalkInOrderInput`, `DeskWalkInOrderResult`, `DeskWalkInView`
 - `devices.ts`
   - `imagingDevices(db: Db, onDate: string, opts: { includeRetired?: boolean } = {}): Promise<ImagingDeviceRow[]>`
   - types: `ImagingDeviceRow`
+- `digest.ts`
+  - `DIGEST_ALERT_KIND`
+  - `buildHodDigest(db: Db, reportDay: string, now: Date): Promise<HodDigest>`
+  - `digestBell(d: HodDigest): { title: string; body: string }`
+  - `radiologyHeads(exec: Db | Tx, now: Date): Promise<string[]>`
+  - `sendHodDigest(db: Db, now: Date): Promise<DigestSweep>`
+  - `storedDigest(db: Db, input: { day?: string } = {}): Promise<{ day: string; ranAt: string; digest: HodDigest } | null>`
+  - types: `DigestModalityRow`, `DigestSweep`, `HodDigest`
 - `drafter.ts`
+  - `DRAFT_SOURCE_KINDS`
   - `activeDrafter(): ReportDrafter`
   - `offlineTemplateDrafter: ReportDrafter`
   - `proposalLockoutHits(p: DraftProposal, tier: LockoutTier): string[]`
-  - types: `DraftProposal`, `DrafterFacts`, `ReportDrafter`
+  - `proposalNumberHits(p: DraftProposal): { section: string; number: string }[]`
+  - types: `DraftProposal`, `DraftSection`, `DraftSource`, `DraftSourceKind`, `DrafterFacts`, `ReportDrafter`
 - `egfr.ts`
   - `CREATININE_UMOL_PER_MG_DL`
   - `EGFR_HOLD_BELOW`
@@ -143,6 +190,7 @@ Source: `apps/core/src/modules/radiology/`
   - `IR_SKIN_DOSE_LEVELS`
   - `RADIOLOGY_EVENTS`
   - `REPEAT_REASON_CODES`
+  - `imagingAutomationSwitched`
   - `imagingBedsideRequested`
   - `imagingBillDecisionRaised`
   - `imagingBookingChanged`
@@ -158,13 +206,16 @@ Source: `apps/core/src/modules/radiology/`
   - `imagingImageViewed`
   - `imagingImagesArrived`
   - `imagingImagesReconciled`
+  - `imagingInvoiceCarried`
   - `imagingIrCoagulationOverridden`
   - `imagingIrSkinDoseAlert`
   - `imagingMediaRequested`
   - `imagingOutsideStudyRegistered`
   - `imagingOverreadRecorded`
+  - `imagingReadingClaimed`
   - `imagingReportActedUpon`
   - `imagingReportHandedOver`
+  - `imagingReportPrinted`
   - `imagingReportPublished`
   - `imagingReportReleasedUnpaid`
   - `imagingReportUnread`
@@ -244,7 +295,9 @@ Source: `apps/core/src/modules/radiology/`
 - `modules/lab/egfr.ts`
   - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
 - `money.ts`
+  - `NO_SHOW_REBOOK_DAYS`
   - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts, imagingFree = false): ImagingAuthorisation | null`
+  - `carryNoShowInvoice(tx: Tx, study: { id: string; patientId: string; serviceId: string }, placedAt: Date): Promise<{ fromStudyId: string; inv…`
   - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`
   - `hasBillDecision(exec: Db | Tx, studyId: string, kind: ImagingBillDecisionKind): Promise<boolean>`
   - `imagingFreeAt(exec: Db | Tx, orderedAt: Date): Promise<boolean>`
@@ -253,6 +306,9 @@ Source: `apps/core/src/modules/radiology/`
   - `raiseBillDecision(tx: Tx, actor: Actor, input: { studyId: string; kind: ImagingBillDecisionKind; detail?: Record<string, unknown> | null })…`
   - `resolveBillDecision(tx: Tx, actor: Actor, input: { billDecisionId: string; resolution: string }): Promise<{ billDecisionId: string; resolve…`
   - types: `AuthorisationEncounterFacts`, `AuthorisationStudyFacts`
+- `morning-sweep.ts`
+  - `runMorningSweep(db: Db, now: Date): Promise<MorningSweep>`
+  - types: `MorningSweep`
 - `mwl.ts`
   - `DEVICE_AE_TITLE_ATTRIBUTE`
   - `DICOM_MODALITY: Readonly<Record<string, string>>`
@@ -310,7 +366,7 @@ Source: `apps/core/src/modules/radiology/`
 - `prep-bay.ts`
   - `ROOM_GATE_KINDS: readonly ImagingGateKind[]`
   - `isRoomGate(kind: string): boolean`
-  - `prepBayList(db: Db, actor: Actor): Promise<PrepBayRow[]>`
+  - `prepBayList(db: Db, actor: Actor, now: Date = new Date()): Promise<PrepBayRow[]>`
   - `prepStudyView(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<PrepStudyView>`
   - types: `PrepBayRow`, `PrepGate`, `PrepStudyView`
 - `reactions.ts`
@@ -324,46 +380,61 @@ Source: `apps/core/src/modules/radiology/`
   - `WORKLIST_VIEWS`
   - `reportView(db: Db, actor: Actor, reportId: string): Promise<ReportView | null>`
   - `studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null>`
-  - `worklist(db: Db, actor: Actor, opts: { view?: WorklistView; deviceResourceId?: string; limit?: number } = {}): Promise<WorklistRow[]>`
+  - `worklist(db: Db, actor: Actor, opts: { view?: WorklistView; deviceResourceId?: string; limit?: number; now?: Date } = {}): Promise<Worklist…`
   - types: `ReportView`, `StudyView`, `WorklistRow`, `WorklistView`
+- `reading-claim.ts`
+  - `assignReader(tx: Tx, actor: Actor, input: { studyId: string; readerId: string | null; now?: Date }): Promise<{ studyId: string; assignedRea…`
+  - `claimReading(tx: Tx, actor: Actor, input: { studyId: string; now?: Date; takeOver?: boolean }): Promise<ClaimResult>`
+  - types: `ClaimResult`
 - `reading.ts`
+  - `READING_LIST_VIEWS`
   - `TAT_MINUTES: Record<TatClass, number>`
   - `readingContext(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<ReadingContext | null>`
-  - `readingWorklist(db: Db, actor: Actor, now: Date = new Date()): Promise<ReadingRow[]>`
+  - `readingWorklist(db: Db, actor: Actor, now: Date = new Date(), opts: { view?: ReadingListView } = {}): Promise<ReadingRow[]>`
   - `reportPrintView(db: Db, actor: Actor, reportId: string, now: Date = new Date()): Promise<ReportPrintView | null>`
-  - `tatClassOf(priority: string, bedsideLocation: string | null): TatClass`
-  - types: `ReadingContext`, `ReadingRow`, `ReadingTemplate`, `ReportPrintView`, `TatClass`
+  - `tatClassOf(priority: string, source: StudySource): TatClass`
+  - types: `ReadingContext`, `ReadingListView`, `ReadingRow`, `ReadingTemplate`, `ReportPrintView`, `TatClass`
 - `ready-on-payment.ts`
   - `RADIOLOGY_READY_ON_PAYMENT_CONSUMER`
   - `READY_ON_PAYMENT_EVENTS`
   - `handleSettlementEvent(tx: Tx, e: Pick<DispatchedEvent, "name" | "payload" | "occurredAt">): Promise<{ queued: string[] }>`
   - `readyOnPaymentConsumer(db: Db): Handler`
-- `reports.ts`
+- `release.ts`
+  - `MEDIA_QUEUE_LIMIT`
+  - `mediaQueue(db: Db): Promise<{ rows: MediaQueueRow[] }>`
+  - types: `MediaQueueRow`
+- `report-authoring.ts`
+  - `AUTOSAVE_VERSION_MINUTES`
+  - `autosaveDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date } & ReportContent): Promise<{ reportId: string; version: number; a…`
+  - `draftReport(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
+  - `latestSigned(exec: Db | Tx, studyId: string): Promise<ReportRow | undefined>`
+  - `proposeDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<{ reportId: string; version: number; templateKey: strin…`
+  - `savePrelim(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
+  - types: `ReportContent`, `ReportRow`
+- `report-signature.ts`
   - `CONSULTANT_ROLE`
   - `RESIDENT_ROLE`
   - `SECOND_FACTOR_WINDOW_MINUTES`
-  - `acknowledgeCritical(tx: Tx, actor: Actor, input: { criticalId: string; acknowledgedByClinicianId: string; readBack?: string | null; now?: D…`
   - `amendReport(tx: Tx, actor: Actor, input: { studyId: string; secondFactorAt: Date | null; reason: string; windowMinutes?: number; criticalCa…`
   - `cosignReport(tx: Tx, actor: Actor, input: { studyId: string; reportId: string; secondFactorAt: Date | null; windowMinutes?: number; acknowl…`
-  - `draftReport(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
   - `dryRunPreSign(tx: Tx, actor: Actor, input: { studyId: string; templateKey?: string; body: Record<string, unknown>; impression?: string | nu…`
-  - `flagCritical(tx: Tx, actor: Actor, input: { reportId: string; category: ImagingCriticalCategory; communicatedTo?: string | null; now?: Date…`
-  - `latestSigned(exec: Db | Tx, studyId: string): Promise<ReportRow | undefined>`
+  - `enqueueReportReady(tx: Tx, study: Pick<typeof imagingStudies.$inferSelect, "orderId" | "accessionNo" | "patientId">, reportId: string, now:…`
   - `overReadNightPrelim(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { teleReadId: string; grade: string; note?: string | null…`
-  - `proposeDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<{ reportId: string; version: number; templateKey: strin…`
   - `publishReport(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; now?: Date }): Promise<{ reportId: string; v…`
-  - `savePrelim(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
   - `signReport(tx: Tx, actor: Actor, input: { studyId: string; reportId: string; secondFactorAt: Date | null; windowMinutes?: number; criticalC…`
   - `signsAsResident(tx: Tx, actor: Actor): Promise<boolean>`
-  - types: `ReportContent`, `ReportRow`, `SignChecksRecord`
+  - types: `SignChecksRecord`
 - `schedule.ts`
+  - `PROPOSAL_HORIZON_DAYS`
+  - `SLOT_STEP_MINUTES`
   - `autoSlotWalkIn(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<ScheduleResult>`
   - `cancelStudy(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; reason?: string | null }): Promise<{ studyId: …`
   - `deviceDiary(exec: Db, actor: Actor, deviceResourceId: string): Promise<DiaryEntry[]>`
   - `markNoShow(tx: Tx, actor: Actor, studyId: string, reason?: string | null): Promise<{ studyId: string; status: string }>`
+  - `proposeFreeSlot(exec: Db | Tx, input: { studyId: string; from: Date }): Promise<SlotProposal | null>`
   - `rescheduleStudy(tx: Tx, actor: Actor, input: ScheduleInput & { reason?: string | null }): Promise<ScheduleResult>`
   - `scheduleStudy(tx: Tx, actor: Actor, input: ScheduleInput): Promise<ScheduleResult>`
-  - types: `ScheduleInput`, `ScheduleResult`
+  - types: `ScheduleInput`, `ScheduleResult`, `SlotProposal`
 - `setup.ts`
   - `INVESTIGATION_GST_CATEGORY`
   - `RADIOLOGY_RULED_SERVICES`
@@ -375,6 +446,10 @@ Source: `apps/core/src/modules/radiology/`
   - `signedContentDigest(content: { templateKey: string; body: unknown; impression: string | null; laterality: string | null; }): string`
   - `signerSnapshot(tx: Tx, input: { userId: string; now: Date; secondFactorAt: Date; content: { templateKey: string; body: unknown; impression:…`
   - types: `ResidentSignature`, `SignerBlock`
+- `study-source.ts`
+  - `STUDY_SOURCES`
+  - `studySource(study: { encounterNo: string; bedsideLocation: string | null }, order: { authority: string }): StudySource`
+  - types: `StudySource`
 - `study-types.ts`
   - `STUDY_TYPE_SEEDS: readonly StudyTypeSeed[]`
   - `activeStudyTypes(exec: Db | Tx): Promise<StudyType[]>`
@@ -421,7 +496,7 @@ Source: `apps/core/src/modules/radiology/`
 
 ## Tables (`kernel/db/schema/radiology.ts`)
 
-`imaging_bill_decisions`, `imaging_contrast_administrations`, `imaging_contrast_reactions`, `imaging_critical_call_attempts`, `imaging_critical_findings`, `imaging_definitions`, `imaging_dose_sr_receipts`, `imaging_followups`, `imaging_image_views`, `imaging_ir_cases`, `imaging_ir_checklists`, `imaging_ir_sedation_vitals`, `imaging_media_requests`, `imaging_outside_studies`, `imaging_peer_reviews`, `imaging_report_delivery`, `imaging_report_handovers`, `imaging_reports`, `imaging_safety_screenings`, `imaging_studies`, `imaging_tele_reads`, `imaging_unmatched_studies`
+`imaging_automation_runs`, `imaging_automation_settings`, `imaging_bill_decisions`, `imaging_contrast_administrations`, `imaging_contrast_reactions`, `imaging_critical_call_attempts`, `imaging_critical_findings`, `imaging_definitions`, `imaging_dose_sr_receipts`, `imaging_followups`, `imaging_image_views`, `imaging_ir_cases`, `imaging_ir_checklists`, `imaging_ir_sedation_vitals`, `imaging_media_requests`, `imaging_outside_studies`, `imaging_peer_reviews`, `imaging_report_delivery`, `imaging_report_handovers`, `imaging_reports`, `imaging_safety_screenings`, `imaging_studies`, `imaging_tele_reads`, `imaging_unmatched_studies`
 
 Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 
@@ -430,6 +505,7 @@ Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 - `radiology-acquisition.controller.ts` — `/radiology/studies`
 - `radiology-bill-decisions.controller.ts` — `/radiology/bill-decisions`
 - `radiology-definitions.controller.ts` — `/radiology/definitions`
+- `radiology-desk.controller.ts` — `/radiology/desk`
 - `radiology-floor.controller.ts` — `/radiology/devices`, `/radiology/display`, `/radiology/portable`
 - `radiology-images.controller.ts` — `/radiology/studies`
 - `radiology-ir.controller.ts` — `/radiology/ir`, `/radiology/studies`

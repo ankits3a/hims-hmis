@@ -204,6 +204,23 @@ export async function advisedImagingLines(
   return lines;
 }
 
+/**
+ * The active book as the ordering seats show it: each study type with the active tariff's list price,
+ * by name. `types` is null when no book is published. #1079 — shared by the visit's door
+ * (`imagingDoorFor`) and the desk's walk-in door (`desk.ts` `deskWalkInView`), so the two seats can
+ * never offer different books.
+ */
+export async function imagingBookWithPrices(
+  db: Db, now: Date = new Date(),
+): Promise<{ types: StudyType[] | null; book: ImagingBookEntry[] }> {
+  const types = await activeBookOrNull(db);
+  const prices = new Map((await listPriceList(db, now)).map((p) => [p.serviceId, p.pricePaise]));
+  const book: ImagingBookEntry[] = (types ?? [])
+    .map((t) => ({ ...orderableOf(t), serviceId: t.service_id, pricePaise: prices.get(t.service_id) ?? null }))
+    .sort((a, b) => a.studyTypeName.localeCompare(b.studyTypeName));
+  return { types, book };
+}
+
 export async function imagingDoorFor(
   db: Db,
   actor: Actor,
@@ -224,13 +241,8 @@ export async function imagingDoorFor(
   const [dept] = encounter.departmentId === null ? [undefined]
     : await db.select({ name: opdDepartments.name }).from(opdDepartments).where(eq(opdDepartments.id, encounter.departmentId));
 
-  const bookTypes = await activeBookOrNull(db);
+  const { types: bookTypes, book } = await imagingBookWithPrices(db, now);
   const lines = await advisedImagingLines(db, encounter.visitNo, (encounter.advisedTests ?? []) as AdvisedTest[], bookTypes);
-
-  const prices = new Map((await listPriceList(db, now)).map((p) => [p.serviceId, p.pricePaise]));
-  const book: ImagingBookEntry[] = (bookTypes ?? [])
-    .map((t) => ({ ...orderableOf(t), serviceId: t.service_id, pricePaise: prices.get(t.service_id) ?? null }))
-    .sort((a, b) => a.studyTypeName.localeCompare(b.studyTypeName));
 
   const since = new Date(now.getTime() - ADVISORY_DUPLICATE_DAYS * 86_400_000);
   const recentRows = await db

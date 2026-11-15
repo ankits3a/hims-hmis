@@ -52,6 +52,12 @@ export type CopilotState = {
   clearPayload: () => void;
   /** E2.1 — an appointment to pick (patient, then a time) and confirm. Null when the last answer offered none. */
   pick: { pick: CopilotActPick; proposals: CopilotProposal[] } | null;
+  /**
+   * #1082 — the signed proposals that came with a payload that is NOT one of the act picks above (the
+   * imaging copilot's `imagingPick`). Kept beside `payload` rather than in `pick`, so a screen that renders
+   * `pick` with its own picker is never handed a shape it does not know; the imaging dock reads both.
+   */
+  proposals: CopilotProposal[] | null;
   /** The confirm tap: the server re-checks and writes, and its answer replaces the pick. */
   confirm: (proposal: CopilotProposal) => Promise<void>;
   clearPick: () => void;
@@ -77,6 +83,7 @@ export function useCopilot(opts: {
   const [busy, setBusy] = useState(false);
   const [payload, setPayload] = useState<unknown>(null);
   const [pick, setPick] = useState<CopilotState["pick"]>(null);
+  const [proposals, setProposals] = useState<CopilotProposal[] | null>(null);
 
   const { terms, fallback, onNote, date, onActed } = opts;
 
@@ -96,6 +103,7 @@ export function useCopilot(opts: {
     setReport(null);
     setPayload(null);
     setPick(null);
+    setProposals(null);
     checkCopilotNotice();
     askCopilot(q, terms?.() ?? [], date, screenSlug())
       .then((reply: CopilotReply) => {
@@ -116,6 +124,7 @@ export function useCopilot(opts: {
           setPick({ pick: reply.answer.payload, proposals: reply.proposals });
         } else if (reply.answer.payload !== undefined) {
           setPayload(reply.answer.payload);
+          setProposals(reply.proposals ?? null);
         }
         onNote?.(q);
       })
@@ -135,6 +144,7 @@ export function useCopilot(opts: {
       const res = await confirmCopilot(proposal);
       setAnswer(t(res.answer.key, sayParams(res.answer.key, res.answer.params, t, i18n.language)));
       setPick(null);
+      setProposals(null);
       if (res.outcome === "done") onActed?.();
     } catch {
       setAnswer(t("copilot.answer.failed"));
@@ -145,6 +155,7 @@ export function useCopilot(opts: {
     answer, report, busy, ask, dismissReport: useCallback(() => { setReport(null); }, []),
     payload, clearPayload: useCallback(() => { setPayload(null); }, []),
     pick, confirm, clearPick: useCallback(() => { setPick(null); }, []),
+    proposals,
   };
 }
 
@@ -185,6 +196,7 @@ export function sayParams(
     const or = lang.startsWith("hi") ? " या " : " or ";
     return { can: can.length < 2 ? can.join("") : `${can.slice(0, -1).join(", ")}${or}${can[can.length - 1]!}` };
   }
+  if (key.startsWith("copilot.answer.rad")) return radParams(params, t, lang);
   if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave") && !key.startsWith("copilot.answer.reminder")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
@@ -210,4 +222,26 @@ export function sayParams(
 export function screenSlug(pathname: string = typeof window === "undefined" ? "/" : window.location.pathname): string {
   const first = (pathname.split("/")[1] ?? "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
   return /^[a-z0-9]/.test(first) ? first : "home";
+}
+
+/**
+ * #1082 — THE IMAGING COPILOT'S PARAMS IN THE READER'S WORDS. A gate kind and a study state are said as
+ * the imaging screens say them (`radiology.gate.*`, `radiology.worklist.state.*`), the seat that clears a
+ * gate and film/CD by `copilot.rad.*`, and a slot's instant as the boards say one. The accession, the
+ * machine's code, counts and the rupee amount pass through as they came.
+ */
+function radParams(params: Record<string, string | number>, t: Tr, lang: string): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (typeof v !== "string") { out[k] = v; continue; }
+    if (k === "gate") out[k] = t(`radiology.gate.${v}`, { defaultValue: v });
+    else if (k === "state") out[k] = t(`radiology.worklist.state.${v}`, { defaultValue: v });
+    else if (k === "seat") out[k] = t(`copilot.rad.seat.${v}`, { defaultValue: v });
+    else if (k === "kind") out[k] = t(`copilot.rad.media.${v}`, { defaultValue: v });
+    else if (k === "when" && ISO_INSTANT.test(v)) {
+      const at = new Date(v);
+      out[k] = t("copilot.when.at", { day: dayWords(at, lang), time: clockWords(at) });
+    } else out[k] = v;
+  }
+  return out;
 }

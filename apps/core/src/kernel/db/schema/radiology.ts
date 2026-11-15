@@ -305,6 +305,21 @@ export const imagingStudies = pgTable(
     invoiceLineId: text("invoice_line_id").references(() => invoiceLines.id),
     authorisedBy: text("authorised_by"),
     cancelReason: text("cancel_reason"),
+    /**
+     * ═══ #1081 — THE READING ROOM: THE STUDY'S POOL, ITS NAMED READER, AND WHO IS READING IT ═══
+     *
+     * `reading_pool` is stamped at ACQUISITION (`recordAcquired`) from the published signatories book's
+     * `reading_pools` — the first pool whose modalities and body parts take this study's type — and is
+     * null when no pool is published or none matches; an unpooled study is on every reader's list.
+     * `assigned_reader_id` is a consultant's assignment to a named reader (`radiology.reports.amend`).
+     * `reading_claimed_by`/`_at` is "Dr X is reading": written when a reader opens the study, refreshed
+     * by their autosave, shown for 60 minutes after it was last written and not after signature. A
+     * label, never a lock. All four nullable; no backfill.
+     */
+    readingPool: text("reading_pool"),
+    assignedReaderId: text("assigned_reader_id"),
+    readingClaimedBy: text("reading_claimed_by"),
+    readingClaimedAt: timestamp("reading_claimed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -323,6 +338,8 @@ export const imagingStudies = pgTable(
       .where(sql`${t.studyInstanceUid} is not null`),
     index("imaging_studies_patient_idx").on(t.patientId),
     index("imaging_studies_order_idx").on(t.orderId),
+    /** #1076 — the treating-doctor join, the release register's visit join and the ABDM read all key on it. */
+    index("imaging_studies_encounter_no_idx").on(t.encounterNo),
     check("imaging_studies_status_ck", inList(t.status, IMAGING_STUDY_STATUSES)),
     check("imaging_studies_laterality_ck", inList(t.laterality, IMAGING_LATERALITIES)),
     check("imaging_studies_priority_ck", sql`${t.priority} in ('routine', 'urgent', 'stat')`),
@@ -450,7 +467,8 @@ export const imagingDefinitions = pgTable(
  *     radiologists" is refused by the INDEX**, so the second sign loses whatever the application
  *     believed;
  *   · a trigger forbidding UPDATE of every column but `status` and `published_at`, and forbidding
- *     DELETE outright — because this is the table a courtroom reads.
+ *     DELETE outright — because this is the table a courtroom reads. (#1081: one exception, an
+ *     AUTOSAVED draft's own text for ten minutes — see `autosaved_at`. A signed row never moves.)
  *
  * `amend` therefore INSERTS v(n+1) as `signed` and flips v(n) to `superseded` in one transaction:
  * the partial unique makes those two writes atomic-or-nothing without a lock, since a concurrent
@@ -508,6 +526,20 @@ export const imagingReports = pgTable(
      * a row. NULL on drafts, prelims and on versions signed before RS8a.
      */
     signChecks: jsonb("sign_checks"),
+    /**
+     * #1081 — the human who wrote this draft or prelim (Save, autosave, prelim). Null on a machine's
+     * proposal (its author is `provenance`), on signed versions (their author is `signer_id`) and on
+     * every version written before #1081.
+     */
+    draftedBy: text("drafted_by"),
+    /**
+     * #1081 — set on a version AUTOSAVE wrote, to the instant of its last autosave. Such a version is
+     * the one row whose text may change after insert: migration 0234 widens the append-only trigger so
+     * that its own author's autosave may overwrite `body`, `impression`, `laterality` and `template_key`
+     * (and move this column forward) for ten minutes from `created_at`; after that the next autosave
+     * cuts a new version. DELETE stays refused: every version is kept (ruling 0098 §5).
+     */
+    autosavedAt: timestamp("autosaved_at", { withTimezone: true }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1615,5 +1647,54 @@ export const imagingTeleReads = pgTable(
     /** A discrepancy says what it was; the reader never over-reads their own prelim. */
     check("imaging_tele_reads_note_ck", sql`${t.state} not in ('minor', 'major') or char_length(btrim(coalesce(${t.overreadNote}, ''))) >= 4`),
     check("imaging_tele_reads_not_own_ck", sql`${t.overreadBy} is null or ${t.overreadBy} <> ${t.readerId}`),
+  ],
+);
+
+/**
+ * ═══ #1085 (IM6c) — THE MORNING SWEEP'S MEMORY AND ITS SWITCHES ═══
+ *
+ * The 08:00 IST radiology job does four automated things a day: it marks yesterday's never-arrived
+ * bookings as no-shows, queues patient reminders, sends the HOD's digest and checks yesterday's
+ * registers (PCPNDT Form F, the AERB dose register). Each is written by the system actor
+ * `radiology-automation` and each leaves ONE row here per IST day — `(kind, day)` is unique, so a
+ * second run on the same day (a restart at 08:00, a double tick) inserts nothing and does nothing.
+ * `counts` holds counts and minutes only: no patient, no UHID, no name (the digest is stored here).
+ *
+ * `imaging_automation_settings` holds at most one row per automation: a holder of
+ * `radiology.definitions.manage` switches one off or on with a reason (`imaging.automation_switched`).
+ * No row means the automation's default — every one ON except `patient_reminders`, which stays OFF
+ * until the WhatsApp and SMS templates are approved (ruling 0098 §2).
+ */
+export const IMAGING_AUTOMATION_KINDS = ["no_show_sweep", "patient_reminders", "hod_digest", "register_completeness"] as const;
+export type ImagingAutomationKind = (typeof IMAGING_AUTOMATION_KINDS)[number];
+
+export const imagingAutomationRuns = pgTable(
+  "imaging_automation_runs",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    kind: text("kind").notNull(),
+    /** The IST day the run belongs to — the morning it ran. */
+    day: date("day", { mode: "string" }).notNull(),
+    counts: jsonb("counts").notNull().default({}),
+    ranAt: timestamp("ran_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("imaging_automation_runs_kind_day_ux").on(t.kind, t.day),
+    check("imaging_automation_runs_kind_ck", inList(t.kind, IMAGING_AUTOMATION_KINDS)),
+  ],
+);
+
+export const imagingAutomationSettings = pgTable(
+  "imaging_automation_settings",
+  {
+    kind: text("kind").primaryKey(),
+    enabled: boolean("enabled").notNull(),
+    reason: text("reason").notNull(),
+    changedBy: text("changed_by").notNull(),
+    changedAt: timestamp("changed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("imaging_automation_settings_kind_ck", inList(t.kind, IMAGING_AUTOMATION_KINDS)),
+    check("imaging_automation_settings_reason_ck", sql`char_length(btrim(${t.reason})) >= 3`),
   ],
 );

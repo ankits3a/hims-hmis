@@ -273,6 +273,57 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.ddNoUnit",
   "copilot.answer.ddMyDay",
   "copilot.answer.ddMyDayNoOpd",
+  /*
+    ═══ #1082 (IM5) — the imaging copilot's fourteen floor-only questions and four confirmed acts. ═══
+    `accession` is the study's accession number; `gate` a gate kind, `seat` one of desk · prep · room · usg,
+    `state` a study state and `kind` film | cd, each said by the web from its own words. `when` is an ISO
+    instant; `amount` is already in rupees. Counts are counts. No patient name is a param.
+  */
+  "copilot.answer.radMyListRead",
+  "copilot.answer.radMyListPrep",
+  "copilot.answer.radMyListFloor",
+  "copilot.answer.radNoStudy",
+  "copilot.answer.radStudies",
+  "copilot.answer.radStudyHeld",
+  "copilot.answer.radStudyState",
+  "copilot.answer.radNextSlot",
+  "copilot.answer.radNextSlotNone",
+  "copilot.answer.radNothingToBook",
+  "copilot.answer.radOverdue",
+  "copilot.answer.radOverdueNone",
+  "copilot.answer.radCriticals",
+  "copilot.answer.radCriticalsNone",
+  "copilot.answer.radReportNotReady",
+  "copilot.answer.radReportReady",
+  "copilot.answer.radReportHeld",
+  "copilot.answer.radReportHanded",
+  "copilot.answer.radMachines",
+  "copilot.answer.radMachinesDown",
+  "copilot.answer.radMachinesNone",
+  "copilot.answer.radNumbers",
+  "copilot.answer.radFollowups",
+  "copilot.answer.radFollowupsNone",
+  "copilot.answer.radDraftReady",
+  "copilot.answer.radNotReportable",
+  "copilot.answer.radBookPick",
+  "copilot.answer.radBooked",
+  "copilot.answer.radSlotTaken",
+  "copilot.answer.radStudyChanged",
+  "copilot.answer.radNothingToMove",
+  "copilot.answer.radMovePick",
+  "copilot.answer.radNoShowPick",
+  "copilot.answer.radNeedReason",
+  "copilot.answer.radMoved",
+  "copilot.answer.radNoShowDone",
+  "copilot.answer.radActedNothing",
+  "copilot.answer.radActedPick",
+  "copilot.answer.radActedNeedNote",
+  "copilot.answer.radActedNotYours",
+  "copilot.answer.radActedDone",
+  "copilot.answer.radActedAlready",
+  "copilot.answer.radMediaNotReleased",
+  "copilot.answer.radMediaPick",
+  "copilot.answer.radMediaDone",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
@@ -351,6 +402,10 @@ export const COPILOT_ANSWER_VOICE: Readonly<Partial<Record<CopilotAnswerKey, Cop
   "copilot.answer.reminderTooLong": "board",
   "copilot.answer.reminderLimit": "board",
   "copilot.answer.reminderSet": "board",
+  /* #1082 — the imaging copilot's slot instants. */
+  "copilot.answer.radNextSlot": "board",
+  "copilot.answer.radBooked": "board",
+  "copilot.answer.radMoved": "board",
 };
 
 /**
@@ -413,3 +468,22 @@ export type CopilotApptPick = {
   pickPatient: boolean;
   rows: CopilotApptRow[];
 };
+
+/**
+ * #1082 — the imaging copilot's payloads. A question about a patient with several studies answers with
+ * the list (`imagingList`: accession, study name, state); an act proposes one option per study
+ * (`imagingPick`), each `proposal` indexing the ask response's `proposals`. `at` is an ISO instant,
+ * `machine` a machine's code, `outcome` an acted-upon outcome code, `kind` film | cd. No patient name.
+ */
+export type CopilotImagingRow = { accessionNo: string; study: string; state: string };
+export type CopilotImagingList = { kind: "imagingList"; rows: CopilotImagingRow[] };
+export type CopilotImagingPick = {
+  kind: "imagingPick";
+  act: "book" | "move" | "no_show" | "acted" | "media";
+  options: {
+    proposal: number; accessionNo: string; study: string;
+    machine?: string; at?: string; outcome?: string; kind?: "film" | "cd"; reason?: string;
+  }[];
+};
+/** #1082 — `radiology.draft_report`'s "draft ready": the study whose draft to open in the reading room. */
+export type CopilotImagingLink = { kind: "imagingLink"; studyId: string };

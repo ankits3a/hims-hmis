@@ -5,7 +5,7 @@ import { useAuth } from "../../lib/auth";
 import { radiologyErrorCode, radiologyErrorText, recordContrast, recordContrastReaction } from "../../lib/radiology-api";
 import { istDay, istInputToIso, isoToIstInput } from "./desk-time";
 import { Refusal } from "./imaging-counter";
-import type { WirePrepStudy } from "../../lib/radiology-api";
+import type { RecordContrastBody, WirePrepStudy } from "../../lib/radiology-api";
 
 /**
  * PLAN 18-S RS5 T5 — **THE CONTRAST RECORD AND THE REACTION** — the first web callers of
@@ -89,7 +89,7 @@ export function ContrastPanel({ view, onChanged }: { view: WirePrepStudy; onChan
       ].filter((x): x is string => x !== null).join(" · ");
       const siteLine = [site.trim(), extras].filter((x) => x !== "").join(" · ").slice(0, 120);
       return recordContrast(view.study.studyId, {
-        agent: agentName, volumeMl: Number(volume), route, site: siteLine === "" ? null : siteLine,
+        agent: agentName, volumeMl: Number(volume), route: route as RecordContrastBody["route"], site: siteLine === "" ? null : siteLine,
         vialBatchNo: batch.trim() === "" ? null : batch.trim(), vialExpiry: expiry === "" ? null : expiry,
         givenBy, givenAt: istInputToIso(givenAt),
       });

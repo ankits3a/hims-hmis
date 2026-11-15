@@ -61,7 +61,7 @@ describe("GET /radiology/metrics and /pharmacy/metrics — the metrics reads", (
         const u = await mkUser(db, `rm_${r}`, [r]);
         const res = await get("/radiology/metrics", u.token).expect(200);
         expect(res.body.totals).toEqual({ orders: 0, studies: 0, signed: 0, delivered: 0 });
-        expect(res.body.bySource.map((s: { source: string }) => s.source)).toEqual(["opd", "ipd", "walk_in"]);
+        expect(res.body.bySource.map((s: { source: string }) => s.source)).toEqual(["opd", "ipd", "daycare", "walk_in"]);
       }
     });
 

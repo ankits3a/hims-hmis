@@ -29,7 +29,7 @@ import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
 import { EXPIRY_ACTIONS_IST, runRefillReminders, runWeeklyExpiryActions, sweepExpiredPicks } from "../../modules/pharmacy";
 import {
-  sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
+  runMorningSweep, sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
@@ -598,11 +598,17 @@ export function registerAllJobs(
      * (each new job is a seven-site census, and all three are the same shape: a mark, one event): the
      * follow-up that passed its due day (`imaging.followup_overdue`, once per row) and the month-just-
      * closed's random peer-review sample (idempotent; a no-op every day after the first).
+     *
+     * #1085 (IM6c) — and the imaging MORNING SWEEP, last, on the same job for the same reason (no new
+     * job, no new census site): yesterday's no-shows, the register check, the HOD's digest and the
+     * patient reminders (off until the templates are approved). Each writes one run row a day and a
+     * second run does nothing (`modules/radiology/automation.ts`).
      */
     run: async (now) => {
       await sweepUnreadWatchman(db, now);
       await sweepOverdueFollowups(db, now);
       await sweepPeerSample(db, now);
+      await runMorningSweep(db, now);
     },
   });
   /**

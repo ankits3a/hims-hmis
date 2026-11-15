@@ -14,8 +14,9 @@ import { users } from "../../kernel/db/schema/auth";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
 import { imagingReportActedUpon } from "./events";
-import { acknowledgeCritical } from "./reports";
+import { acknowledgeCritical } from "./criticals";
 import { overreadsForStudies } from "./tele";
+import type { SQL } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -45,20 +46,43 @@ export type TreatingDoctors = {
 };
 
 /**
- * The treating doctors of ONE study. Plain joins over kernel schema (no module import): the order
- * envelope, and the OPD visit the study's `encounter_no` names.
+ * ═══ #1077 — THE VISIT HALF OF THE RULE, WRITTEN ONCE ═══
+ *
+ * `users.id` of the doctor of the OPD visit an `imaging_studies` row's `encounter_no` names, or null
+ * (a day-care encounter, a visit with no doctor yet, a doctor with no login). A correlated scalar
+ * subquery over kernel schema (no module import): `opd_encounters.visit_no` is unique and
+ * `opd_doctors.id` is its key, so it answers at most one user — exactly what the left joins it
+ * replaces answered. It names `imaging_studies` itself, so it belongs in a query that reads that
+ * table unaliased.
+ *
+ * Every radiology read that asks "who treats this study" uses this fragment or `treatingDoctorIs`
+ * built on it: the release register, the doctor's inbox and follow-ups, the desk's waiting counts and
+ * the doctor desk's imaging rows (spec #1077 D3 — no other radiology file joins a study to its visit's
+ * doctor).
  */
+export const visitDoctorUserId: SQL<string | null> = sql<string | null>`(
+  select ${opdDoctors.userId} from ${opdEncounters}
+  join ${opdDoctors} on ${opdDoctors.id} = ${opdEncounters.doctorId}
+  where ${opdEncounters.visitNo} = ${imagingStudies.encounterNo})`;
+
+/**
+ * The treating-doctor rule as a WHERE over `imaging_studies` joined to its `orders` row: `userId`
+ * ordered it (`orders.ordering_clinician_id`), or is the doctor of the visit it belongs to.
+ */
+export function treatingDoctorIs(userId: string): SQL {
+  return or(eq(orders.orderingClinicianId, userId), sql`${visitDoctorUserId} = ${userId}`)!;
+}
+
+/** The treating doctors of ONE study: the order envelope, and the OPD visit the study's `encounter_no` names. */
 export async function treatingDoctorsOf(exec: Db | Tx, studyId: string): Promise<TreatingDoctors | null> {
   const rows = await (exec as Db)
     .select({
       orderingClinicianId: orders.orderingClinicianId,
       authority: orders.authority,
-      visitDoctorUserId: opdDoctors.userId,
+      visitDoctorUserId,
     })
     .from(imagingStudies)
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .where(eq(imagingStudies.id, studyId));
   if (rows.length === 0) return null;
   const ids = new Set<string>();
@@ -320,14 +344,12 @@ export async function doctorResultsInbox(db: Db, actor: Actor, now: Date = new D
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
     .innerJoin(services, eq(services.id, imagingStudies.serviceId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .leftJoin(imagingReportDelivery, eq(imagingReportDelivery.reportId, imagingReports.id))
     .leftJoin(users, eq(users.id, imagingReports.signerId))
     .where(and(
       eq(imagingReports.status, "signed"),
       isNotNull(imagingReports.publishedAt),
-      or(eq(orders.orderingClinicianId, actor.id), eq(opdDoctors.userId, actor.id)),
+      treatingDoctorIs(actor.id),
       or(isNull(imagingReportDelivery.actedAt), sql`${imagingReportDelivery.actedAt} >= ${actedSince}`),
     ))
     .orderBy(desc(imagingReports.publishedAt))

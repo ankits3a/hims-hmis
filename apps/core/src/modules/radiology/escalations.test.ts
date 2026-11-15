@@ -11,7 +11,8 @@ import { runDueTimers } from "../../kernel/workflow/timers";
 import { checkIn } from "./checkin";
 import { scheduleStudy } from "./schedule";
 import { requireStudyGate, satisfyGate } from "./gates";
-import { draftReport, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { publishReport, signReport } from "./report-signature";
 import { stampFirstRead } from "./closed-loop";
 import {
   ESCALATION_SPECS, IMAGING_ESCALATION_CAUSES, RADIOLOGY_ESCALATION_DEFINITIONS, ensureEscalationDefinitions,
@@ -117,7 +118,7 @@ describe("the HOD's escalations on the obligation spine (18-S RS10 T2)", () => {
     expect(causes[0]!.detail).toContain("open:");
 
     const evidence: Record<string, unknown> = {
-      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
       pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
       laterality_confirm: { patientStated: "na" },
     };

@@ -47,7 +47,7 @@ export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: R
 ];
 
 export function RadiologyStation({
-  station, title, place, stats, lane, list, listSummary, inHand, closeListOn, clocks, clocksSummary, clocksAlert, views, children,
+  station, title, place, stats, lane, list, listSummary, inHand, closeListOn, clocks, clocksSummary, clocksAlert, views, copilot, children,
 }: {
   /** 18-S RS4 — a station's own views in the header (Setup: machines · books · prices; RS6 Rooms: console · dose · rejects · downtime). */
   views?: React.ReactNode;
@@ -66,6 +66,11 @@ export function RadiologyStation({
   clocks?: React.ReactNode;
   clocksSummary?: React.ReactNode;
   clocksAlert?: boolean;
+  /**
+   * #1082 — the copilot column (`components/radiology/imaging-copilot.tsx`). With something in hand the
+   * shell folds the list to its summary and this takes the column; a station that passes none keeps its list.
+   */
+  copilot?: React.ReactNode;
   children: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
@@ -88,6 +93,7 @@ export function RadiologyStation({
       clocks={clocks}
       clocksSummary={clocksSummary}
       clocksAlert={clocksAlert}
+      copilot={copilot}
     >
       {children}
     </StationShell>

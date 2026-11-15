@@ -4963,6 +4963,10 @@
     }
   },
   "radiology": {
+    "copilot": {
+      "placeholder": "Ask: X… held up? next slot? report ready?",
+      "idle": "Ask about a study by its accession."
+    },
     "tele": {
       "fixReader": "Night & outside reads",
       "listTitle": "Waiting for the over-read",
@@ -5909,6 +5913,12 @@
       "notInTariff": "not in the tariff yet — note for billing",
       "mediaHanded": "Handed over",
       "markPrinted": "Mark printed",
+      "toPrint": "Film & CD to print",
+      "nothingToPrint": "No film or CD waiting to be printed.",
+      "queueFilm_one": "film, {{count}} sheet",
+      "queueFilm_other": "film, {{count}} sheets",
+      "queueCd": "CD",
+      "queueSince": "asked {{at}}",
       "withReport": "Hand over with the report",
       "sheets": "Sheets",
       "askFilm": "Ask for film",
@@ -5922,6 +5932,14 @@
       "handOver": "Hand over",
       "handedDone": "Handed over and logged: {{name}} · {{acc}}.",
       "rules": "Reports go to the patient, or to someone the patient names. The printed report carries the signing radiologist's name, qualification and council number; referring doctors print as a Doctor ID only.",
+      "search": "Find a report",
+      "searchHint": "Name, UHID or accession",
+      "searchResults_one": "{{count}} report found",
+      "searchResults_other": "{{count}} reports found",
+      "searchNone": "No released report matches.",
+      "print": "Print report",
+      "printNow": "Print again",
+      "printGone": "This version is no longer the released report. Open the register again.",
       "held": "Held for dues {{amount}}",
       "heldBill": "Bill {{bill}} · the patient's copy is handed over once it is paid. The doctor's copy is not held.",
       "collectAtBilling": "Collect at billing",
@@ -6016,11 +6034,7 @@
       "messageQueued": "The appointment message is queued. It goes out when WhatsApp is connected — it has not been sent.",
       "openVisit": "Work this visit at the counter",
       "dock": {
-        "toChecks": "Checks",
-        "studiesHint_one": "{{count}} study at the desk",
-        "studiesHint_other": "{{count}} studies at the desk",
         "toBill": "Bill",
-        "checksHint": "Tell the patient; the prep bay records the answers",
         "refMissing": "Type the UPI reference or the card approval code",
         "collectPending": "Collect",
         "collect": "Collect {{amount}} by {{mode}}",
@@ -6031,8 +6045,8 @@
         "bookHint": "The slip and the appointment message follow the booking",
         "pick": "Pick a machine and a time",
         "pickHint": "Or walk the patient in now",
-        "done": "Clear the desk",
-        "doneHint": "Everything at this desk is booked"
+        "done": "Done",
+        "doneHint": "Nothing left at this desk for this visit"
       },
       "listTitle": "At the desk",
       "clockToBook": "{{name}} · {{study}} waiting to be booked, {{min}} min",
@@ -6041,22 +6055,26 @@
       "clocksSummary_one": "{{count}} over 30 min",
       "clocksSummary_other": "{{count}} over 30 min",
       "clocksNone": "nothing over 30 min",
+      "clockLate": "{{name}} · {{study}} booked and not here, {{min}} min past the slot",
+      "noShowAct": "No-show",
+      "rebookTitle_one": "{{count}} no-show to book again",
+      "rebookTitle_other": "{{count}} no-shows to book again",
+      "clockRebook": "{{name}} · {{study}} missed {{day}}",
+      "rebookPaid": "paid — the bill holds until {{until}}",
       "nobody": "Nobody in hand. Open a patient from the list, or find a visit. Opening a patient on the day of the slot checks them in.",
       "inHand": "In hand",
       "today": "This visit",
-      "arrived": "Checked in by opening at the desk. The checks it opened are on the Checks step.",
+      "arrived": "Checked in by opening at the desk. The checks it opened are listed below.",
       "clearDesk": "Clear the desk",
       "toBookStat": "Waiting to be booked",
       "startHint": "Or open a patient from the list on the right.",
       "steps": "Counter steps",
       "step": {
-        "studies": "Studies",
-        "checks": "Checks",
         "bill": "Bill",
         "slot": "Slot & slip"
       },
       "nothingHere": "Nothing left at the desk for this visit.",
-      "relink": "Link the paid line to the study"
+      "adopted": "Already paid on invoice {{invoiceNo}} — linked to the study. Nothing collected here."
     },
     "deskGate": {
       "identity_two_factor": "two identifiers are checked in the room — the name and UHID on the slip must match.",
@@ -6134,6 +6152,54 @@
       "footEmergency": "Emergency patients are seen first"
     },
     "hod": {
+      "sweep": {
+        "digestTitle": "This morning's digest · {{day}}",
+        "digestNone": "No morning digest yet",
+        "ordered": "Studies ordered",
+        "unread": "Reports unread over 24 h",
+        "criticals": "Open criticals",
+        "followups": "Follow-ups overdue",
+        "noShows": "No-shows",
+        "machinesDown": "Machines out of service",
+        "drl": "Doses above the reference level, no reason",
+        "repeat": "Repeat rate",
+        "byModality": "Studies and turnaround by modality",
+        "gapsTitle_one": "Register gaps · {{day}} · {{count}}",
+        "gapsTitle_other": "Register gaps · {{day}} · {{count}}",
+        "gapsNone": "No gap in yesterday's registers.",
+        "gapsLabel": "Register gaps",
+        "gapsNote": "Read live. Nothing is corrected automatically; the PCPNDT in-charge and the RSO were told the count.",
+        "register": "Register",
+        "gap": "Gap",
+        "accession": "Accession",
+        "registerName": {
+          "pcpndt": "PCPNDT Form F",
+          "aerb": "AERB dose register"
+        },
+        "gapKind": {
+          "form_f_missing": "No Form F",
+          "form_f_not_recorded": "Form F not recorded",
+          "form_f_incomplete": "Form F lacks a field",
+          "form_f_unverified": "Form F not verified",
+          "dose_missing": "No dose row",
+          "drl_reason_missing": "Above the reference level, no reason"
+        },
+        "autoTitle": "Morning automations",
+        "auto": {
+          "no_show_sweep": "Mark yesterday's no-shows",
+          "patient_reminders": "Patient reminders",
+          "hod_digest": "HOD morning digest",
+          "register_completeness": "Register check"
+        },
+        "on": "On",
+        "off": "Off",
+        "default": "as installed",
+        "lastRun": "last ran {{day}}",
+        "reason": "Reason for the change",
+        "turnOff": "Switch off",
+        "turnOn": "Switch on",
+        "autoNote": "Patient reminders stay off until the WhatsApp and SMS templates are approved."
+      },
       "title": "Supervisor & HOD",
       "loading": "Reading the department…",
       "views": {
@@ -6481,6 +6547,18 @@
       "formF": "Form F",
       "restricted": "restricted",
       "formFTitle": "This scan is covered by the PCPNDT Act and needs a Form F before acquisition.",
+      "state": {
+        "scheduled": "Booked",
+        "checked_in": "Checked in",
+        "ready": "Ready",
+        "in_acquisition": "On the table",
+        "acquired": "Acquired",
+        "reported": "Reported",
+        "published": "Released",
+        "cancelled": "Cancelled",
+        "no_show": "Did not come",
+        "rescheduled": "Rebooked"
+      },
       "view": {
         "floor": "Floor",
         "unread": "Unread",
@@ -6858,7 +6936,6 @@
       "steps": "Console steps",
       "step": {
         "identify": "Identify",
-        "protocol": "Protocol",
         "acquire": "Acquire",
         "send": "Send"
       },
@@ -6923,7 +7000,7 @@
         "noGate": "No identity gate on this study.",
         "done": "Identity {{state}}",
         "first": "First identifier — the patient says their name and age",
-        "firstSaid": "Said “{{name}}, {{age}}” in their own words — matches",
+        "firstAsk": "Expect “{{name}}, {{age}}” in their own words. Scanning the band, or Check, records that they said it",
         "second": "Second identifier — checked against the patient master",
         "kind": "Second identifier",
         "kinds": {
@@ -6956,9 +7033,6 @@
         "evidence": "Bedside radiation safety confirmed: everyone else 2 m away; lead apron on staff who stayed; no pregnant staff, visitor or patient in the bay"
       },
       "protocol": {
-        "noBook": "No protocol book is published yet. Work from the radiologist's instruction; the HOD writes the book under Setup → Books.",
-        "noEntry": "The protocol book has no protocol for {{study}}. Work from the radiologist's instruction.",
-        "toBooks": "Open Setup → Books",
         "default": "department default",
         "preset": "Machine preset",
         "slice": "Slice / pitch",
@@ -7055,7 +7129,6 @@
         "after": "Sending records the acquisition; the study leaves this list and appears on the reading worklist."
       },
       "dock": {
-        "toProtocol": "Protocol →",
         "toAcquire": "Acquire →",
         "start": "Start",
         "toSend": "Send →",
@@ -7063,7 +7136,6 @@
         "prepHold": "A prep gate is still open — the prep bay closes it first",
         "identifyFirst": "Identify the patient first — both identifiers, and the side if the study has one",
         "identified": "Identity and side are confirmed",
-        "protocolHint": "Read the protocol card, then acquire",
         "startHint": "Puts the patient on {{machine}} and marks it busy",
         "doseFirst": "An ionising study needs its dose from the console",
         "sendHint": "Dose and contrast recorded — check the images, then send",
@@ -7192,7 +7264,23 @@
       "clocksSummary": "{{count}} over target",
       "clocksNone": "All inside target",
       "readingBy": "{{name}} is reading",
-      "lockLine": "{{name}} opened these images in the last hour and may be reading this study. You can still read it; they will see your draft.",
+      "lockLine": "{{name}} opened this study in the last hour and may be reading it. You can still read it, or take it over.",
+      "takeOver": "Take over",
+      "assignLabel": "Assign to",
+      "assignNobody": "Nobody",
+      "assignedTo": "Assigned to {{name}}",
+      "pool": "{{name}} pool",
+      "autosaved": "Draft kept {{time}}",
+      "drafted": {
+        "chip": "Drafted from {{sources}}",
+        "source": {
+          "study_type": "study type",
+          "dose_record": "dose record",
+          "contrast_register": "contrast register",
+          "outside_register": "outside register",
+          "prior_report": "prior report"
+        }
+      },
       "inHand": "In hand",
       "question": "Clinical question",
       "noQuestion": "No clinical question was written on the order.",
@@ -7351,7 +7439,8 @@
         "councilReg": "Council registration",
         "esigned": "Electronically signed {{at}} IST with a second factor"
       },
-      "viewList": "Reading list",
+      "viewList": "My list",
+      "viewAll": "All",
       "signedForCosign": "Signed for co-sign — a consultant co-signs it before it leaves the department.",
       "cosigned": "Co-signed and published.",
       "cosignedNotified": "Co-signed and published — the patient has been told the report is ready.",
@@ -11531,7 +11620,52 @@
       "apptSlotTaken": "That time was just taken. Nothing done — ask again.",
       "apptDoctorOnLeave": "The doctor is on leave that day. Nothing done.",
       "apptPast": "That time has passed. Nothing done — ask again.",
-      "apptChanged": "That appointment has changed. Nothing done — ask again."
+      "apptChanged": "That appointment has changed. Nothing done — ask again.",
+      "radMyListRead": "Your reading list: {{count}}, {{overdue}} past target.",
+      "radMyListPrep": "Prep bay: {{count}} waiting.",
+      "radMyListFloor": "Worklist: {{count}} to do.",
+      "radNoStudy": "No imaging study with that number.",
+      "radStudies": "Studies: {{count}}. Ask with one accession.",
+      "radStudyHeld": "{{accession}}: held at {{gate}}. Fix at {{seat}}.",
+      "radStudyState": "{{accession}}: {{state}}.",
+      "radNextSlot": "{{accession}}: next free {{machine}}, {{when}}.",
+      "radNextSlotNone": "{{accession}}: no free slot in 7 days.",
+      "radNothingToBook": "Nothing waiting to book.",
+      "radOverdue": "Past target: {{count}} reads.",
+      "radOverdueNone": "No reads past target.",
+      "radCriticals": "Critical calls open: {{count}}, oldest {{minutes}} min.",
+      "radCriticalsNone": "No critical calls open.",
+      "radReportNotReady": "{{accession}}: report not released yet.",
+      "radReportReady": "{{accession}}: report ready to hand over.",
+      "radReportHeld": "{{accession}}: ready, held for dues {{amount}}.",
+      "radReportHanded": "{{accession}}: report already handed over.",
+      "radMachines": "All {{up}} machines working.",
+      "radMachinesDown": "Down: {{down}} ({{names}}). Working: {{up}}.",
+      "radMachinesNone": "No machine of that kind.",
+      "radNumbers": "{{ordered}} ordered · {{median}} min to sign · {{unread}} unread · {{notActed}} not acted.",
+      "radFollowups": "Follow-ups open: {{open}}, overdue {{overdue}}.",
+      "radFollowupsNone": "No follow-ups open.",
+      "radDraftReady": "{{accession}}: draft ready. Open to review.",
+      "radNotReportable": "{{accession}}: no images to report yet.",
+      "radBookPick": "Tap a slot, then confirm.",
+      "radBooked": "Booked {{accession}}: {{machine}}, {{when}}.",
+      "radSlotTaken": "That slot was just taken. Nothing booked.",
+      "radStudyChanged": "That study changed. Nothing done.",
+      "radNothingToMove": "No booking to move.",
+      "radMovePick": "Tap the new slot, then confirm.",
+      "radNoShowPick": "Tap to mark no-show, then confirm.",
+      "radNeedReason": "Add the reason after a colon.",
+      "radMoved": "Moved {{accession}}: {{machine}}, {{when}}.",
+      "radNoShowDone": "{{accession}} marked no-show.",
+      "radActedNothing": "No released report to mark.",
+      "radActedPick": "Tap what the report changed.",
+      "radActedNeedNote": "Write what changed after a colon.",
+      "radActedNotYours": "Only the treating doctor can mark this.",
+      "radActedDone": "Recorded on {{accession}}.",
+      "radActedAlready": "Already recorded for this report.",
+      "radMediaNotReleased": "{{accession}}: report not released yet.",
+      "radMediaPick": "Tap film or CD, then confirm.",
+      "radMediaDone": "{{kind}} asked for {{accession}}."
     },
     "act": {
       "leave": "Ask for this leave?",
@@ -11566,6 +11700,26 @@
       "at": "on {{day}} at {{time}}",
       "stamp": "{{day}}, {{time}}",
       "nobody": "nobody"
+    },
+    "rad": {
+      "seat": {
+        "desk": "the desk",
+        "prep": "the prep bay",
+        "room": "the room",
+        "usg": "the USG room"
+      },
+      "media": {
+        "film": "Film",
+        "cd": "CD"
+      },
+      "pick": {
+        "book": "Book this?",
+        "move": "Move to this?",
+        "no_show": "Mark no-show?",
+        "acted": "Record this?",
+        "media": "Ask for this?"
+      },
+      "openDraft": "Open the draft"
     },
     "report": {
       "title": "Your day — {{date}}",
@@ -14749,12 +14903,16 @@
     },
     "desk": {
       "heading": "Order from a visit",
-      "find": "Visit number",
-      "findPlaceholder": "V2609280001",
+      "find": "UHID, phone, name or visit number",
+      "findPlaceholder": "U00110012 · 98… · Asha · V2609280001",
       "findButton": "Find",
       "visitLine": "{{visitNo}} · {{doctor}} · {{department}}",
-      "noVisit": "Type the visit number from the slip or the token.",
-      "advised": "Advised by the doctor"
+      "noVisit": "Type a UHID, a phone number, a name, or the visit number from the slip.",
+      "advised": "Advised by the doctor",
+      "patients": "Patients found",
+      "noPatient": "No patient matches. A new patient is registered at Registration.",
+      "visitsToday": "Today's visits",
+      "noVisitToday": "No visit today. A doctor here: the front desk opens the visit. An outside slip: order it below."
     },
     "outside": {
       "heading": "Outside prescription (walk-in slip)",
@@ -14762,6 +14920,15 @@
       "referrerName": "Referring doctor",
       "referrerReg": "Registration no.",
       "referrerRequired": "Type the referring doctor's name and registration number."
+    },
+    "walkIn": {
+      "heading": "Outside slip, no visit today",
+      "note": "The desk opens an imaging visit under the radiologist. No consultation fee.",
+      "loading": "Loading the imaging book…",
+      "under": "Under {{name}}",
+      "radiologist": "Radiologist who answers",
+      "pick": "Choose a radiologist",
+      "noRadiologist": "No radiologist is set up in the Radiology (RAD) department. Ask the administrator."
     }
   },
   "profile": {
@@ -14954,6 +15121,7 @@
       "medicines_one": "{{count}} medicine prescribed",
       "medicines_other": "{{count}} medicines prescribed",
       "labVisit": "Lab visit · walk-in",
+      "imagingVisit": "Imaging visit · outside slip",
       "labSigned": "Report signed",
       "labResults_one": "{{count}} result",
       "labResults_other": "{{count}} results",
@@ -16786,6 +16954,7 @@
     "sources": {
       "opd": "OPD",
       "ipd": "IPD",
+      "daycare": "Day care",
       "walk_in": "Walk-in"
     },
     "modes": {

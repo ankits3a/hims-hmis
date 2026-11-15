@@ -6,7 +6,7 @@ import { suggestedContrastMl, aboveDrl } from "../lib/radiology-room-api";
 import { RadiologyRoom, orderRoomList } from "./radiology-room";
 
 /**
- * PLAN 18-S RS6 — THE MODALITY ROOMS: the console's four steps, the machine's list, and the three
+ * PLAN 18-S RS6 — THE MODALITY ROOMS: the console's three steps (#1080), the machine's list, and the three
  * views beside it. Every date is RELATIVE to the real clock (the house's fixed-date lesson).
  *
  * What these pin, beyond "it renders": the console never satisfies a PREP gate (it links to the
@@ -136,40 +136,32 @@ it("Identify: a PREP gate open is shown with the prep bay link and the dock stay
   expect(calls.some((c) => c.includes("/gates/renal_function/"))).toBe(false);
 });
 
-it("Identify: the second identifier goes to the server to be compared, only after the name is said", async () => {
+it("Identify: the second identifier goes to the server to be compared, and Check attests the name was said (#1080)", async () => {
   mockRoutes(base({
     "GET /api/radiology/studies/S1/readiness": { status: 200, body: gates([["identity_two_factor", "open"], ["laterality_confirm", "open"]]) },
     "POST /api/radiology/studies/S1/gates/identity_two_factor/satisfy": { status: 200, body: {} },
     "POST /api/radiology/studies/S1/gates/laterality_confirm/satisfy": { status: 200, body: {} },
   }));
   renderWithProviders(<RadiologyRoom search={{ machine: "CT-1", study: "S1" }} />);
-  await userEvent.type(await screen.findByTestId("id-value"), "HMS-00000001-5");
-  expect(screen.getByTestId("id-check")).toBeDisabled();
-  await userEvent.click(screen.getByTestId("id-first"));
+  expect(await screen.findByTestId("id-check")).toBeDisabled();
+  expect(screen.getByTestId("id-first")).toHaveTextContent("Asha Devi, 30");
+  await userEvent.selectOptions(screen.getByTestId("id-kind"), "uhid");
+  await userEvent.type(screen.getByTestId("id-value"), "HMS-00000001-5");
   await userEvent.click(screen.getByTestId("id-check"));
-  await waitFor(() => { expect(bodiesOf("POST /api/radiology/studies/S1/gates/identity_two_factor/satisfy")).toEqual([{ secondIdentifier: "wristband", value: "HMS-00000001-5" }]); });
+  await waitFor(() => { expect(bodiesOf("POST /api/radiology/studies/S1/gates/identity_two_factor/satisfy")).toEqual([{ secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true }]); });
   await userEvent.click(screen.getByTestId("side-left"));
   await waitFor(() => { expect(bodiesOf("POST /api/radiology/studies/S1/gates/laterality_confirm/satisfy")).toEqual([{ patientStated: "left" }]); });
   expect(screen.getByTestId("dock-act")).toBeDisabled();
 });
 
-it("Protocol: the book's card, the volume for this weight, and the words in Hindi", async () => {
+it("Acquire: the protocol book's card, the volume for this weight, and the words in Hindi", async () => {
   mockRoutes(base());
   renderWithProviders(<RadiologyRoom search={{ machine: "CT-1", study: "S1" }} />);
-  await userEvent.click(await screen.findByTestId("step-protocol"));
+  await userEvent.click(await screen.findByTestId("step-acquire"));
   expect(screen.getByTestId("protocol-card")).toHaveTextContent("CT brain with contrast");
   expect(screen.getByTestId("contrast-suggestion")).toHaveTextContent("Suggested volume: 87 mL");
   await userEvent.click(within(screen.getByTestId("breath-hold")).getByRole("button", { name: "हिं" }));
   expect(screen.getByTestId("breath-hold")).toHaveTextContent("सिर बिल्कुल स्थिर रखें।");
-});
-
-it("Protocol: no book published is said plainly, with the way to Setup → Books", async () => {
-  mockRoutes(base({ "GET /api/radiology/studies/S1/room": { status: 200, body: { study: room({ protocol: { book: "none", version: null, matchedOn: null, protocol: null } }) } } }));
-  renderWithProviders(<RadiologyRoom search={{ machine: "CT-1", study: "S1" }} />);
-  await userEvent.click(await screen.findByTestId("step-protocol"));
-  const note = screen.getByTestId("no-protocol");
-  expect(note).toHaveTextContent(/No protocol book is published yet/);
-  expect(within(note).getByRole("link")).toHaveAttribute("href", "/radiology/setup?view=books");
 });
 
 it("Acquire: a refused start is the server's words with the seat that fixes it", async () => {

@@ -360,6 +360,62 @@ describe("radiology — 0047 structure", () => {
         .rejects.toThrow(/imaging_report_immutable/);
     });
 
+    /**
+     * #1081 / migration 0234 — the ONE widening: an AUTOSAVED draft's own text, for ten minutes from
+     * its `created_at`, by its own author. Everything else about that row, and every other row, stays
+     * frozen; DELETE stays refused (ruling 0098 §5).
+     */
+    describe("#1081 — the autosaved working draft", () => {
+      const T0 = new Date("2026-08-31T06:00:00.000Z");
+      const at = (m: number) => new Date(T0.getTime() + m * 60_000).toISOString();
+      const autosaved = (studyId: string, over: Record<string, unknown> = {}) => report(studyId, {
+        status: "draft", draftedBy: "u_reader", autosavedAt: T0, createdAt: T0, ...over,
+      });
+      const update = (set: string) => db.execute(sql.raw(`update imaging_reports set ${set} where id = '01REPORT0000000000000001'`));
+
+      it("PERMITS its author's autosave to change body, impression, laterality and template inside ten minutes", async () => {
+        const studyId = await withStudy();
+        await db.insert(imagingReports).values(autosaved(studyId) as never);
+        await update(`body = '{"findings":"later words"}'::jsonb, impression = 'Normal.', laterality = 'left', template_key = 'ct', autosaved_at = '${at(9)}'`);
+        const [row] = await db.select().from(imagingReports);
+        expect([(row!.body as { findings: string }).findings, row!.impression, row!.laterality, row!.templateKey])
+          .toEqual(["later words", "Normal.", "left", "ct"]);
+      });
+
+      it("REFUSES the same change at ten minutes, without moving autosaved_at, or backwards", async () => {
+        const studyId = await withStudy();
+        await db.insert(imagingReports).values(autosaved(studyId, { autosavedAt: new Date(at(5)) }) as never);
+        for (const set of [
+          `body = '{"findings":"x"}'::jsonb, autosaved_at = '${at(10)}'`,
+          `body = '{"findings":"x"}'::jsonb`,
+          `body = '{"findings":"x"}'::jsonb, autosaved_at = '${at(4)}'`,
+        ]) await expect(update(set)).rejects.toThrow(/imaging_report_immutable/);
+      });
+
+      it("REFUSES a change to its author, version, provenance or signer, and DELETE", async () => {
+        const studyId = await withStudy();
+        await db.insert(imagingReports).values(autosaved(studyId) as never);
+        for (const set of [
+          `drafted_by = 'u_other', autosaved_at = '${at(1)}'`, `version = 9, autosaved_at = '${at(1)}'`,
+          `provenance = '{"drafter":"x"}'::jsonb, autosaved_at = '${at(1)}'`, `signer_id = 'u9', autosaved_at = '${at(1)}'`,
+          `status = 'signed', body = '{"findings":"x"}'::jsonb, autosaved_at = '${at(1)}'`,
+        ]) await expect(update(set)).rejects.toThrow(/imaging_report_immutable/);
+        await expect(db.execute(sql`delete from imaging_reports where id = '01REPORT0000000000000001'`))
+          .rejects.toThrow(/imaging_report_immutable/);
+      });
+
+      it("REFUSES a change to a Save (no autosaved_at), a machine's proposal, and a prelim", async () => {
+        const studyId = await withStudy();
+        const cases = [{ autosavedAt: null }, { provenance: { drafter: "offline_template" } }, { status: "prelim" }];
+        for (const [i, over] of cases.entries()) {
+          const id = `01REPORT000000000000000${String(i + 2)}`;
+          await db.insert(imagingReports).values(autosaved(studyId, { ...over, id, version: i + 2 }) as never);
+          await expect(db.execute(sql.raw(`update imaging_reports set body = '{"findings":"x"}'::jsonb, autosaved_at = '${at(1)}' where id = '${id}'`)))
+            .rejects.toThrow(/imaging_report_immutable/);
+        }
+      });
+    });
+
     it("PERMITS the two columns publication moves — status and published_at", async () => {
       const studyId = await withStudy();
       await db.insert(imagingReports).values(report(studyId, signed) as never);

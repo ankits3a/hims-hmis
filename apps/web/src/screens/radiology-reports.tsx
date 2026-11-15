@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fmtIst, fmtRupees } from "../lib/format";
+import { fmtIst, fmtRupees, useDebounced } from "../lib/format";
 import { radiologyErrorCode, radiologyErrorText } from "../lib/radiology-api";
 import {
-  COLLECTOR_ID_TYPES, COLLECTOR_KINDS, askUnpaidRelease, fetchReleaseRegister, handOverReport, markMediaPrinted, requestImagingMedia,
+  COLLECTOR_ID_TYPES, COLLECTOR_KINDS, askUnpaidRelease, fetchHandoverPrint, fetchMediaQueue, fetchReleaseRegister, handOverReport,
+  markMediaPrinted, requestImagingMedia,
 } from "../lib/radiology-release-api";
-import type { CollectorKind, WireReleaseRow } from "../lib/radiology-release-api";
+import type { WireReportPrint } from "../lib/radiology-reading-api";
+import { ImagingReportPrint } from "../components/radiology/imaging-report-print";
+import { PatientFacts } from "../components/radiology/patient-facts";
+import type { CollectorKind, HandoverBody, WireReleaseRow } from "../lib/radiology-release-api";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingCopilot } from "../components/radiology/imaging-copilot";
 import { Refusal, SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
+import { IMAGING_RELEASE_TOPIC, useImagingLive } from "../lib/radiology-live";
 
 /**
  * PLAN 18-S RS9 T4 — **REPORT HAND-OVER: one release register at the imaging window** (board:
@@ -33,6 +39,15 @@ import { istDay } from "../components/radiology/desk-time";
  * cannot pay today the desk ASKS the owner with a reason — only the owner releases a report unpaid
  * (credit ruling 28 Sep), in the approvals inbox — and once granted the dock hands it over. The
  * doctor's copy is never held, and the screen says so.
+ *
+ * #1085 — **the film & CD queue**: every film or CD asked for and not yet printed, oldest first, as its own
+ * list under the window's list (`GET /radiology/media/queue`) — accession, what, how many, since when; the
+ * Printed mark is the register's own act. No names: the printer works by accession.
+ *
+ * #1076 — **find, refresh, print.** One search box (name, UHID or accession) is answered by the SERVER,
+ * so it reaches a report past the 30-day register; the register refreshes every 30 s; the report in hand
+ * has a Print button that renders the same A4 print the reading room uses (the desk's own route: only the
+ * current released version, never a copy held for dues — the dock's rule, said again by the server).
  */
 
 type Draft = {
@@ -59,16 +74,38 @@ export function RadiologyReports(): React.ReactElement {
   const [error, setError] = useState<{ code: string | null; message: string } | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [askReason, setAskReason] = useState("");
+  const [search, setSearch] = useState("");
+  const [printDoc, setPrintDoc] = useState<WireReportPrint | null>(null);
+  const query = useDebounced(search.trim(), 300);
 
-  const q = useQuery({ queryKey: ["radiology", "release"], queryFn: fetchReleaseRegister });
+  const q = useQuery({ queryKey: ["radiology", "release"], queryFn: () => fetchReleaseRegister(), refetchInterval: 30_000 });
+  const found = useQuery({
+    queryKey: ["radiology", "release", "search", query],
+    queryFn: () => fetchReleaseRegister(query),
+    enabled: query.length >= 2,
+  });
+  useImagingLive(IMAGING_RELEASE_TOPIC, [["radiology", "release"], ["radiology", "release", "search", query]]); // #1083
   const rows = useMemo(() => q.data?.rows ?? [], [q.data]);
-  const inHand = rows.find((r) => r.reportId === sel) ?? null;
+  const searching = query.length >= 2;
+  const shown = useMemo(() => (searching ? found.data?.rows ?? [] : rows), [searching, found.data, rows]);
+  const inHand = rows.find((r) => r.reportId === sel) ?? shown.find((r) => r.reportId === sel) ?? null;
   const refresh = (): void => { void qc.invalidateQueries({ queryKey: ["radiology", "release"] }); };
   const fail = (e: unknown): void => { setError({ code: radiologyErrorCode(e), message: radiologyErrorText(e) }); };
   const take = (r: WireReleaseRow | null): void => {
     setSel(r?.reportId ?? null); setDraft({ ...EMPTY, kind: r?.bedsideLocation != null ? "ward_staff" : "patient" });
-    setError(null); setFilmQty(1); setAskReason("");
+    setError(null); setFilmQty(1); setAskReason(""); setPrintDoc(null);
   };
+
+  const print = useMutation({
+    mutationFn: (row: WireReleaseRow) => fetchHandoverPrint(row.reportId),
+    onSuccess: (r) => {
+      if (r.report === null) { setError({ code: null, message: t("radiology.release.printGone") }); return; }
+      setError(null); setPrintDoc(r.report);
+    },
+    onError: fail,
+  });
+  /** The page is on screen first, then the browser's print dialog — one press, one print. */
+  useEffect(() => { if (printDoc !== null) window.print(); }, [printDoc]);
 
   const media = useMutation({
     mutationFn: (v: { row: WireReleaseRow; kind: "film" | "cd" }) =>
@@ -86,7 +123,7 @@ export function RadiologyReports(): React.ReactElement {
       collectorKind: draft.kind,
       collectorName: draft.kind === "patient" ? null : draft.name.trim(),
       collectorRelation: draft.kind === "relative" ? tEn(`radiology.release.relation.${draft.relation}`) : null,
-      collectorIdType: draft.kind === "relative" ? draft.idType : null,
+      collectorIdType: draft.kind === "relative" ? draft.idType as HandoverBody["collectorIdType"] : null,
       collectorIdLast4: draft.kind === "relative" ? draft.idLast4 : null,
       mediaRequestIds: draft.media,
       note: draft.note.trim() === "" ? null : draft.note.trim(),
@@ -119,6 +156,10 @@ export function RadiologyReports(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /** #1085 — under the release key, so every act's refresh re-reads it too. */
+  const queueQ = useQuery({ queryKey: ["radiology", "release", "media-queue"], queryFn: fetchMediaQueue, refetchInterval: 30_000 });
+  const toPrint = queueQ.data?.rows ?? [];
+
   const waiting = rows.filter((r) => r.needs.length > 0);
   const abnormal = rows.filter((r) => r.needs.includes("abnormal_uncollected"));
   const needText = (r: WireReleaseRow): string => {
@@ -141,7 +182,27 @@ export function RadiologyReports(): React.ReactElement {
               className={`w-full rounded border p-2 text-left text-sm ${r.reportId === sel ? "outline outline-2 outline-black" : ""} ${r.needs[0] === "abnormal_uncollected" ? "border-red-400 bg-red-50" : "bg-card"}`}
             >
               <b>{r.patientName}</b>
+              <PatientFacts row={r} />
               <span className="block text-xs text-muted-foreground">{r.studyName} · {needText(r)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <h2 className="tag m-0 mb-2 mt-4">{t("radiology.release.toPrint")} · {toPrint.length}</h2>
+      {queueQ.isSuccess && toPrint.length === 0 && <p className="text-sm text-muted-foreground">{t("radiology.release.nothingToPrint")}</p>}
+      <ul className="m-0 list-none space-y-1 p-0" data-testid="media-queue">
+        {toPrint.map((m) => (
+          <li key={m.requestId} data-media={m.requestId} className="flex flex-wrap items-center justify-between gap-2 rounded border bg-card p-2 text-sm">
+            <span className="min-w-0">
+              <span className="mo">{m.accessionNo}</span>{" · "}
+              {m.kind === "film" ? t("radiology.release.queueFilm", { count: m.quantity }) : t("radiology.release.queueCd")}
+              <span className="block text-xs text-muted-foreground">{t("radiology.release.queueSince", { at: `${istDay(m.requestedAt)} ${fmtIst(m.requestedAt)}` })}</span>
+            </span>
+            <button
+              type="button" className="rounded border px-2 py-0.5 text-xs disabled:opacity-50"
+              disabled={printed.isPending} onClick={() => printed.mutate(m.requestId)}
+            >
+              {t("radiology.release.markPrinted")}
             </button>
           </li>
         ))}
@@ -162,7 +223,7 @@ export function RadiologyReports(): React.ReactElement {
   const lane = inHand === null ? undefined : (
     <div className="mt-4 space-y-1 border-t pt-3 text-sm" data-acc={inHand.accessionNo}>
       <b className="block">{inHand.patientName}</b>
-      <span className="block text-xs text-muted-foreground">{inHand.uhid}</span>
+      <PatientFacts row={inHand} />
       <span className="block">{inHand.studyName}</span>
       <span className="mo block text-xs">{inHand.accessionNo} · v{inHand.version}</span>
       <span className="block text-xs">{t("radiology.release.released", { at: `${istDay(inHand.publishedAt)} ${fmtIst(inHand.publishedAt)}` })}</span>
@@ -177,11 +238,24 @@ export function RadiologyReports(): React.ReactElement {
 
   const register = (
     <section className="rounded border bg-card" aria-label={t("radiology.release.register")}>
-      <h2 className="tag m-0 border-b p-2">{t("radiology.release.register")} · {rows.length}</h2>
+      <div className="flex flex-wrap items-center gap-2 border-b p-2">
+        <h2 className="tag m-0 min-w-0 flex-1">
+          {searching ? t("radiology.release.searchResults", { count: shown.length }) : `${t("radiology.release.register")} · ${rows.length}`}
+        </h2>
+        <label className="flex min-w-0 basis-56 flex-col text-xs">
+          {t("radiology.release.search")}
+          <input
+            type="search" className="border px-2 py-1 text-sm" maxLength={80} value={search} data-testid="release-search"
+            placeholder={t("radiology.release.searchHint")} onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+      </div>
       {q.isError && <div className="p-2"><Refusal code={radiologyErrorCode(q.error)} message={radiologyErrorText(q.error)} /></div>}
-      {q.isSuccess && rows.length === 0 && <p className="m-0 p-2 text-sm text-muted-foreground">{t("radiology.release.empty")}</p>}
+      {found.isError && searching && <div className="p-2"><Refusal code={radiologyErrorCode(found.error)} message={radiologyErrorText(found.error)} /></div>}
+      {!searching && q.isSuccess && rows.length === 0 && <p className="m-0 p-2 text-sm text-muted-foreground">{t("radiology.release.empty")}</p>}
+      {searching && found.isSuccess && shown.length === 0 && <p className="m-0 p-2 text-sm text-muted-foreground">{t("radiology.release.searchNone")}</p>}
       <ul className="m-0 list-none p-0" data-testid="release-register">
-        {rows.map((r) => {
+        {shown.map((r) => {
           const h = last(r);
           return (
             <li
@@ -190,6 +264,7 @@ export function RadiologyReports(): React.ReactElement {
             >
               <div className="min-w-0 flex-1 basis-48">
                 <b>{r.patientName}</b> <span className="mo text-xs text-muted-foreground">{r.accessionNo}</span>
+                <PatientFacts row={r} />
                 <span className="block text-xs">{r.studyName}{r.criticalCategory !== null ? ` · ${t("radiology.release.abnormal")}` : ""}</span>
               </div>
               <div className="min-w-0 flex-1 basis-40 text-xs">
@@ -242,6 +317,18 @@ export function RadiologyReports(): React.ReactElement {
   const handover = inHand === null ? null : (
     <section className="space-y-3" data-testid="handover">
       {heldPanel}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button" className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+          disabled={blocked(inHand) || print.isPending} onClick={() => print.mutate(inHand)}
+        >
+          {t("radiology.release.print")}
+        </button>
+        {printDoc !== null && (
+          <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => window.print()}>{t("radiology.release.printNow")}</button>
+        )}
+      </div>
+      {printDoc !== null && <ImagingReportPrint report={printDoc} />}
       <div className="rounded border bg-card p-3 space-y-2">
         <h2 className="tag m-0">{t("radiology.release.collector")}</h2>
         <div role="radiogroup" aria-label={t("radiology.release.collector")} className="flex flex-wrap gap-2">
@@ -359,6 +446,7 @@ export function RadiologyReports(): React.ReactElement {
       list={list}
       inHand={inHand !== null}
       closeListOn={sel}
+      copilot={<ImagingCopilot subject={inHand?.accessionNo ?? null} patientName={inHand?.patientName ?? null} />}
       clocks={clocks ?? undefined}
       clocksSummary={t("radiology.release.clocks", { count: abnormal.length })}
       clocksAlert={abnormal.length > 0}

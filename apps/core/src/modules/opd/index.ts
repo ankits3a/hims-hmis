@@ -25,6 +25,9 @@ export { PHARMACY_VISIT_TYPE, openPharmacyVisitInTx } from "./encounters";
 export type { OutsidePrescriber } from "./prescriptions";
 export { LAB_DEPARTMENT_CODE, LAB_VISIT_TYPE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
 export type { JoinQueueResult, OpenLabWalkinInput, OpenVisitResult, ReviewAnchor } from "./encounters";
+// ── #1079 (IM2b) — the imaging desk's walk-in for an outside referral, the lab walk-in's twin ──
+export { IMAGING_VISIT_TYPE, RAD_DEPARTMENT_CODE, openImagingWalkinInTx } from "./encounters";
+export type { OpenImagingWalkinInput, OpenImagingWalkinResult } from "./encounters";
 export type { AdvisedTest } from "./consultation";
 // ── PLAN 16c T0a — the prescription read surface the dispensing counter consumes (spec §4) ──
 // `getPrescription` and `listPrescriptions` walk the 07a read gate and log the PHI read;

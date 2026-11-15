@@ -1,0 +1,1 @@
+CREATE INDEX "imaging_studies_encounter_no_idx" ON "imaging_studies" USING btree ("encounter_no");

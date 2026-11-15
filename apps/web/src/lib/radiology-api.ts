@@ -1,5 +1,10 @@
 import { api } from "./api";
+import type {
+  ImagingAcquiredBody, ImagingContrastBody, ImagingDeskCollectBody, ImagingDeskWalkInOrderBody, ImagingRescheduleBody,
+  ImagingScheduleBody, ImagingSignBody,
+} from "@hmis/contracts";
 import { messageText } from "./materials-api";
+import type { WireDraftSection } from "./radiology-reading-api";
 
 /**
  * PLAN 18a T9 — the imaging department's wire contract, transcribed from the five
@@ -27,6 +32,8 @@ export type WireWorklistRow = {
   formFRequired: boolean; restricted: boolean;
   /** 18-S RS3 — when the order arrived and when the patient was checked in (the desk's clocks). */
   createdAt: string; checkedInAt: string | null;
+  /** #1076 — the full list row: UHID (blank for a confidential patient without clearance), age, sex, the book's study name. Absent from older servers. */
+  uhid?: string; ageYears?: number | null; sex?: string; studyTypeName?: string;
 };
 
 export type WireStudyView = WireWorklistRow & {
@@ -117,7 +124,11 @@ export type PlaceImagingOrderBody = {
   patientId: string; encounterNo: string; serviceDate: string; orderingClinicianId: string;
   priority?: "routine" | "urgent" | "stat";
   indication: string;
-  items: { serviceId: string; duplicateOfItemId?: string | null; duplicateReason?: string | null }[];
+  items: {
+    serviceId: string; duplicateOfItemId?: string | null; duplicateReason?: string | null;
+    /** #1080 — required by the server for a study whose type has a side. */
+    laterality?: "left" | "right" | "bilateral" | null;
+  }[];
   authority?: "clinician" | "external_prescription";
   referrer?: { name: string; registrationNo: string } | null;
 };
@@ -206,7 +217,7 @@ export const fetchCounter = (studyId: string) =>
 /** Every desk act on a booking carries a reason; the server refuses `reason_required` without one. */
 export const rescheduleStudy = (
   studyId: string,
-  body: { deviceResourceId: string; scheduledAt: string; bedsideLocation?: string | null; reason: string },
+  body: ImagingRescheduleBody & { reason: string },
 ) => api("POST", `/radiology/studies/${studyId}/reschedule`, body);
 
 export const markNoShow = (studyId: string, reason: string) =>
@@ -215,15 +226,69 @@ export const markNoShow = (studyId: string, reason: string) =>
 export const cancelImagingStudy = (studyId: string, reason: string) =>
   api<{ studyId: string; billDecisionId: string | null }>("POST", `/radiology/studies/${studyId}/cancel`, { reason });
 
-/** The counter's link from a raised invoice line to the study it pays for (`linkInvoiceLine`). */
-export const linkInvoiceLine = (studyId: string, invoiceLineId: string) =>
-  api<{ studyId: string; invoiceLineId: string }>("POST", `/radiology/studies/${studyId}/invoice-line`, { invoiceLineId });
+/* ── #1078 — the desk's acts, each ONE server call (`radiology-desk.controller.ts`, `desk.ts`) ── */
 
-/** `GET /billing/invoices/:id` — only the fields the desk reads to find the line it just raised. */
-export const fetchInvoiceLines = (invoiceId: string) =>
-  api<{ invoice: { id: string; invoiceNo: string }; lines: { id: string; serviceId: string; lineNo: number }[] }>(
-    "GET", `/billing/invoices/${encodeURIComponent(invoiceId)}`,
+/** `arriveAtDesk`: every study of the visit booked for today, checked in; a refusal does not stop the rest. */
+export type WireDeskArrival = {
+  encounterNo: string;
+  checkedIn: { studyId: string; accessionNo: string; gates: string[]; pregnancyReason: string }[];
+  refused: { studyId: string; accessionNo: string; code: string; message: string }[];
+};
+export const deskArrive = (encounterNo: string) =>
+  api<WireDeskArrival>("POST", "/radiology/desk/arrive", { encounterNo });
+
+/** `@hmis/contracts` `imagingDeskCollectBody`. The route requires an Idempotency-Key. */
+export type DeskCollectBody = ImagingDeskCollectBody;
+export type WireDeskCollect = {
+  invoiceId: string; invoiceNo: string; receiptNo: string | null; totalPaise: number;
+  /** An earlier bill already charged every study: its lines were linked and nothing was collected. */
+  adopted: boolean;
+  linked: { studyId: string; invoiceLineId: string }[];
+};
+export const deskCollect = (body: DeskCollectBody, idempotencyKey: string) =>
+  api<WireDeskCollect>("POST", "/radiology/desk/collect", body, idempotencyKey);
+
+/** `walkInNow`: the first free machine AND the check-in, in one transaction. */
+export const deskWalkInNow = (studyId: string) =>
+  api<{ studyId: string; accessionNo: string; deviceResourceId: string; scheduledAt: string; gates: string[]; pregnancyReason: string }>(
+    "POST", `/radiology/desk/studies/${studyId}/walk-in`, {},
   );
+
+/** `proposeSlot`: the first free quarter hour on a machine that may take the study. It books nothing. */
+export type WireSlotProposal = { studyId: string; deviceResourceId: string; code: string; name: string; scheduledAt: string };
+export const fetchDeskProposal = (studyId: string) =>
+  api<{ proposal: WireSlotProposal | null }>("GET", `/radiology/desk/studies/${studyId}/proposal`);
+
+/**
+ * #1085 — the desk's one-tap no-show writes the sweep's own reason for the same fact (`NO_SHOW_REASON` in
+ * `modules/radiology/automation.ts`), in English whatever the screen's language: it is the audit's word.
+ */
+export const NO_SHOW_REASON = "not arrived";
+
+/** #1085 `noShowsToRebook`: the last 30 days' no-shows nobody has booked again; a paid one is good until `goodUntil`. */
+export type WireNoShowToRebook = {
+  studyId: string; accessionNo: string; studyTypeCode: string; patientId: string; patientName: string;
+  encounterNo: string; missedAt: string; paid: boolean; goodUntil: string;
+};
+export const fetchNoShowsToRebook = () => api<{ rows: WireNoShowToRebook[] }>("GET", "/radiology/desk/no-shows");
+
+/** `deskVisitsToday`: the patient's OPD visits of today (IST) and (#1079) their imaging walk-in, for the desk door. */
+export type WireDeskVisit = { encounterNo: string; serviceDate: string; status: string; visitType: string; openedAt: string };
+export const fetchDeskVisits = (patientId: string) =>
+  api<{ visits: WireDeskVisit[] }>("GET", `/radiology/desk/visits?patientId=${encodeURIComponent(patientId)}`);
+
+/* ── #1079 — an outside slip and no visit today: the imaging walk-in (`desk.ts` `placeWalkInOrder`) ── */
+
+/** `deskWalkInView`: the active book with prices, and the RAD department's radiologists (empty: not set up). */
+export type WireDeskRadiologist = { doctorId: string; displayName: string; userId: string };
+export type WireDeskWalkInView = { bookActive: boolean; book: WireImagingBookEntry[]; radiologists: WireDeskRadiologist[] };
+export const fetchDeskWalkIn = () => api<WireDeskWalkInView>("GET", "/radiology/desk/walk-in");
+
+/** `@hmis/contracts` `imagingDeskWalkInOrderBody`. The visit is opened (or today's reused) with the order. */
+export type DeskWalkInOrderBody = ImagingDeskWalkInOrderBody;
+export type WireDeskWalkInOrder = { encounterNo: string; visitOpened: boolean; orderId: string; orderNo: string; itemIds: string[] };
+export const deskWalkInOrder = (body: DeskWalkInOrderBody, idempotencyKey: string) =>
+  api<WireDeskWalkInOrder>("POST", "/radiology/desk/walk-in-order", body, idempotencyKey);
 
 /** `display.ts`'s `HallBoard`. */
 export type WireHallEntry = { token: string; name: string | null };
@@ -237,8 +302,8 @@ export const fetchHallBoard = () => api<{ day: string; rooms: WireHallRoom[] }>(
 
 export const scheduleStudy = (
   studyId: string,
-  /** `bedsideLocation` — 18-S RS2b: only for a portable machine; the server refuses the rest. */
-  body: { deviceResourceId: string; scheduledAt: string; bedsideLocation?: string | null },
+  /** #1077 — `@hmis/contracts` `imagingScheduleBody`. `bedsideLocation` (18-S RS2b): only for a portable machine; the server refuses the rest. */
+  body: ImagingScheduleBody,
 ) =>
   api("POST", `/radiology/studies/${studyId}/schedule`, body);
 
@@ -267,7 +332,7 @@ export const waiveGate = (studyId: string, kind: string, reason: string) =>
 export const startAcquisition = (studyId: string) =>
   api("POST", `/radiology/studies/${studyId}/acquisition/start`, {});
 
-export const recordAcquired = (studyId: string, body: Record<string, unknown>) =>
+export const recordAcquired = (studyId: string, body: ImagingAcquiredBody) =>
   api("POST", `/radiology/studies/${studyId}/acquisition/acquired`, body);
 
 /** 18b T3 — a POST: the view row, the event and the PHI line exist before the URL comes back. */
@@ -278,13 +343,15 @@ export const openImages = (studyId: string) =>
 export const proposeDraft = (studyId: string) =>
   api<{
     reportId: string; version: number; templateKey: string;
-    body: Record<string, string>; impression: string | null; provenance: { drafter: string };
+    body: Record<string, string>; impression: string | null;
+    /** #1081 — per drafted section, the rows it was built from (the reading room's chip). */
+    provenance: { drafter: string; sections?: Record<string, WireDraftSection> };
   }>("POST", `/radiology/studies/${studyId}/reports/propose`);
 
 export const draftReport = (studyId: string, body: Record<string, unknown>) =>
   api<{ reportId: string; version: number }>("POST", `/radiology/studies/${studyId}/reports/draft`, body);
 
-export const signReport = (studyId: string, body: { reportId: string; criticalCategory?: string | null }) =>
+export const signReport = (studyId: string, body: ImagingSignBody) =>
   api<{ reportId: string; version: number }>("POST", `/radiology/studies/${studyId}/reports/sign`, body);
 
 export const publishReport = (studyId: string) =>
@@ -351,6 +418,8 @@ export type WirePrepRow = {
   scheduledAt: string | null; checkedInAt: string | null; deviceCode: string | null;
   patientId: string; patientName: string; restricted: boolean;
   openPrep: string[]; openRoom: string[]; asked: string[];
+  /** #1076 — the full list row: UHID (blank for a confidential patient without clearance), age, sex, the book's study name. Absent from older servers. */
+  uhid?: string; ageYears?: number | null; sex?: string; studyTypeName?: string;
 };
 
 export type WireEgfr =
@@ -423,11 +492,8 @@ export const decideOverrideRequest = (approvalId: string, verdict: "grant" | "re
     "POST", `/radiology/gate-override-requests/${encodeURIComponent(approvalId)}/decide`, { verdict, reason },
   );
 
-/** The controller's `contrastBody` (18a-iii T1), transcribed. */
-export type RecordContrastBody = {
-  agent: string; volumeMl: number; route: string; site?: string | null;
-  vialBatchNo?: string | null; vialExpiry?: string | null; givenBy: string; givenAt: string;
-};
+/** The controller's `contrastBody` (18a-iii T1) — #1077: the server's own schema (`@hmis/contracts` `imagingContrastBody`). */
+export type RecordContrastBody = ImagingContrastBody;
 export const recordContrast = (studyId: string, body: RecordContrastBody) =>
   api<{ administrationId: string }>("POST", `/radiology/studies/${studyId}/contrast`, body);
 
