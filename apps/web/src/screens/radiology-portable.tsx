@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { WireBedsideStudy } from "../lib/radiology-api";
 import { RoomConsole } from "../components/radiology/room-console";
 import { RadiologyStation } from "./radiology-station";
-import { PatientLane } from "./radiology-room";
+import { PatientLane } from "../components/radiology/room-patient-lane";
 
 /**
  * PLAN 18-S RS2b — **THE PORTABLE ROUND: the beds the trolley goes to.**
@@ -21,8 +21,10 @@ import { PatientLane } from "./radiology-room";
  * bedside radiation checklist — 2 m clear, apron on whoever must stay, no pregnant staff or patient
  * in the bay — attested as text on the start, then the protocol, the exposure, the dose and Send.
  * Opening the bed IS arriving at it: a booked study is checked in by that act, and there is no
- * "arrived at bed" button (the owner's layout rule — no button that only records presence). The
- * study page stays one link away in the lane.
+ * "arrived at bed" button (the owner's layout rule — no button that only records presence).
+ *
+ * #1087 (IM8) — the round is a header view of Rooms (`/radiology/room?view=portable`), not a station of
+ * its own; `/radiology/portable` forwards there. Rooms hands in its header views.
  *
  * The centre carries a plain note that ordering from the ward arrives with the IPD plan: today a
  * bedside study reaches this list because the imaging desk booked it with a ward and bed.
@@ -46,7 +48,7 @@ function slotText(iso: string | null): string {
   return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 }
 
-export function RadiologyPortable(): React.ReactElement {
+export function RadiologyPortable({ views }: { views?: React.ReactNode } = {}): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["radiology", "portable", "round"], queryFn: fetchPortableRound });
@@ -106,7 +108,8 @@ export function RadiologyPortable(): React.ReactElement {
 
   return (
     <RadiologyStation
-      station="portable"
+      station="room"
+      views={views}
       title={t("radiology.portable.title")}
       place={t("radiology.portable.place")}
       stats={[

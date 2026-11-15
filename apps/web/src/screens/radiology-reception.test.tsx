@@ -537,3 +537,26 @@ it("mounts the ordering door in the centre, never in the right-hand queue", asyn
   expect(screen.getByTestId("station-right")).not.toContainElement(door);
   expect(screen.getByLabelText("UHID, phone, name or visit number")).toBeInTheDocument();
 });
+
+/**
+ * #1087 — the desk's header views: Counter and Diary, and a link that opens the hall display in a new tab
+ * for the desk that holds the display grant (the display left the station switch).
+ */
+it("#1087: the desk's header carries Counter and Diary, and opens the hall display for its grant holder", async () => {
+  mockRoutes({ "GET /api/auth/me": me([...DESK, "radiology.display.read"]), "GET /api/radiology/worklist": { status: 200, body: { rows: [] } } });
+  const first = renderWithProviders(<RadiologyReception />);
+  expect(await screen.findByTestId("desk-view-counter")).toHaveAttribute("aria-current", "page");
+  expect(screen.getByTestId("desk-view-diary")).toHaveAttribute("href", "/radiology/reception?view=diary");
+  const tv = await screen.findByTestId("desk-hall-display");
+  expect(tv).toHaveAttribute("href", "/radiology/display");
+  expect(tv).toHaveAttribute("target", "_blank");
+  first.unmount();
+
+  mockRoutes({ "GET /api/auth/me": me(DESK), "GET /api/radiology/devices": { status: 200, body: { devices: [] } } });
+  renderWithProviders(<RadiologyReception view="diary" />);
+  expect(await screen.findByTestId("diary-grid")).toBeInTheDocument();
+  expect(screen.getByTestId("desk-view-diary")).toHaveAttribute("aria-current", "page");
+  expect(screen.getByTestId("station-shell")).toHaveAttribute("data-station", "desk");
+  expect(screen.queryByTestId("desk-hall-display")).toBeNull();
+});
+

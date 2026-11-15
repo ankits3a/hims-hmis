@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -11,6 +12,7 @@ import {
 } from "../lib/radiology-api";
 import type { DeskCollectBody, WireCounterView, WireImagingDevice, WireWorklistRow } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
+import { RadiologyDiary } from "./radiology-diary";
 import { ImagingCopilot } from "../components/radiology/imaging-copilot";
 import { PatientFacts } from "../components/radiology/patient-facts";
 import { ImagingDeskDoor } from "../components/radiology/imaging-desk-door";
@@ -58,7 +60,48 @@ import { IMAGING_FLOOR_TOPIC, useImagingLive } from "../lib/radiology-live";
  * its line to the study (`linkInvoiceLine`'s three checks), which is what makes `authorisationOf`
  * answer `invoice` at the machine. No discount control (ruling 8; the HOD gives up to 10%). No
  * credit: the owner's alone (decision 0015). STAT goes first and the bill follows.
+ *
+ * ═══ #1087 (IM8) — THE DESK'S HEADER VIEWS ═══
+ *
+ * Counter (this screen) and Diary (`?view=diary`, `radiology-diary.tsx`), and a link that opens the
+ * waiting-hall display in a new tab for the TV — the display left the station switch, the desk is the
+ * one that turns it on. `/radiology/diary` forwards to the diary view.
  */
+export type DeskView = "counter" | "diary";
+export const DESK_VIEWS: readonly DeskView[] = ["counter", "diary"];
+
+export function RadiologyReception({ view = "counter" }: { view?: DeskView } = {}): React.ReactElement {
+  const views = <DeskViews view={view} />;
+  return view === "diary" ? <RadiologyDiary views={views} /> : <DeskCounter headerViews={views} />;
+}
+
+function DeskViews({ view }: { view: DeskView }): React.ReactElement {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const router = useRouter({ warn: false });
+  return (
+    <>
+      {DESK_VIEWS.map((v) => (
+        <a
+          key={v} href={v === "counter" ? "/radiology/reception" : `/radiology/reception?view=${v}`} className="st-nv"
+          data-testid={`desk-view-${v}`} aria-current={v === view ? "page" : undefined}
+          onClick={(e) => {
+            if (!router) return;
+            e.preventDefault();
+            void router.navigate({ to: "/radiology/reception", search: v === "counter" ? {} : { view: v } } as never);
+          }}
+        >
+          {t(`radiology.desk.views.${v}`)}
+        </a>
+      ))}
+      {can("radiology.display.read") && (
+        <a href="/radiology/display" target="_blank" rel="noopener noreferrer" className="st-nv" data-testid="desk-hall-display">
+          {t("radiology.desk.hallDisplay")} <span aria-hidden="true">↗</span>
+        </a>
+      )}
+    </>
+  );
+}
 
 type Hand = { patientId: string; encounterNo: string };
 type Step = "bill" | "slot";
@@ -66,7 +109,7 @@ const STEPS: readonly Step[] = ["bill", "slot"];
 const DESK_STATES = ["scheduled", "checked_in"];
 const CLOCK_MINUTES = 30;
 
-export function RadiologyReception(): React.ReactElement {
+function DeskCounter({ headerViews }: { headerViews: React.ReactNode }): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -422,6 +465,7 @@ export function RadiologyReception(): React.ReactElement {
   return (
     <RadiologyStation
       station="desk"
+      views={headerViews}
       title={t("radiology.reception.title")}
       place={t("radiology.station.deskPlace")}
       stats={[
