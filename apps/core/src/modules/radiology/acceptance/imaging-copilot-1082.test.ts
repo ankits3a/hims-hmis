@@ -269,7 +269,7 @@ describe("spec #1082 — the imaging copilot", () => {
     const checked = await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: s.studyId, now: NOW }));
     expect(checked.gates).toContain("renal_function");
     const evidence: Record<string, unknown> = {
-      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
       pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
     };
     for (const kind of checked.gates.filter((k) => k !== "renal_function")) {
