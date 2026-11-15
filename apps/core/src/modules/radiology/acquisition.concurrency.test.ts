@@ -60,7 +60,7 @@ describe("two consoles, one machine and one study (18a T7 A1/A6)", () => {
     await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: study.studyId, now: NOW }));
     const gate = await requireStudyGate(db, study.studyId, "identity_two_factor");
     await withTx(db, (tx) => satisfyGate(
-      tx, fx.radiographer, gate.id, { secondIdentifier: "uhid", value: "HMS-00000001-5" }, NOW,
+      tx, fx.radiographer, gate.id, { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true }, NOW,
     ));
     await withTx(db, (tx) => evaluateReadiness(tx, study.studyId));
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));

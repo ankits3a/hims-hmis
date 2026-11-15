@@ -131,7 +131,7 @@ describe("the portable study (18a-iii T3)", () => {
     }));
   /** The evidence each gate a covered ward USG opens will accept. */
   const EVIDENCE: Record<string, unknown> = {
-    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
     chaperone_present: { chaperoneUserId: "" },
   };
   const evidenceFor = (kind: string): unknown =>

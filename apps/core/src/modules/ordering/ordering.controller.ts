@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
+import { ORDER_ITEM_LATERALITIES } from "../../kernel/db/schema/orders";
 import { listOutsideTests, OutsideTestError, saveOutsideTest } from "./outside";
 import { searchOrderableTests } from "./route";
 import { orderTests } from "./seam";
@@ -33,6 +34,8 @@ const orderBody = z.object({
   serviceIds: z.array(id).min(1).max(60),
   indication: z.string().min(1).max(500),
   priority: z.enum(["routine", "urgent", "stat"]).optional(),
+  /** #1080 — the side of each sided imaging study, keyed by service id. */
+  laterality: z.record(id, z.enum(ORDER_ITEM_LATERALITIES)).optional(),
 }).strict();
 
 function bad(message: string, code: string, status = 400): never {

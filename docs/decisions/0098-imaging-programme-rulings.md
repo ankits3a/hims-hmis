@@ -45,3 +45,17 @@ answered "go ahead", accepting every default:
 - (3) Standard Indian corporate hospital practice: a paid, unperformed study is rebooked, and refunds are a
   deliberate act with its own audit.
 - (5) Draft versions show who wrote what and when, which a medico-legal review needs.
+
+## Accepted during the build (owner, 2026-11-15)
+
+Shown to the owner with the reason for each, and accepted ("do the needful and keep going ahead"):
+
+6. **An autosaved draft's own text may change for ten minutes** (#1081). The append-only rule on `imaging_reports`
+   is narrowed, not removed: only an unsigned draft with no provenance, written by autosave, may change its body,
+   impression, side and template, by its own author, within ten minutes of its first save. Saved, preliminary,
+   proposed and signed rows stay frozen; DELETE is still refused; every version is kept (ruling 5).
+7. **One copilot eval item is retired through the eval's own mechanism** (#1082). "x-ray machine chal rahi hai kya"
+   expected no tool and now routes to the imaging machine-status tool. It is listed in a new `retired-*.json` and
+   re-added with the new answer; no existing eval file is edited.
+8. **The programme merges on CI** (2026-11-15, a Sunday with no OPD), while staging is held for another walk; each
+   merge waits for the previous deploy and a healthy check.
