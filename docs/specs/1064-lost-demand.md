@@ -44,7 +44,7 @@ for most and do not get are never counted. Source: P0 item 3 of the pharmacy sof
 
 Where the build is more precise than the text above:
 
-- **Migration** `0233_lost_demand` (renumbered at merge): table `pharmacy_demand` (`item_id`, `medicine_id`,
+- **Migration** `0237_lost_demand` (renumbered at merge): table `pharmacy_demand` (`item_id`, `medicine_id`,
   `typed_name`, `qty_asked_base`, `source`, `store_resource_id`, `dispense_id`, `short_book_entry_id`, `noted_by`,
   `noted_at`; no patient column); `pharmacy_short_book.asked_count` and `asked_qty_base` (0 on a row noted by hand)
   and source `counter`; `pharmacy_dispense_lines.declined_reason_code`.

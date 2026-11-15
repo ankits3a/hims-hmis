@@ -2,17 +2,18 @@ import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
 import { z } from "zod";
 import {
   CONTRAST_REACTION_ONSETS, CONTRAST_REACTION_OUTCOMES, CONTRAST_REACTION_SEVERITIES,
-  CONTRAST_ROUTES,
 } from "../../kernel/db/schema/radiology";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { abortAcquisition, recordAcquired, startAcquisition } from "./acquisition";
-import { contrastAdministrationsFor, recordContrastAdministration } from "./contrast";
-import { contrastReactionsFor, recordContrastReaction } from "./reactions";
+import { recordContrastAdministration } from "./contrast";
+import { recordContrastReaction } from "./reactions";
+import { studyContrastAdministrations, studyContrastReactions } from "./read";
 import { linkInvoiceLine } from "./money";
 import { idSchema, parsed, toHttp } from "./radiology-http";
+import { imagingAcquiredBody, imagingContrastBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
@@ -48,47 +49,15 @@ const startBody = z.object({
   bedsideSafety: z.string().min(1).max(400).optional(),
 }).strict();
 
-const acquiredBody = z.object({
-  imageSource: z.enum(["pacs", "no_pacs_images", "outside"]),
-  /** 18b T2 — optional for `pacs` (the minted one is used), refused for the other two sources. */
-  studyInstanceUid: z.string().min(1).max(64).nullish(),
-  doseCtdivol: z.number().nonnegative().max(9_999_999).nullish(),
-  doseDlp: z.number().nonnegative().max(9_999_999).nullish(),
-  doseDap: z.number().nonnegative().max(9_999_999).nullish(),
-  fluoroSeconds: z.number().int().nonnegative().max(86_400).nullish(),
-  /** 18-S RS12 — mammography's Average Glandular Dose, mGy. */
-  doseAgd: z.number().nonnegative().max(9_999_999).nullish(),
-  /** 18-S RS12b — reference-point air kerma Ka,r, mGy. */
-  doseKar: z.number().nonnegative().max(9_999_999).nullish(),
-  doseManual: z.boolean().optional(),
-  contrastGiven: z.boolean().optional(),
-  contrastAgent: z.string().min(1).max(120).nullish(),
-  contrastVolumeMl: z.number().positive().max(999_999).nullish(),
-  repeatOfStudyId: idSchema.nullish(),
-  repeatReason: z.string().min(1).max(400).nullish(),
-  /** 18-S RS6 — why the dose came in above the DRL; kept only beside an over-DRL verdict. */
-  drlReason: z.string().min(1).max(400).nullish(),
-  /** 18-S RS6 — why a with-contrast examination was scanned plain; rides the bill decision. */
-  contrastNotGivenReason: z.string().min(1).max(400).nullish(),
-  /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is derived, never sent. */
-  acquiredAt: z.string().datetime().optional(),
-});
-
 /**
- * 18a-iii T1 — the injection. `volumeMl` is `.positive()` for the reason the service repeats: a
- * one-millilitre TEST DOSE is a real administration and a zero-millilitre one is not an event.
- * `vialExpiry` is a DATE on a label, never an instant, and the service refuses an expired one.
+ * #1077 — the acquisition and the injection are `@hmis/contracts`'s act bodies
+ * (`imagingAcquiredBody`, `imagingContrastBody`; the contrast routes held equal to
+ * `CONTRAST_ROUTES` by `act-bodies.test.ts`). `volumeMl` is `.positive()` for the reason the service
+ * repeats: a one-millilitre TEST DOSE is a real administration and a zero-millilitre one is not an
+ * event. `vialExpiry` is a DATE on a label, never an instant, and the service refuses an expired one.
  */
-const contrastBody = z.object({
-  agent: z.string().min(1).max(120),
-  volumeMl: z.number().positive().max(9_999),
-  route: z.enum(CONTRAST_ROUTES),
-  site: z.string().min(1).max(120).nullish(),
-  vialBatchNo: z.string().min(1).max(60).nullish(),
-  vialExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
-  givenBy: idSchema,
-  givenAt: z.string().datetime(),
-});
+const acquiredBody = imagingAcquiredBody;
+const contrastBody = imagingContrastBody;
 
 /**
  * 18a-iii T2 — the reaction. `treatmentGiven` and `managingClinicianId` are optional HERE and
@@ -222,12 +191,15 @@ export class RadiologyAcquisitionController {
     } catch (e) { toHttp(e); }
   }
 
-  /** The register for one study. Codes and volumes; no name, no finding — nothing `worklist` hides. */
+  /**
+   * The register for one study. Codes and volumes; no name, no finding — nothing `worklist` hides.
+   * #1076 — read through the study reader (`read.ts`): the study's own rule and an access row per read.
+   */
   @Get(":studyId/contrast")
   @RequirePermission("radiology.worklist.read", "hospital")
-  async contrastRegister(@Param("studyId") studyId: string): Promise<unknown> {
+  async contrastRegister(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
     try {
-      return { administrations: await contrastAdministrationsFor(this.db, studyId) };
+      return { administrations: (await studyContrastAdministrations(this.db, actor, studyId)) ?? [] };
     } catch (e) { toHttp(e); }
   }
 
@@ -257,12 +229,15 @@ export class RadiologyAcquisitionController {
     } catch (e) { toHttp(e); }
   }
 
-  /** The reactions on one study. The manifestation IS here — this is the clinical record, not an event. */
+  /**
+   * The reactions on one study. The manifestation IS here — this is the clinical record, not an event.
+   * #1076 — read through the study reader, as the register above.
+   */
   @Get(":studyId/contrast-reactions")
   @RequirePermission("radiology.worklist.read", "hospital")
-  async reactions(@Param("studyId") studyId: string): Promise<unknown> {
+  async reactions(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
     try {
-      return { reactions: await contrastReactionsFor(this.db, studyId) };
+      return { reactions: (await studyContrastReactions(this.db, actor, studyId)) ?? [] };
     } catch (e) { toHttp(e); }
   }
 

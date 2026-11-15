@@ -1,4 +1,6 @@
 import { api } from "./api";
+import type { ImagingHandoverBody } from "@hmis/contracts";
+import type { WireReportPrint } from "./radiology-reading-api";
 
 /**
  * PLAN 18-S RS9 — the wire contract of `radiology-release.controller.ts`, transcribed (the
@@ -64,6 +66,8 @@ export type WireReleaseRow = {
   patientId: string;
   patientName: string;
   uhid: string;
+  /** #1076 — age, sex and the book's study name (absent from older servers). */
+  ageYears?: number | null; sex?: string; studyTypeName?: string;
   publishedAt: string;
   criticalCategory: string | null;
   bedsideLocation: string | null;
@@ -83,17 +87,15 @@ export type WireReleaseRow = {
   needs: ReleaseNeed[];
 };
 
-export type HandoverBody = {
-  collectorKind: CollectorKind;
-  collectorName?: string | null;
-  collectorRelation?: string | null;
-  collectorIdType?: string | null;
-  collectorIdLast4?: string | null;
-  mediaRequestIds?: string[];
-  note?: string | null;
-};
+/** #1077 — the server's own schema (`@hmis/contracts` `imagingHandoverBody`), not a transcription. */
+export type HandoverBody = ImagingHandoverBody;
 
-export const fetchReleaseRegister = () => api<{ rows: WireReleaseRow[] }>("GET", "/radiology/release");
+/** #1076 — with a query the server searches every released report (name, UHID or accession), past the 30-day register. */
+export const fetchReleaseRegister = (q = "") =>
+  api<{ rows: WireReleaseRow[] }>("GET", q.trim() === "" ? "/radiology/release" : `/radiology/release?q=${encodeURIComponent(q.trim())}`);
+/** #1076 — the hand-over desk's print of the report in hand (null when it is not the current released version). */
+export const fetchHandoverPrint = (reportId: string) =>
+  api<{ report: WireReportPrint | null }>("GET", `/radiology/release/reports/${encodeURIComponent(reportId)}/print`);
 export const requestImagingMedia = (studyId: string, body: { kind: "film" | "cd"; quantity?: number }) =>
   api<{ requestIds: string[]; included: boolean }>("POST", `/radiology/studies/${studyId}/media`, body);
 export const markMediaPrinted = (requestId: string) =>
@@ -105,3 +107,10 @@ export const askUnpaidRelease = (reportId: string, reason: string) =>
   api<{ approvalId: string; status: "pending" | "granted"; outstandingPaise: number }>(
     "POST", `/radiology/reports/${reportId}/release-unpaid`, { reason },
   );
+
+/** #1085 — the film & CD queue: every request not yet printed, oldest first, by accession (no names). */
+export type WireMediaQueueRow = {
+  requestId: string; studyId: string; accessionNo: string; studyTypeCode: string;
+  kind: "film" | "cd"; quantity: number; included: boolean; requestedAt: string;
+};
+export const fetchMediaQueue = () => api<{ rows: WireMediaQueueRow[] }>("GET", "/radiology/media/queue");

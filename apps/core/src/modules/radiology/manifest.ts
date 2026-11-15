@@ -5,6 +5,9 @@ import { orderPlaced } from "../../kernel/orders/events";
 import { approvalGranted } from "../../kernel/approvals/events";
 import { RADIOLOGY_APPROVAL_GRANTED_CONSUMER } from "./approval-consumer";
 import { radiologyWaitingMine, radiologyWaitingReads } from "./waiting";
+import { radiologyCopilotReadTools } from "./copilot-tools";
+import { radiologyCopilotActs } from "./copilot-acts";
+import { radiologyCopilotIntents } from "./copilot-intents";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -164,4 +167,10 @@ export const radiologyManifest: ModuleManifest = {
   ],
   /** E1.4 / E1.5 — what imaging has waiting on a person (`GET /me/waiting`); no desk card. */
   desk: [radiologyWaitingMine, radiologyWaitingReads],
+  /**
+   * #1082 (IM5) — the imaging copilot: ten reads (one a draft) and four confirmed acts, each gated on
+   * its screen's permission, routed by the phrasebook alone (`./copilot-intents`, no menu entry).
+   */
+  copilotTools: [...radiologyCopilotReadTools, ...radiologyCopilotActs],
+  copilotIntents: radiologyCopilotIntents,
 };

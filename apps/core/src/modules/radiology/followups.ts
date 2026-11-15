@@ -19,11 +19,12 @@ import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
 import { imagingFollowupBooked, imagingFollowupOverdue } from "./events";
 import { placeImagingOrder } from "./place";
-import { treatingDoctorsOf } from "./closed-loop";
+import { treatingDoctorIs, treatingDoctorsOf } from "./closed-loop";
 import type { FleischnerInputs, TiradsInputs } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
+import type { OrderItemLaterality } from "../../kernel/db/schema/orders";
 
 /**
  * ═══ PLAN 18-S RS8c T1 — THE FOLLOW-UP TRACKER (plan gap 5, board "Reading room → Follow-ups") ═══
@@ -333,6 +334,7 @@ export async function bookFollowup(
     const [origin] = await (tx as unknown as Db)
       .select({
         serviceId: imagingStudies.serviceId, encounterNo: imagingStudies.encounterNo,
+        laterality: imagingStudies.laterality,
         orderingClinicianId: orders.orderingClinicianId,
       })
       .from(imagingStudies)
@@ -360,7 +362,15 @@ export async function bookFollowup(
       /** F28 — the order's stamp reads the same clock as the duplicate window (`place.ts`'s own finding). */
       placedAt: now,
       indication: `Follow-up of ${f.accessionNo}: ${f.recommendation}`.slice(0, 500),
-      items: [{ serviceId: input.serviceId ?? origin!.serviceId }],
+      /**
+       * #1080 — the follow-up of a sided study is of the SAME side (the left knee is re-imaged, not
+       * "a knee"). The original study's side, as ordered or as the patient confirmed it; none when it
+       * had none, and `placeImagingOrder` then refuses a sided service with `laterality_required`.
+       */
+      items: [{
+        serviceId: input.serviceId ?? origin!.serviceId,
+        laterality: origin === undefined || origin.laterality === "na" ? null : origin.laterality as OrderItemLaterality,
+      }],
     }, undefined, now);
     await tx.update(imagingFollowups).set({
       state: "booked", bookedOrderId: placed.orderId, bookedOrderNo: placed.orderNo, bookedAt: now, bookedBy: actor.id,
@@ -558,11 +568,9 @@ export async function doctorFollowups(db: Db, actor: Actor, now: Date = new Date
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingFollowups.studyId))
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .where(and(
       inArray(imagingFollowups.state, ["open", "notified"]),
-      or(eq(orders.orderingClinicianId, actor.id), eq(opdDoctors.userId, actor.id)),
+      treatingDoctorIs(actor.id),
     ))
     .limit(200);
   /** A restricted (PCPNDT-class) study: its ordering clinician or a holder of `orders.read.restricted` only (the inbox's rule). */

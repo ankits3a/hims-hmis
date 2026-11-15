@@ -8,6 +8,7 @@ export * from "./copilot";
 export * from "./rx-eye";
 export * from "./eye-codes";
 export * from "./imaging-coded";
+export * from "./radiology";
 export * from "./obstetric";
 export * from "./app-home";
 export * from "./patient-absent";

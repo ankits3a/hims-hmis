@@ -29,14 +29,16 @@ import type {
 export type Side = "" | "right" | "left" | "both";
 export type Priority = "routine" | "urgent" | "stat";
 
-/** The side is carried IN the indication: the order envelope has no side column, and the
- *  `laterality_confirm` gate confirms it against the patient at the console. English on purpose —
- *  the order is a clinical record, not a screen string. */
-const SIDE_WORDS: Record<Exclude<Side, "">, string> = { right: "Right", left: "Left", both: "Both sides" };
+/**
+ * #1080 — the side is an ORDER FIELD (`order_items.laterality`), never words in the indication: the
+ * server refuses a sided study without it and writes it onto the study, and the console's
+ * `laterality_confirm` compares the patient's pointing against it. The indication is the doctor's
+ * question only.
+ */
+const SIDE_FIELD: Record<Exclude<Side, "">, "left" | "right" | "bilateral"> = { right: "right", left: "left", both: "bilateral" };
 
-export function composeIndication(side: Side, question: string): string {
-  const q = question.trim();
-  return side === "" ? q : `${SIDE_WORDS[side]} — ${q}`;
+export function sideField(side: Side): "left" | "right" | "bilateral" | null {
+  return side === "" ? null : SIDE_FIELD[side];
 }
 
 /** A 22c-A zod 400 carries an ARRAY of issues as `message`; everything else is the server's sentence. */
@@ -89,6 +91,8 @@ export type StudyCardProps = {
   sendLabel: string;
   onPlaced: (orderNo: string) => void;
   onRemove?: () => void;
+  /** #1079 — where the order goes, when it is not `POST /radiology/orders` (the desk's walk-in act). */
+  place?: (body: PlaceImagingOrderBody, idempotencyKey: string) => Promise<{ orderNo: string }>;
 };
 
 export function StudyCard(p: StudyCardProps): React.ReactElement {
@@ -111,22 +115,24 @@ export function StudyCard(p: StudyCardProps): React.ReactElement {
 
   const send = useMutation({
     mutationFn: async () => {
+      const laterality = p.orderable.lateralityApplicable ? sideField(side) : null;
       const body: PlaceImagingOrderBody = {
         patientId: p.view.visit.patient.id,
         encounterNo: p.view.visit.encounterNo,
         serviceDate: istToday(),
         orderingClinicianId: p.clinicianUserId ?? "",
         priority,
-        indication: composeIndication(side, question),
+        indication: question.trim(),
         items: [{
           serviceId: p.serviceId,
+          ...(laterality !== null ? { laterality } : {}),
           ...(needsReason ? { duplicateOfItemId: dupItemId, duplicateReason: reason.trim() } : {}),
         }],
         ...(p.outside === true
           ? { authority: "external_prescription" as const, referrer: { name: refName.trim(), registrationNo: refReg.trim() } }
           : {}),
       };
-      return await placeImagingOrder(body, idemKey);
+      return await (p.place ?? placeImagingOrder)(body, idemKey);
     },
     onSuccess: (r) => { setError(null); p.onPlaced(r.orderNo); },
     onError: (e) => {
@@ -309,6 +315,8 @@ export type ImagingDoorBodyProps = {
    * did not advise is placed at the desk as an outside slip, never under the visit doctor's name.
    */
   advisedOnly?: boolean;
+  /** #1079 — handed to every card: the desk's walk-in sends through its own act. */
+  place?: StudyCardProps["place"];
 };
 
 export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
@@ -367,7 +375,7 @@ export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
                     view={p.view} serviceId={l.serviceId} name={l.name}
                     pricePaise={bookBy.get(l.serviceId)?.pricePaise ?? l.pricePaise}
                     orderable={l.orderable} clinicianUserId={p.clinicianUserId}
-                    sendLabel={p.sendLabel} onPlaced={p.onPlaced}
+                    sendLabel={p.sendLabel} onPlaced={p.onPlaced} place={p.place}
                   />
                   </div>
                 );
@@ -408,7 +416,7 @@ export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
               <StudyCard
                 key={id} view={p.view} serviceId={id} name={b.studyTypeName} pricePaise={b.pricePaise}
                 orderable={b} clinicianUserId={p.clinicianUserId} outside={p.outside}
-                sendLabel={p.sendLabel} onPlaced={placed(id)}
+                sendLabel={p.sendLabel} onPlaced={placed(id)} place={p.place}
                 onRemove={() => { setAdded((a) => a.filter((x) => x !== id)); }}
               />
             );

@@ -409,12 +409,49 @@ export const reportSignatoriesBodySchema = z.object({
     /** As printed: "Jharkhand State Medical Council · 2014/1187". */
     council_reg_no: z.string().min(3).max(120).optional(),
   })).min(1).max(200),
+  /**
+   * #1081 — **READING POOLS**: who reads what. Each pool names the modalities it takes, optionally
+   * narrowed to body parts (the study-type book's `body_part` labels), and its readers as HMIS user
+   * ids. DECIDED (spec): kept in the book that already says who may sign, so no new governed kind and
+   * no roster change — the HOD drafts it and the medical superintendent approves it, as today.
+   * A reader need not be a signatory (a resident reads and signs for co-sign).
+   *
+   * At acquisition the study is stamped with the FIRST pool, in book order, whose modalities and body
+   * parts match its type (`readingPoolFor`). Absent or empty: every study is unpooled, and every
+   * reader's list is the whole list.
+   */
+  reading_pools: z.array(z.object({
+    name: z.string().min(1).max(60),
+    modalities: z.array(z.enum(IMAGING_MODALITIES)).min(1),
+    body_parts: z.array(z.string().min(1).max(60)).max(40).optional(),
+    readers: z.array(z.string().min(1).max(64)).min(1).max(200),
+  })).max(40).optional(),
 }).refine(
   (b) => new Set(b.signatories.map((s) => s.user_id)).size === b.signatories.length,
   { message: "a person is listed twice — the print would have two qualifications for one signer" },
+).refine(
+  (b) => new Set((b.reading_pools ?? []).map((p) => p.name)).size === (b.reading_pools ?? []).length,
+  { message: "two reading pools share a name — a study is stamped with its pool's name" },
 );
 
 export type ReportSignatoriesBody = z.infer<typeof reportSignatoriesBodySchema>;
+export type ReadingPool = NonNullable<ReportSignatoriesBody["reading_pools"]>[number];
+
+/** #1081 — the pool a study of this type is stamped with: the first in book order that takes it, else null. */
+export function readingPoolFor(
+  pools: readonly ReadingPool[], type: Pick<StudyType, "modality" | "body_part">,
+): string | null {
+  const hit = pools.find((p) => (p.modalities as readonly string[]).includes(type.modality)
+    && (p.body_parts === undefined || p.body_parts.length === 0 || p.body_parts.includes(type.body_part)));
+  return hit?.name ?? null;
+}
+
+/** #1081 — the published book's pools; none when no signatories book is active or it names none. */
+export async function activeReadingPools(exec: Db | Tx): Promise<ReadingPool[]> {
+  const row = await activeDefinitionRow(exec, "report_signatories");
+  if (row === undefined) return [];
+  return parseDefinitionBody("report_signatories", row.body).reading_pools ?? [];
+}
 
 /**
  * ═══ 18-S RS8c — THE NIGHT-READ PROVIDER (ruling 7) ═══

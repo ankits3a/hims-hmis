@@ -5,9 +5,12 @@ import { daycareEncounters, otCaseGates, otCases } from "../../kernel/db/schema"
 import { appendEvent } from "../../kernel/events/append";
 import { transition } from "../../kernel/workflow/instances";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
+import {
+  ADULT_AGE_YEARS, NPO_CLEAR_FLUIDS_HOURS, NPO_SOLIDS_HOURS, consentEvidence,
+} from "../../kernel/consent";
 import { activeDefinition, criteriaFor } from "./definitions";
 import { grantedShortfallPaise, heldPaise, requiredDeposit } from "./deposit";
-import { consentEvidence, validateConsent } from "./consents";
+import { validateConsent } from "./consents";
 import { OtError } from "./errors";
 import { gateOverridden } from "./events";
 import { caseState } from "./booking";
@@ -103,11 +106,7 @@ const depositSchema = z.object({
   entitlementPaise: z.number().int().min(0).optional(),
 });
 
-/** NPO thresholds — one constant, one owner (16a DD5). Not configurable in this phase on purpose:
- *  6 h for solids and 2 h for clear fluids is the ASA fasting guideline every Indian OT runs. */
-export const NPO_SOLIDS_HOURS = 6;
-export const NPO_CLEAR_FLUIDS_HOURS = 2;
-export const ADULT_AGE_YEARS = 18;
+/** NPO thresholds and the adult age live in `kernel/consent` (#1086); `index.ts` re-exports them. */
 
 export type GateRow = typeof otCaseGates.$inferSelect;
 

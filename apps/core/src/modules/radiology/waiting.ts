@@ -4,9 +4,10 @@ import {
   imagingCriticalFindings, imagingReportDelivery, imagingReports, imagingStudies,
 } from "../../kernel/db/schema/radiology";
 import { orderItems, orders } from "../../kernel/db/schema/orders";
-import { opdDoctors, opdEncounters } from "../../kernel/db/schema/opd";
 import { waitingItem } from "../../kernel/desk/waiting";
 import { TAT_MINUTES, tatClassOf } from "./reading";
+import { studySource } from "./study-source";
+import { treatingDoctorIs } from "./closed-loop";
 import type { SQL } from "drizzle-orm";
 import type { WaitingItem } from "@hmis/contracts";
 import { noDeskCards } from "../../kernel/desk/types";
@@ -30,7 +31,7 @@ import type { DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
 async function treatedBy(ctx: DeskProviderCtx): Promise<SQL> {
   const me = ctx.actor.id;
   const canSeeRestricted = await hasPermission(ctx.db, me, "orders.read.restricted", "hospital");
-  const treating = or(eq(orders.orderingClinicianId, me), eq(opdDoctors.userId, me))!;
+  const treating = treatingDoctorIs(me);
   return canSeeRestricted ? treating
     : and(treating, or(eq(orderItems.restricted, false), eq(orders.orderingClinicianId, me)))!;
 }
@@ -44,8 +45,6 @@ async function mine(ctx: DeskProviderCtx): Promise<WaitingItem[]> {
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .leftJoin(imagingReportDelivery, eq(imagingReportDelivery.reportId, imagingReports.id))
     .where(and(released, mineOnly, isNull(imagingReportDelivery.firstReadAt)));
   const [crit] = await ctx.db
@@ -55,8 +54,6 @@ async function mine(ctx: DeskProviderCtx): Promise<WaitingItem[]> {
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .where(and(released, mineOnly, isNull(imagingCriticalFindings.acknowledgedAt)));
   return [
     waitingItem("radiology.criticalsMine", crit?.n ?? 0, crit?.oldest ?? null),
@@ -69,13 +66,17 @@ const READS_LIMIT = 500;
 
 async function readingRoom(ctx: DeskProviderCtx): Promise<WaitingItem[]> {
   const rows = await ctx.db
-    .select({ priority: imagingStudies.priority, bedside: imagingStudies.bedsideLocation, acquiredAt: imagingStudies.acquiredAt })
+    .select({
+      priority: imagingStudies.priority, encounterNo: imagingStudies.encounterNo, bedsideLocation: imagingStudies.bedsideLocation,
+      authority: orders.authority, acquiredAt: imagingStudies.acquiredAt,
+    })
     .from(imagingStudies)
+    .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .where(and(eq(imagingStudies.status, "acquired"), isNotNull(imagingStudies.acquiredAt)))
     .limit(READS_LIMIT);
   const now = ctx.now.getTime();
   const overdue = rows.filter((r) => r.acquiredAt !== null
-    && r.acquiredAt.getTime() + TAT_MINUTES[tatClassOf(r.priority, r.bedside)] * 60_000 < now);
+    && r.acquiredAt.getTime() + TAT_MINUTES[tatClassOf(r.priority, studySource(r, r))] * 60_000 < now);
   const oldest = overdue.reduce<Date | null>((o, r) => (o === null || r.acquiredAt! < o ? r.acquiredAt : o), null);
   const item = waitingItem("radiology.readsOverdue", overdue.length, oldest);
   return item === null ? [] : [item];

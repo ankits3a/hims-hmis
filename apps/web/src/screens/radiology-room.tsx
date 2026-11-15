@@ -15,9 +15,12 @@ import { RoomConsole, RoomRefusal } from "../components/radiology/room-console";
 import { SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingCopilot } from "../components/radiology/imaging-copilot";
+import { PatientFacts } from "../components/radiology/patient-facts";
 import { PacsInboxView } from "./radiology-pacs-inbox";
 import { IrSuiteView } from "./radiology-ir";
 import { CreditChip } from "../components/patient-credit";
+import { IMAGING_FLOOR_TOPIC, useImagingLive } from "../lib/radiology-live";
 
 /**
  * PLAN 18-S RS6 — **THE MODALITY ROOMS: the technologist's station.**
@@ -28,7 +31,7 @@ import { CreditChip } from "../components/patient-credit";
  *     the right list is THIS machine's floor list (scheduled → in acquisition, STAT first) with
  *     "Clocks running" (STAT waiting over 10 minutes, ready over 20) folded under it; opening a
  *     patient from the list IS the patient on the table (a booked study is checked in by that act —
- *     no presence button); the centre is `RoomConsole`'s four steps with the one next act docked.
+ *     no presence button); the centre is `RoomConsole`'s three steps (Identify, Acquire, Send; #1080) with the one next act docked.
  *   · **Dose log** — the day's dose register for this machine (the existing `/aerb/doses` read),
  *     DRL breaches with the reason typed at the console.
  *   · **Rejects & repeats** — the reject analysis (`/radiology/room/rejects`) and the bill
@@ -146,6 +149,7 @@ function ConsoleView({ views, picker, machine, studyId, devicesError }: {
     enabled: machine !== null,
     refetchInterval: 30_000,
   });
+  useImagingLive(IMAGING_FLOOR_TOPIC, [["radiology", "room-list", machine?.id ?? ""]]); // #1083: a frame reads the list now
   const rows = useMemo(() => orderRoomList(listQ.data?.rows ?? []), [listQ.data]);
   const inHand = rows.find((r) => r.studyId === studyId) ?? null;
 
@@ -199,9 +203,10 @@ function ConsoleView({ views, picker, machine, studyId, devicesError }: {
                 <b className="min-w-0 truncate">{r.patientName}</b>
                 <span className="mo shrink-0 text-xs">{r.scheduledAt === null ? "—" : fmtIst(r.scheduledAt)}</span>
               </span>
+              <PatientFacts row={r} />
               <span className="block text-xs text-muted-foreground">
                 {r.priority === "stat" ? <b className="text-red-700">STAT · </b> : null}
-                {r.studyTypeCode} · <span className={r.status === "ready" ? "text-green-800" : ""}>{t(`radiology.room.state.${r.status}`, { defaultValue: r.status })}</span>
+                {r.studyTypeName ?? r.studyTypeCode} · <span className={r.status === "ready" ? "text-green-800" : ""}>{t(`radiology.room.state.${r.status}`, { defaultValue: r.status })}</span>
               </span>
             </button>
           </li>
@@ -237,6 +242,7 @@ function ConsoleView({ views, picker, machine, studyId, devicesError }: {
       listSummary={inHand === null ? undefined : t("radiology.room.listSummary", { count: rows.length })}
       inHand={studyId !== null}
       closeListOn={studyId}
+      copilot={<ImagingCopilot subject={inHand?.accessionNo ?? null} patientName={inHand?.patientName ?? null} />}
       clocks={clocks}
       clocksAlert={clocksAlert}
       clocksSummary={clocksAlert ? t("radiology.room.clocksSummary", { count: statWaiting.length + readyWaiting.length }) : t("radiology.room.clocksNone")}

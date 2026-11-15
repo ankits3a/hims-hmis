@@ -4,12 +4,13 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { istDayString } from "../../kernel/approvals/cumulative";
-import { IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_ID_TYPES, IMAGING_COLLECTOR_KINDS, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
+import { IMAGING_ACTED_OUTCOMES, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
 import { doctorReadBack, doctorResultsInbox, markActedUpon } from "./closed-loop";
 import { northStar } from "./north-star";
-import { handOverReport, markMediaPrinted, releaseRegister, requestMedia } from "./release";
+import { handOverReport, handoverPrintView, markMediaPrinted, mediaQueue, releaseRegister, requestMedia } from "./release";
 import { requestUnpaidRelease } from "./held";
 import { idSchema, parsed, toHttp } from "./radiology-http";
+import { imagingHandoverBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -41,17 +42,12 @@ const actedBody = z.object({
 }).strict();
 const readBackBody = z.object({ readBack: z.string().max(1000).nullable().optional() }).strict();
 const mediaBody = z.object({ kind: z.enum(IMAGING_MEDIA_KINDS), quantity: z.number().int().min(1).max(20).optional() }).strict();
-const handoverBody = z.object({
-  collectorKind: z.enum(IMAGING_COLLECTOR_KINDS),
-  collectorName: z.string().max(120).nullable().optional(),
-  collectorRelation: z.string().max(60).nullable().optional(),
-  collectorIdType: z.enum(IMAGING_COLLECTOR_ID_TYPES).nullable().optional(),
-  collectorIdLast4: z.string().max(4).nullable().optional(),
-  mediaRequestIds: z.array(idSchema).max(20).optional(),
-  note: z.string().max(300).nullable().optional(),
-}).strict();
+/** #1077 — the hand-over is `@hmis/contracts`'s act body (its vocabularies held equal to the schema's by `act-bodies.test.ts`). */
+const handoverBody = imagingHandoverBody;
 const releaseUnpaidBody = z.object({ reason: z.string().max(500) }).strict();
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** #1076 — the hand-over desk's search: a name, a UHID or an accession. */
+const releaseQuery = z.string().trim().max(80).optional();
 
 @Controller("radiology")
 export class RadiologyReleaseController {
@@ -100,9 +96,22 @@ export class RadiologyReleaseController {
 
   @Get("release")
   @RequirePermission("radiology.schedule", "hospital")
-  async release(@CurrentActor() actor: Actor): Promise<unknown> {
+  async release(@CurrentActor() actor: Actor, @Query("q") q?: string): Promise<unknown> {
+    const query = parsed(releaseQuery, q);
     try {
-      return { rows: await releaseRegister(this.db, actor) };
+      return { rows: await releaseRegister(this.db, actor, new Date(), query === undefined ? {} : { q: query }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * #1076 — the hand-over desk prints the report in hand: the current released version, never a copy
+   * held for dues (`handoverPrintView`). Null for anything else; each print is recorded.
+   */
+  @Get("release/reports/:reportId/print")
+  @RequirePermission("radiology.schedule", "hospital")
+  async handoverPrint(@CurrentActor() actor: Actor, @Param("reportId") reportId: string): Promise<unknown> {
+    try {
+      return { report: await handoverPrintView(this.db, actor, parsed(idSchema, reportId)) };
     } catch (e) { toHttp(e); }
   }
 
@@ -114,6 +123,13 @@ export class RadiologyReleaseController {
     try {
       return await withTx(this.db, (tx) => requestMedia(tx, actor, { studyId, kind: input.kind, quantity: input.quantity }));
     } catch (e) { toHttp(e); }
+  }
+
+  /** #1085 — the film & CD queue: unprinted requests, oldest first, by accession (no names). */
+  @Get("media/queue")
+  @RequirePermission("radiology.schedule", "hospital")
+  async mediaQueue(): Promise<unknown> {
+    try { return await mediaQueue(this.db); } catch (e) { toHttp(e); }
   }
 
   @Post("media/:requestId/printed")

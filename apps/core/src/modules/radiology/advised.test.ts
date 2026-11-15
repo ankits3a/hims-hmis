@@ -117,7 +117,9 @@ describe("imagingDoorFor — the advised imaging lines (18-S RS2 / 18a-iv T1)", 
   const place = (encounterNo: string, serviceId: string, over: Record<string, unknown> = {}) =>
     placeImagingOrder(db, doctor, DECLS, {
       patientId: PATIENT, encounterNo, serviceDate: encounterNo === VISIT ? DAY : "2026-09-27",
-      orderingClinicianId: doctor.id, indication: "headache for three weeks", items: [{ serviceId }], ...over,
+      orderingClinicianId: doctor.id, indication: "headache for three weeks",
+      /** #1080 — the knee is a sided study, ordered with its side. */
+      items: [{ serviceId, laterality: serviceId === SVC_XR_KNEE ? "right" : null }], ...over,
     } as never, undefined, NOW);
 
   it("NEGATIVE: a lab line advised in the same consult does NOT appear, nor a consultation", async () => {

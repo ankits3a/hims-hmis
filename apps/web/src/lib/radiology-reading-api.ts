@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { ImagingAmendBody, ImagingAutosaveBody, ImagingSignBody } from "@hmis/contracts";
 import type { CodedSystem } from "./imaging-coded";
 
 /**
@@ -14,13 +15,28 @@ export type WireReadingRow = {
   studyId: string; accessionNo: string; status: string; priority: string;
   studyTypeCode: string; studyTypeName: string; modality: string; bodyPart: string;
   patientId: string; patientName: string; patientSex: string; patientAge: number | null;
+  /** #1076 — the full list row (absent from older servers). */
+  uhid?: string; ageYears?: number | null; sex?: string;
   restricted: boolean; formFRequired: boolean;
   acquiredAt: string | null;
   tatClass: TatClass; targetMinutes: number; dueAt: string | null;
   /** 18-S RS8b — `awaiting_cosign`: a resident signed it and a consultant has not co-signed yet. */
   reportState: "none" | "draft" | "prelim" | "signed" | "awaiting_cosign";
   readingBy: { userId: string; name: string; since: string } | null;
+  /** #1081 — the study's reading pool and the reader a consultant assigned it to (absent from older servers). */
+  readingPool?: string | null;
+  assignedTo?: { userId: string; name: string } | null;
 };
+
+/** #1081 — "my list" (my pools, assigned to me, unpooled) or the whole list. */
+export type ReadingScope = "mine" | "all";
+
+/** #1081 — where a drafted section came from: one row per source, named on the section's chip. */
+export type WireDraftSource = {
+  kind: "study_type" | "dose_record" | "contrast_register" | "outside_register" | "prior_report";
+  ref: string; values?: Record<string, string | number | null>; rows?: string[];
+};
+export type WireDraftSection = { sources: WireDraftSource[] };
 
 export type WireReadingTemplate = {
   key: string; name: string; governed: boolean;
@@ -45,7 +61,18 @@ export type WireReadingContext = {
   working: {
     reportId: string; version: number; status: string; templateKey: string;
     body: Record<string, unknown>; impression: string | null; criticalCategory: string | null;
+    /** #1081 — who wrote it, and its last autosave (null: a Save or a prelim). */
+    draftedBy?: string | null; autosavedAt?: string | null;
   } | null;
+  /** #1081 — the drafter's newest proposal and its per-section sources (null: none; absent: an older server). */
+  proposal?: {
+    reportId: string; templateKey: string; body: Record<string, unknown>; impression: string | null;
+    sections: Record<string, WireDraftSection>;
+  } | null;
+  /** #1081 — the study's pool, its named reader, and (for a consultant) who it may be assigned to. */
+  readingPool?: string | null;
+  assignedTo?: { userId: string; name: string } | null;
+  readers?: { userId: string; name: string }[];
   signed: {
     reportId: string; version: number; publishedAt: string | null;
     /** 18-S RS8b — the signed text, so Amend starts from what was signed. */
@@ -87,7 +114,22 @@ export type WireReportPrint = {
   signerId: string;
 };
 
-export const fetchReadingWorklist = () => api<{ rows: WireReadingRow[] }>("GET", "/radiology/reading/worklist");
+export const fetchReadingWorklist = (scope: ReadingScope = "mine") =>
+  api<{ rows: WireReadingRow[] }>("GET", `/radiology/reading/worklist?view=${scope}`);
+
+/** #1081 — opening a study claims it; `takeOver` takes another reader's live claim (one tap). */
+export const claimReading = (studyId: string, takeOver = false) =>
+  api<{ claimed: boolean; heldBy: { userId: string; name: string; since: string } | null; previousReaderId: string | null }>(
+    "POST", `/radiology/reading/studies/${studyId}/claim`, takeOver ? { takeOver: true } : {},
+  );
+
+/** #1081 — a consultant gives the study to a named reader, or takes it back (`null`). */
+export const assignReader = (studyId: string, readerId: string | null) =>
+  api<{ studyId: string; assignedReaderId: string | null }>("POST", `/radiology/reading/studies/${studyId}/assign`, { readerId });
+
+/** #1081 — the reader's working draft, 5 s after typing stops and on leaving the study. */
+export const autosaveDraft = (studyId: string, body: ImagingAutosaveBody) =>
+  api<{ reportId: string; version: number; autosavedAt: string; cut: boolean }>("POST", `/radiology/studies/${studyId}/reports/autosave`, body);
 
 export const fetchReadingStudy = (studyId: string) =>
   api<{ study: WireReadingContext | null }>("GET", `/radiology/reading/studies/${studyId}`);
@@ -96,9 +138,8 @@ export const dryRunChecks = (studyId: string, body: {
   templateKey?: string; body: Record<string, unknown>; impression?: string | null; criticalCategory?: string | null;
 }) => api<{ findings: WirePreSignFinding[]; signable: boolean }>("POST", `/radiology/studies/${studyId}/reports/checks`, body);
 
-export const signReading = (studyId: string, body: {
-  reportId: string; criticalCategory?: string | null; acknowledgedWarnings?: string[];
-}) => api<{ reportId: string; version: number; awaitingCosign?: boolean }>("POST", `/radiology/studies/${studyId}/reports/sign`, body);
+/** #1077 — the body is the server's own schema (`@hmis/contracts` `imagingSignBody`). */
+export const signReading = (studyId: string, body: ImagingSignBody) => api<{ reportId: string; version: number; awaitingCosign?: boolean }>("POST", `/radiology/studies/${studyId}/reports/sign`, body);
 
 /** 18-S RS8b — the consultant's co-signature on a resident's `awaiting_cosign` version (own second factor). */
 export const cosignReading = (studyId: string, body: { reportId: string; acknowledgedWarnings?: string[] }) =>
@@ -113,10 +154,7 @@ export const savePrelim = (studyId: string, body: {
  * 18-S RS8b — the AMENDMENT: v(n+1) signed under the second factor, v(n) superseded; the server
  * re-publishes it (and tells the patient) when v(n) had been published. First web caller.
  */
-export const amendReading = (studyId: string, body: {
-  templateKey?: string; body: Record<string, unknown>; impression?: string | null; laterality?: string | null;
-  reason: string; criticalCategory?: string | null; acknowledgedWarnings?: string[];
-}) => api<{ reportId: string; version: number; supersededId: string }>("POST", `/radiology/studies/${studyId}/reports/amend`, body);
+export const amendReading = (studyId: string, body: ImagingAmendBody) => api<{ reportId: string; version: number; supersededId: string }>("POST", `/radiology/studies/${studyId}/reports/amend`, body);
 
 /** The amendment's reason codes (board: Amendments). The stored reason is "<code words>: <note>". */
 export const AMEND_REASONS = ["addendum", "laterality", "measurement", "clinical_information", "other"] as const;

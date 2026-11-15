@@ -2,11 +2,12 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { acquireStudy, setupRadiologyFixture } from "../../../test/helpers/radiology";
 import {
-  events, imagingMediaRequests, imagingReportDelivery, imagingReportHandovers, notifications, orders,
+  events, imagingMediaRequests, imagingReportDelivery, imagingReportHandovers, notifications, orders, patients,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { notificationTemplates } from "../../kernel/notify/templates";
-import { amendReport, draftReport, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { amendReport, publishReport, signReport } from "./report-signature";
 import { handOverReport, markMediaPrinted, releaseRegister, requestMedia } from "./release";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { HandoverInput } from "./release";
@@ -173,5 +174,15 @@ describe("the release register (18-S RS9 T4/T5)", () => {
     }
     const [row] = await register();
     expect([row?.notice, row?.needs.includes("notice_not_sent")]).toEqual(["queued", false]);
+  });
+
+  it("#1076: a search finds a confidential patient by the alias this reader sees, never by the real name", async () => {
+    const s = await released();
+    await db.update(patients).set({ isConfidential: true, alias: "Priya M." }).where(eq(patients.id, fx.patientId));
+    const search = (q: string) => releaseRegister(db, fx.radiographer, NOW, { q }).then((rows) => rows.map((r) => r.reportId));
+    expect(await search("Asha")).toEqual([]);
+    expect(await search("priya")).toEqual([s.reportId]);
+    expect(await search(s.accessionNo.slice(0, 6))).toEqual([s.reportId]);
+    expect(await search("%")).toEqual([]);
   });
 });

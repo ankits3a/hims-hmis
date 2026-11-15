@@ -59,9 +59,16 @@ export {
 } from "./study-types";
 export type { StudyTypeSeed } from "./study-types";
 export {
-  autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy,
+  PROPOSAL_HORIZON_DAYS, SLOT_STEP_MINUTES,
+  autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, proposeFreeSlot, rescheduleStudy, scheduleStudy,
 } from "./schedule";
-export type { ScheduleInput, ScheduleResult } from "./schedule";
+export type { ScheduleInput, ScheduleResult, SlotProposal } from "./schedule";
+// #1078 (IM2) — the imaging desk's server acts: arrival, collect, walk-in now, the slot proposal, today's visits.
+export { DESK_COLLECT_ROUTE, arriveAtDesk, collectAtDesk, deskVisitsToday, proposeSlot, walkInNow } from "./desk";
+export type { DeskArrival, DeskCollectInput, DeskCollectResult, DeskTender, DeskVisit, DeskWalkIn } from "./desk";
+// #1079 (IM2b) — the outside referral with no visit today: the imaging walk-in visit and its order, one act.
+export { DESK_WALK_IN_ROUTE, deskWalkInView, placeWalkInOrder } from "./desk";
+export type { DeskWalkInOrderInput, DeskWalkInOrderResult, DeskWalkInView } from "./desk";
 export {
   PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn, pcpndtApplicability,
 } from "./applicability";
@@ -108,29 +115,37 @@ export {
 } from "./chasers";
 export type { CriticalChaseResult, UnreadChaseResult, UnreadRung } from "./chasers";
 export {
-  authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, linkInvoiceLine, openBillDecisions,
-  raiseBillDecision, resolveBillDecision,
+  NO_SHOW_REBOOK_DAYS, authorisationOf, carryNoShowInvoice, encounterPayer, hasBillDecision, imagingFreeAt, linkInvoiceLine,
+  openBillDecisions, raiseBillDecision, resolveBillDecision,
 } from "./money";
 export type { AuthorisationEncounterFacts, AuthorisationStudyFacts } from "./money";
-export {
-  SECOND_FACTOR_WINDOW_MINUTES, acknowledgeCritical, amendReport, draftReport, flagCritical,
-  latestSigned, proposeDraft, publishReport, savePrelim, signReport,
-} from "./reports";
-export { activeDrafter, offlineTemplateDrafter, proposalLockoutHits } from "./drafter";
-export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
-export type { ReportContent, ReportRow } from "./reports";
+// #1077 — `reports.ts` split by act: authoring (draft, proposal, prelim), the signature (sign, co-sign,
+// amend, publish, the patient's notice, the over-read) and the criticals. Every name it exported is here.
+export { draftReport, latestSigned, proposeDraft, savePrelim } from "./report-authoring";
+// #1081 — the reading room: autosave (the reader's working draft, a version every ten minutes), the
+// claim ("Dr X is reading" without a PACS), assignment to a named reader, and the reading pools.
+export { AUTOSAVE_VERSION_MINUTES, autosaveDraft } from "./report-authoring";
+export { assignReader, claimReading } from "./reading-claim";
+export type { ClaimResult } from "./reading-claim";
+export { activeReadingPools, readingPoolFor } from "./definitions";
+export type { ReadingPool } from "./definitions";
+export { SECOND_FACTOR_WINDOW_MINUTES, amendReport, enqueueReportReady, publishReport, signReport } from "./report-signature";
+export { acknowledgeCritical, flagCritical } from "./criticals";
+export { DRAFT_SOURCE_KINDS, activeDrafter, offlineTemplateDrafter, proposalLockoutHits, proposalNumberHits } from "./drafter";
+export type { DraftProposal, DraftSection, DraftSource, DraftSourceKind, DrafterFacts, ReportDrafter } from "./drafter";
+export type { ReportContent, ReportRow } from "./report-authoring";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
 // 18-S RS8a — the reading room: the pre-sign pipeline (a later guard joins PRE_SIGN_CHECKS), the
 // signer block (ruling 4), the governed templates/signatories books and the reading reads.
 export { CRITICAL_TERMS, PRE_SIGN_CHECKS, criticalTermsIn, runPreSignChecks } from "./checks";
 export type { PreSignCheck, PreSignContext, PreSignFinding, PreSignLevel } from "./checks";
-export { dryRunPreSign } from "./reports";
-export type { SignChecksRecord } from "./reports";
+export { dryRunPreSign } from "./report-signature";
+export type { SignChecksRecord } from "./report-signature";
 export { signedContentDigest, signerSnapshot } from "./signer";
 export type { SignerBlock } from "./signer";
 // 18-S RS8b — co-sign (the resident signs, the consultant co-signs) and the critical-call ladder.
-export { CONSULTANT_ROLE, RESIDENT_ROLE, cosignReport, signsAsResident } from "./reports";
+export { CONSULTANT_ROLE, RESIDENT_ROLE, cosignReport, signsAsResident } from "./report-signature";
 export {
   ACKNOWLEDGED_LOG_HOURS, CRITICAL_RUNG_ROLES, criticalCallBoard, readBackNamesFinding, recordCallAttempt,
 } from "./critical-ladder";
@@ -138,8 +153,8 @@ export type { CriticalCallView, LadderRungView } from "./critical-ladder";
 export type { ResidentSignature } from "./signer";
 export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
 export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
-export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
-export type { ReadingContext, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
+export { READING_LIST_VIEWS, TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
+export type { ReadingContext, ReadingListView, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
 export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
 // 18-S RS2b — the machine list, the portable round, and `bedsideStudiesFor`: THE IPD SEAM. The ward
 // screen the IPD plan builds imports it from here; it has no route of its own until then.
@@ -183,6 +198,9 @@ export type { ImagingReleaseReport } from "./abdm-release";
 export { isTreatingDoctor, treatingDoctorsOf } from "./closed-loop";
 export type { InboxRow, TreatingDoctors } from "./closed-loop";
 export { NORTH_STAR_SOURCES, northStar } from "./north-star";
+// #1077 — where a study came from: one rule for the metrics, the north star, the HOD and the reading clock.
+export { STUDY_SOURCES, studySource } from "./study-source";
+export type { StudySource } from "./study-source";
 export type { NorthStar, NorthStarRow, NorthStarSource } from "./north-star";
 // ── 18-S RS12b — the IR suite: the list and the Ka,r triggers RS10's spine will consume ──
 export { IR_KAR_SKIN_FOLLOWUP_MGY, IR_KAR_SRDL_MGY, IR_THRESHOLDS, irCaseList, skinDoseLevels } from "./ir";
@@ -212,8 +230,25 @@ export {
 export type { PeerBoard, PeerCase, PeerScore, ReaderAgreement } from "./peer-review";
 export { assertNotTeleReader, teleBoard, teleReaderOf } from "./tele";
 export type { TeleBoard, TeleQueueRow, TeleReader } from "./tele";
-export { overReadNightPrelim } from "./reports";
+export { overReadNightPrelim } from "./report-signature";
 export type { TeleradiologyBody } from "./definitions";
 // DOCTOR DESK DD-0.2 (#626) — the treating doctor's imaging rows: unread released reports and open criticals.
 export { unreadReportsForClinician } from "./clinician-reads";
 export type { ClinicianImagingRow } from "./clinician-reads";
+// #1085 (IM6c) — the imaging morning sweep: no-shows, reminders behind a switch, the HOD digest, register
+// completeness, the film/CD queue, the switches. `jobs.ts` runs `runMorningSweep` inside the 08:00 IST job.
+export { AUTOMATION_ACTOR, assertNotAutomation, isAutomationActor } from "./automation-actor";
+export type { ClinicalAct } from "./automation-actor";
+export {
+  AUTOMATION_DEFAULTS, NO_SHOW_REASON, REMINDER_MIN_DAYS_AHEAD, automationEnabled, automationSettings, noShowsToRebook,
+  sendPatientReminders, sweepNoShows, switchAutomation,
+} from "./automation";
+export type { AutomationSetting, NoShowSweep, NoShowToRebook, ReminderSweep } from "./automation";
+export { REGISTER_GAPS_ALERT_KIND, registerCompleteness, sweepRegisterCompleteness } from "./completeness";
+export type { CompletenessSweep, RegisterCompleteness, RegisterGap, RegisterGapKind } from "./completeness";
+export { DIGEST_ALERT_KIND, buildHodDigest, digestBell, radiologyHeads, sendHodDigest, storedDigest } from "./digest";
+export type { DigestModalityRow, DigestSweep, HodDigest } from "./digest";
+export { runMorningSweep } from "./morning-sweep";
+export type { MorningSweep } from "./morning-sweep";
+export { MEDIA_QUEUE_LIMIT, mediaQueue } from "./release";
+export type { MediaQueueRow } from "./release";

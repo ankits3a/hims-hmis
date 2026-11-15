@@ -35,7 +35,9 @@ const IMAGING: WireImagingMetrics = {
   totals: { orders: 4, studies: 6, signed: 5, delivered: 5 },
   bySource: [
     { source: "opd", orders: 1, studies: 3, signed: 3, delivered: 3 },
-    { source: "ipd", orders: 2, studies: 2, signed: 1, delivered: null },
+    { source: "ipd", orders: 0, studies: 0, signed: 0, delivered: 0 },
+    /** #1077 — a `D…` encounter is day care (`studySource`), its own row. */
+    { source: "daycare", orders: 2, studies: 2, signed: 1, delivered: null },
     { source: "walk_in", orders: 1, studies: 1, signed: 1, delivered: 1 },
   ],
   byModality: [
@@ -128,7 +130,7 @@ describe("Hospital numbers — each tab's figures", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "Imaging" }));
     await screen.findByTestId("imaging-metrics-source");
     expect(rows("imaging-metrics-source")).toEqual([
-      "SourceOrdersStudies doneSignedDelivered", "OPD1333", "IPD221—", "Walk-in1111", "Total4655",
+      "SourceOrdersStudies doneSignedDelivered", "OPD1333", "IPD0000", "Day care221—", "Walk-in1111", "Total4655",
     ]);
     expect(rows("imaging-metrics-modality")).toEqual(["ModalityOrdersStudies doneSignedDelivered", "X-ray1111", "Ultrasound2333"]);
     expect(rows("imaging-metrics-times").slice(1)).toEqual([

@@ -113,7 +113,7 @@ describe("the PCPNDT books: register by serial, monthly return (18-S RS7)", () =
       indicationCode: "ii", applicability: "pregnant", now: NOW,
     }));
     const evidence: Record<string, unknown> = {
-      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
       pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
       laterality_confirm: { patientStated: "na" },
       chaperone_present: { chaperoneUserId: fx.doctor.id },
@@ -227,7 +227,7 @@ describe("the PCPNDT books: register by serial, monthly return (18-S RS7)", () =
     const checked = await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: study.studyId, now: NOW }));
     expect(checked.gates).toContain("form_f");
     const evidence: Record<string, unknown> = {
-      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+      identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
       pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
       laterality_confirm: { patientStated: "na" },
       chaperone_present: { chaperoneUserId: fx.doctor.id },

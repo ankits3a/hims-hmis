@@ -66,6 +66,16 @@ describe("collectCopilotTools", () => {
     expect(collectCopilotTools(tagged)).toHaveLength(1);
   });
 
+  it("reads a MODULE intent's own name for the draft rule: `<module>.draft_*` drafts, `<module>.other` does not (#1082)", () => {
+    // A module intent is `<key>.<name>` (#598), so the rule is the name after the module's key.
+    const tagged = registryOf([manifest("radiology", [tool({ intent: "radiology.draft_report", kind: "draft" })], ["opd.queue.read"])]);
+    expect(collectCopilotTools(tagged)).toHaveLength(1);
+    const untagged = registryOf([manifest("radiology", [tool({ intent: "radiology.draft_report" })], ["opd.queue.read"])]);
+    expect(() => collectCopilotTools(untagged)).toThrow(/radiology\.draft_report/);
+    const misnamed = registryOf([manifest("radiology", [tool({ intent: "radiology.my_list", kind: "draft" })], ["opd.queue.read"])]);
+    expect(() => collectCopilotTools(misnamed)).toThrow(/radiology\.my_list/);
+  });
+
   it("refuses at boot on a permission no manifest declares", () => {
     const reg = registryOf([manifest("opd", [tool({ permission: "opd.invented" })], ["opd.queue.read"])]);
     expect(() => collectCopilotTools(reg)).toThrow(/opd\.invented/);

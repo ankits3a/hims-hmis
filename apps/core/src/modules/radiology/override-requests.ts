@@ -3,7 +3,7 @@ import { approvals, imagingSafetyScreenings, imagingStudies, patients, users } f
 import { requestApproval } from "../../kernel/approvals/requests";
 import { approveRequest, rejectRequest } from "../../kernel/approvals/decisions";
 import { getApproval } from "../../kernel/approvals/worklist";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccessMany } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { displayName } from "../patients";
 import { findLockoutHits } from "../pcpndt";
@@ -184,9 +184,8 @@ export async function gateOverrideRequests(
     });
   }
   const reason = `imaging gate override requests, ${String(out.length)} rows`;
-  for (const patientId of new Set(out.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  /** #1076 / ruling 0098 — a list: once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(db, { actor, patientIds: out.map((r) => r.patientId), surface: "imaging.worklist", reason });
   return out;
 }
 

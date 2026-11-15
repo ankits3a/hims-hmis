@@ -1,5 +1,5 @@
 {
-  "id": "b5815f90-e09a-4025-9372-721e34d1fe85",
+  "id": "9b5cd542-daeb-48ed-912f-70ab66d1b7a9",
   "prevId": "9fde1a32-f5ef-4e46-83c9-05ca9c510c46",
   "version": "7",
   "dialect": "postgresql",
@@ -29507,6 +29507,12 @@
           "notNull": true,
           "default": false
         },
+        "laterality": {
+          "name": "laterality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cancelled_from": {
           "name": "cancelled_from",
           "type": "text",
@@ -29622,6 +29628,10 @@
         "order_items_origin_ck": {
           "name": "order_items_origin_ck",
           "value": "\"order_items\".\"origin\" in ('direct', 'addon', 'reflex', 'duplicate_confirmed')"
+        },
+        "order_items_laterality_ck": {
+          "name": "order_items_laterality_ck",
+          "value": "\"order_items\".\"laterality\" is null or \"order_items\".\"laterality\" in ('left', 'right', 'bilateral')"
         },
         "order_items_cancelled_from_ck": {
           "name": "order_items_cancelled_from_ck",
@@ -40885,205 +40895,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.pharmacy_demand": {
-      "name": "pharmacy_demand",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "store_resource_id": {
-          "name": "store_resource_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "item_id": {
-          "name": "item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "medicine_id": {
-          "name": "medicine_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "typed_name": {
-          "name": "typed_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "qty_asked_base": {
-          "name": "qty_asked_base",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dispense_id": {
-          "name": "dispense_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "short_book_entry_id": {
-          "name": "short_book_entry_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "noted_by": {
-          "name": "noted_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "noted_at": {
-          "name": "noted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "pharmacy_demand_noted_idx": {
-          "name": "pharmacy_demand_noted_idx",
-          "columns": [
-            {
-              "expression": "noted_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "pharmacy_demand_item_idx": {
-          "name": "pharmacy_demand_item_idx",
-          "columns": [
-            {
-              "expression": "item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "noted_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "pharmacy_demand_store_resource_id_resources_id_fk": {
-          "name": "pharmacy_demand_store_resource_id_resources_id_fk",
-          "tableFrom": "pharmacy_demand",
-          "tableTo": "resources",
-          "columnsFrom": [
-            "store_resource_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "pharmacy_demand_item_id_items_id_fk": {
-          "name": "pharmacy_demand_item_id_items_id_fk",
-          "tableFrom": "pharmacy_demand",
-          "tableTo": "items",
-          "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "pharmacy_demand_medicine_id_formulary_medicines_id_fk": {
-          "name": "pharmacy_demand_medicine_id_formulary_medicines_id_fk",
-          "tableFrom": "pharmacy_demand",
-          "tableTo": "formulary_medicines",
-          "columnsFrom": [
-            "medicine_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "pharmacy_demand_dispense_id_pharmacy_dispenses_id_fk": {
-          "name": "pharmacy_demand_dispense_id_pharmacy_dispenses_id_fk",
-          "tableFrom": "pharmacy_demand",
-          "tableTo": "pharmacy_dispenses",
-          "columnsFrom": [
-            "dispense_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "pharmacy_demand_short_book_entry_id_pharmacy_short_book_id_fk": {
-          "name": "pharmacy_demand_short_book_entry_id_pharmacy_short_book_id_fk",
-          "tableFrom": "pharmacy_demand",
-          "tableTo": "pharmacy_short_book",
-          "columnsFrom": [
-            "short_book_entry_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "pharmacy_demand_source_ck": {
-          "name": "pharmacy_demand_source_ck",
-          "value": "\"pharmacy_demand\".\"source\" in ('desk_decline', 'counter_search', 'counter_short', 'balance_owed')"
-        },
-        "pharmacy_demand_qty_ck": {
-          "name": "pharmacy_demand_qty_ck",
-          "value": "\"pharmacy_demand\".\"qty_asked_base\" > 0"
-        },
-        "pharmacy_demand_named_ck": {
-          "name": "pharmacy_demand_named_ck",
-          "value": "\"pharmacy_demand\".\"item_id\" is not null or \"pharmacy_demand\".\"typed_name\" is not null"
-        },
-        "pharmacy_demand_typed_ck": {
-          "name": "pharmacy_demand_typed_ck",
-          "value": "\"pharmacy_demand\".\"typed_name\" is null or length(btrim(\"pharmacy_demand\".\"typed_name\")) between 2 and 120"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.pharmacy_dispense_lines": {
       "name": "pharmacy_dispense_lines",
       "schema": "",
@@ -41279,12 +41090,6 @@
         },
         "declined_reason": {
           "name": "declined_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "declined_reason_code": {
-          "name": "declined_reason_code",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -41498,10 +41303,6 @@
         "pharmacy_dispense_lines_declined_ck": {
           "name": "pharmacy_dispense_lines_declined_ck",
           "value": "\"pharmacy_dispense_lines\".\"status\" <> 'declined' or \"pharmacy_dispense_lines\".\"declined_reason\" is not null"
-        },
-        "pharmacy_dispense_lines_declined_code_ck": {
-          "name": "pharmacy_dispense_lines_declined_code_ck",
-          "value": "\"pharmacy_dispense_lines\".\"declined_reason_code\" is null or (\"pharmacy_dispense_lines\".\"status\" = 'declined' and \"pharmacy_dispense_lines\".\"declined_reason_code\" in ('not_in_stock', 'patient_declined', 'cost', 'other'))"
         },
         "pharmacy_dispense_lines_added_ck": {
           "name": "pharmacy_dispense_lines_added_ck",
@@ -43864,20 +43665,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "asked_count": {
-          "name": "asked_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "asked_qty_base": {
-          "name": "asked_qty_base",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         }
       },
       "indexes": {
@@ -44002,11 +43789,7 @@
         },
         "pharmacy_short_book_source_ck": {
           "name": "pharmacy_short_book_source_ck",
-          "value": "\"pharmacy_short_book\".\"source\" in ('desk', 'agent', 'reorder', 'counter')"
-        },
-        "pharmacy_short_book_asked_ck": {
-          "name": "pharmacy_short_book_asked_ck",
-          "value": "\"pharmacy_short_book\".\"asked_count\" >= 0 and \"pharmacy_short_book\".\"asked_qty_base\" >= 0"
+          "value": "\"pharmacy_short_book\".\"source\" in ('desk', 'agent', 'reorder')"
         },
         "pharmacy_short_book_resolution_ck": {
           "name": "pharmacy_short_book_resolution_ck",

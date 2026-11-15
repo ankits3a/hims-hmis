@@ -86,6 +86,12 @@ function formatSlotDay(params: Record<string, unknown>): string {
   return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: IST_TIME_ZONE }).format(d);
 }
 
+// #1085 — a follow-up's due DAY ("YYYY-MM-DD"), anchored at IST midnight like `formatServiceDate`.
+function formatDueDay(params: Record<string, unknown>): string {
+  const d = new Date(`${paramStr(params, "dueOn")}T00:00:00+05:30`);
+  return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: IST_TIME_ZONE }).format(d);
+}
+
 // 18-S RS3 T4 — the prep keys `modules/radiology/prep.ts` derives, as instructions. Kept here rather
 // than imported (GC12: this module imports no module); an unknown key renders nothing.
 const IMAGING_PREP_TEXT: Record<string, Record<"en" | "hi", string>> = {
@@ -399,6 +405,56 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
           + (prep === "" ? "" : ` आने से पहले: ${prep}`)
           + " कृपया यह संदेश और एक फोटो पहचान पत्र साथ लाएँ।";
       },
+    },
+  },
+
+  /**
+   * #1085 (IM6c) — THE DAY-BEFORE REMINDER. Producer: the 08:00 IST morning sweep
+   * (modules/radiology/automation.ts), once, for a slot TOMORROW booked two or more days ahead, and
+   * only while the HOD's `patient_reminders` switch is on — it starts OFF and stays off until the
+   * WhatsApp and SMS templates are approved (ruling 0098 §2). The booking message's words and its
+   * omissions: the accession, the day and the time, never the study. Dies at the slot; a move, a
+   * no-show or a cancel expires it by ref with the booking message.
+   */
+  imaging_appointment_reminder: {
+    key: "imaging_appointment_reminder",
+    version: 1,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    waApprovalStatus: "not_submitted",
+    /** A courtesy: the patient holds the slip; a missed reminder is not a phone call for the desk. */
+    deskFlagOnFailure: false,
+    expiresAt: (params) => expiresAtSlotStart(params),
+    render: {
+      en: (params) =>
+        `Reminder: your imaging appointment ${paramStr(params, "accessionNo")} is tomorrow, ${formatSlotDay(params)} at ${formatSlotTime(params)}. Please bring this message and a photo ID.`,
+      hi: (params) =>
+        `याद दिलाना: आपकी इमेजिंग जांच ${paramStr(params, "accessionNo")} कल, ${formatSlotDay(params)} को ${formatSlotTime(params)} बजे है। कृपया यह संदेश और एक फोटो पहचान पत्र साथ लाएँ।`,
+    },
+  },
+
+  /**
+   * #1085 (IM6c) — A FOLLOW-UP HAS COME DUE. Producer: the same sweep, once per follow-up on its due day,
+   * behind the same switch. It names NOTHING clinical — not the study, not the finding, not the
+   * interval — only that a follow-up visit was advised and from which day: "a follow-up CT for the
+   * nodule" on a household phone is a diagnosis. Seven days, then it is the desk's phone call
+   * (`followupBoard`), not a message.
+   */
+  imaging_followup_due: {
+    key: "imaging_followup_due",
+    version: 1,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    waApprovalStatus: "not_submitted",
+    deskFlagOnFailure: false,
+    expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 7 * 24 * HOUR_MS),
+    render: {
+      en: (params) =>
+        `Your doctor advised a follow-up imaging visit from ${formatDueDay(params)}. Please contact the hospital reception to book it.`,
+      hi: (params) =>
+        `आपके डॉक्टर ने ${formatDueDay(params)} से फॉलो-अप इमेजिंग जांच की सलाह दी है। बुकिंग के लिए कृपया अस्पताल के रिसेप्शन से संपर्क करें।`,
     },
   },
 
