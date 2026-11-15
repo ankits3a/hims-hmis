@@ -103,12 +103,14 @@ Source: `apps/core/src/modules/radiology/`
   - `activateSeededDefinition(db: Db, actor: Actor, definitionId: string): Promise<{ kind: ImagingDefinitionKind; version: number; supersededVer…`
   - `activeDefinition(exec: Db | Tx, kind: K): Promise<z.infer<(typeof SCHEMA_BY_KIND)[K]>>`
   - `activeDefinitionRow(exec: Db | Tx, kind: ImagingDefinitionKind): Promise<ImagingDefinitionRow | undefined>`
+  - `activeReadingPools(exec: Db | Tx): Promise<ReadingPool[]>`
   - `draftDefinition(tx: Tx, actor: Actor, input: { kind: ImagingDefinitionKind; body: unknown }): Promise<{ definitionId: string; version: numb…`
   - `parseDefinitionBody(kind: K, body: unknown): z.infer<(typeof SCHEMA_BY_KIND)[K]>`
   - `publishDefinition(db: Db, actor: Actor, input: { definitionId: string; approvalId: string }): Promise<{ kind: ImagingDefinitionKind; versio…`
+  - `readingPoolFor(pools: readonly ReadingPool[], type: Pick<StudyType, "modality" | "body_part">): string | null`
   - `requestDefinitionPublish(tx: Tx, actor: Actor, definitionId: string): Promise<{ approvalId: string }>`
   - `templatesFor(body: ReportTemplatesBody, studyTypeCode: string, modality: string): GovernedReportTemplate[]`
-  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
+  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReadingPool`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
 - `desk.ts`
   - `DESK_COLLECT_ROUTE`
   - `DESK_WALK_IN_ROUTE`
@@ -124,10 +126,12 @@ Source: `apps/core/src/modules/radiology/`
   - `imagingDevices(db: Db, onDate: string, opts: { includeRetired?: boolean } = {}): Promise<ImagingDeviceRow[]>`
   - types: `ImagingDeviceRow`
 - `drafter.ts`
+  - `DRAFT_SOURCE_KINDS`
   - `activeDrafter(): ReportDrafter`
   - `offlineTemplateDrafter: ReportDrafter`
   - `proposalLockoutHits(p: DraftProposal, tier: LockoutTier): string[]`
-  - types: `DraftProposal`, `DrafterFacts`, `ReportDrafter`
+  - `proposalNumberHits(p: DraftProposal): { section: string; number: string }[]`
+  - types: `DraftProposal`, `DraftSection`, `DraftSource`, `DraftSourceKind`, `DrafterFacts`, `ReportDrafter`
 - `egfr.ts`
   - `CREATININE_UMOL_PER_MG_DL`
   - `EGFR_HOLD_BELOW`
@@ -177,6 +181,7 @@ Source: `apps/core/src/modules/radiology/`
   - `imagingMediaRequested`
   - `imagingOutsideStudyRegistered`
   - `imagingOverreadRecorded`
+  - `imagingReadingClaimed`
   - `imagingReportActedUpon`
   - `imagingReportHandedOver`
   - `imagingReportPrinted`
@@ -341,19 +346,26 @@ Source: `apps/core/src/modules/radiology/`
   - `studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null>`
   - `worklist(db: Db, actor: Actor, opts: { view?: WorklistView; deviceResourceId?: string; limit?: number; now?: Date } = {}): Promise<Worklist…`
   - types: `ReportView`, `StudyView`, `WorklistRow`, `WorklistView`
+- `reading-claim.ts`
+  - `assignReader(tx: Tx, actor: Actor, input: { studyId: string; readerId: string | null; now?: Date }): Promise<{ studyId: string; assignedRea…`
+  - `claimReading(tx: Tx, actor: Actor, input: { studyId: string; now?: Date; takeOver?: boolean }): Promise<ClaimResult>`
+  - types: `ClaimResult`
 - `reading.ts`
+  - `READING_LIST_VIEWS`
   - `TAT_MINUTES: Record<TatClass, number>`
   - `readingContext(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<ReadingContext | null>`
-  - `readingWorklist(db: Db, actor: Actor, now: Date = new Date()): Promise<ReadingRow[]>`
+  - `readingWorklist(db: Db, actor: Actor, now: Date = new Date(), opts: { view?: ReadingListView } = {}): Promise<ReadingRow[]>`
   - `reportPrintView(db: Db, actor: Actor, reportId: string, now: Date = new Date()): Promise<ReportPrintView | null>`
   - `tatClassOf(priority: string, source: StudySource): TatClass`
-  - types: `ReadingContext`, `ReadingRow`, `ReadingTemplate`, `ReportPrintView`, `TatClass`
+  - types: `ReadingContext`, `ReadingListView`, `ReadingRow`, `ReadingTemplate`, `ReportPrintView`, `TatClass`
 - `ready-on-payment.ts`
   - `RADIOLOGY_READY_ON_PAYMENT_CONSUMER`
   - `READY_ON_PAYMENT_EVENTS`
   - `handleSettlementEvent(tx: Tx, e: Pick<DispatchedEvent, "name" | "payload" | "occurredAt">): Promise<{ queued: string[] }>`
   - `readyOnPaymentConsumer(db: Db): Handler`
 - `report-authoring.ts`
+  - `AUTOSAVE_VERSION_MINUTES`
+  - `autosaveDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date } & ReportContent): Promise<{ reportId: string; version: number; a…`
   - `draftReport(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
   - `latestSigned(exec: Db | Tx, studyId: string): Promise<ReportRow | undefined>`
   - `proposeDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<{ reportId: string; version: number; templateKey: strin…`
