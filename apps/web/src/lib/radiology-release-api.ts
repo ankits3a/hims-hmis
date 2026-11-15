@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { ImagingHandoverBody } from "@hmis/contracts";
 import type { WireReportPrint } from "./radiology-reading-api";
 
 /**
@@ -86,15 +87,8 @@ export type WireReleaseRow = {
   needs: ReleaseNeed[];
 };
 
-export type HandoverBody = {
-  collectorKind: CollectorKind;
-  collectorName?: string | null;
-  collectorRelation?: string | null;
-  collectorIdType?: string | null;
-  collectorIdLast4?: string | null;
-  mediaRequestIds?: string[];
-  note?: string | null;
-};
+/** #1077 — the server's own schema (`@hmis/contracts` `imagingHandoverBody`), not a transcription. */
+export type HandoverBody = ImagingHandoverBody;
 
 /** #1076 — with a query the server searches every released report (name, UHID or accession), past the 30-day register. */
 export const fetchReleaseRegister = (q = "") =>

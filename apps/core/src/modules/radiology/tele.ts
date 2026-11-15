@@ -110,8 +110,8 @@ export type OverreadGrade = "concur" | "minor" | "major";
 export const OVERREAD_NOTE_MIN = 4;
 
 /**
- * The signing half is injected (`reports.ts` owns signing, drafting, amending and publishing; it
- * imports this file, so this file does not import it back).
+ * The signing half is injected (`report-authoring.ts` and `report-signature.ts` own drafting,
+ * signing, amending and publishing; they import this file, so this file does not import them back).
  */
 export type OverreadSigning = {
   latestSigned: (tx: Tx, studyId: string) => Promise<{ id: string; templateKey: string; body: unknown; laterality: string | null; publishedAt: Date | null } | undefined>;

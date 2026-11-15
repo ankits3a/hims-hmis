@@ -309,7 +309,7 @@ function FloorBody({ f }: { f: WireFloor }): React.ReactElement {
                 {f.turnaround.rows.map((r) => (
                   <tr key={`${r.modality}|${r.source}`} className={`border-b ${r.withinTarget === false ? "bg-red-50" : ""}`}>
                     <td className="p-1">{t(`radiology.setup.modality.${r.modality}`, { defaultValue: r.modality })}</td>
-                    <td className="p-1">{r.source}</td>
+                    <td className="p-1">{t(`labMetrics.sources.${r.source}`, { defaultValue: r.source })}</td>
                     <td className="mo p-1 text-right">{r.n}</td>
                     <td className="mo whitespace-nowrap p-1">{mins(r.medianMin)}</td>
                     <td className="mo whitespace-nowrap p-1">{mins(r.p90Min)}</td>
@@ -797,7 +797,7 @@ function MoneyView(): React.ReactElement {
                 <Table label={t("radiology.hod.billedBy", { day: d.day })} head={[t("radiology.hod.col.modality"), t("radiology.hod.col.source"), t("radiology.hod.col.studies"), "₹"]}>
                   {d.billed.map((b) => (
                     <tr key={`${b.modality}|${b.source}`} className="border-b">
-                      <td className="p-1">{t(`radiology.setup.modality.${b.modality}`, { defaultValue: b.modality })}</td><td className="p-1">{b.source}</td>
+                      <td className="p-1">{t(`radiology.setup.modality.${b.modality}`, { defaultValue: b.modality })}</td><td className="p-1">{t(`labMetrics.sources.${b.source}`, { defaultValue: b.source })}</td>
                       <td className="mo p-1 text-right">{b.studies}</td><td className="mo p-1 text-right">{fmtRupees(b.netPaise)}</td>
                     </tr>
                   ))}
