@@ -117,7 +117,11 @@ export type PlaceImagingOrderBody = {
   patientId: string; encounterNo: string; serviceDate: string; orderingClinicianId: string;
   priority?: "routine" | "urgent" | "stat";
   indication: string;
-  items: { serviceId: string; duplicateOfItemId?: string | null; duplicateReason?: string | null }[];
+  items: {
+    serviceId: string; duplicateOfItemId?: string | null; duplicateReason?: string | null;
+    /** #1080 — required by the server for a study whose type has a side. */
+    laterality?: "left" | "right" | "bilateral" | null;
+  }[];
   authority?: "clinician" | "external_prescription";
   referrer?: { name: string; registrationNo: string } | null;
 };

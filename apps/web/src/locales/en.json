@@ -6858,7 +6858,6 @@
       "steps": "Console steps",
       "step": {
         "identify": "Identify",
-        "protocol": "Protocol",
         "acquire": "Acquire",
         "send": "Send"
       },
@@ -6923,7 +6922,7 @@
         "noGate": "No identity gate on this study.",
         "done": "Identity {{state}}",
         "first": "First identifier — the patient says their name and age",
-        "firstSaid": "Said “{{name}}, {{age}}” in their own words — matches",
+        "firstAsk": "Expect “{{name}}, {{age}}” in their own words. Scanning the band, or Check, records that they said it",
         "second": "Second identifier — checked against the patient master",
         "kind": "Second identifier",
         "kinds": {
@@ -6956,9 +6955,6 @@
         "evidence": "Bedside radiation safety confirmed: everyone else 2 m away; lead apron on staff who stayed; no pregnant staff, visitor or patient in the bay"
       },
       "protocol": {
-        "noBook": "No protocol book is published yet. Work from the radiologist's instruction; the HOD writes the book under Setup → Books.",
-        "noEntry": "The protocol book has no protocol for {{study}}. Work from the radiologist's instruction.",
-        "toBooks": "Open Setup → Books",
         "default": "department default",
         "preset": "Machine preset",
         "slice": "Slice / pitch",
@@ -7055,7 +7051,6 @@
         "after": "Sending records the acquisition; the study leaves this list and appears on the reading worklist."
       },
       "dock": {
-        "toProtocol": "Protocol →",
         "toAcquire": "Acquire →",
         "start": "Start",
         "toSend": "Send →",
@@ -7063,7 +7058,6 @@
         "prepHold": "A prep gate is still open — the prep bay closes it first",
         "identifyFirst": "Identify the patient first — both identifiers, and the side if the study has one",
         "identified": "Identity and side are confirmed",
-        "protocolHint": "Read the protocol card, then acquire",
         "startHint": "Puts the patient on {{machine}} and marks it busy",
         "doseFirst": "An ionising study needs its dose from the console",
         "sendHint": "Dose and contrast recorded — check the images, then send",

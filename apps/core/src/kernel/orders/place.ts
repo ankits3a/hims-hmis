@@ -9,7 +9,7 @@ import { findOrderKindDecl } from "./kinds";
 import { orderPlaced } from "./events";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../db/client";
-import type { OrderItemOrigin } from "../db/schema/orders";
+import type { OrderItemLaterality, OrderItemOrigin } from "../db/schema/orders";
 import type { OrderKindDecl } from "./kinds";
 
 /** The kernel's own placement permission. Held IN ADDITION to the kind's own (DD6). */
@@ -26,6 +26,12 @@ export type PlaceOrderItemInput = {
   /** D11 — set TOGETHER with `duplicateReason` or not at all; the CHECK refuses a half. */
   duplicateOfItemId?: string | null;
   duplicateReason?: string | null;
+  /**
+   * #1080 — the side (`left`, `right`, `bilateral`), or none. The envelope stores what it is given;
+   * whether a service NEEDS a side is the claiming module's rule (imaging refuses a side-applicable
+   * study without one), because only that module's book knows which studies have a side.
+   */
+  laterality?: OrderItemLaterality | null;
 };
 
 type PlaceOrderBase = {
@@ -236,6 +242,7 @@ export async function placeOrder(
       parentItemId: item.parentItemId ?? null,
       duplicateOfItemId: item.duplicateOfItemId ?? null,
       duplicateReason: item.duplicateReason ?? null,
+      laterality: item.laterality ?? null,
     });
   }
 

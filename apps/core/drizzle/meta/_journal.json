@@ -1625,6 +1625,13 @@
       "when": 1794675676339,
       "tag": "0232_grn_price_check",
       "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1794681720993,
+      "tag": "0233_order_item_laterality",
+      "breakpoints": true
     }
   ]
 }

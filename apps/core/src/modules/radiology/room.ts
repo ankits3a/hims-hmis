@@ -23,9 +23,9 @@ import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
 /**
- * PLAN 18-S RS6 — **THE ROOM CONSOLE'S READ: one study, everything the four steps need.**
+ * PLAN 18-S RS6 — **THE ROOM CONSOLE'S READ: one study, everything the three steps need.**
  *
- * Identify → Protocol → Acquire → Send. The study screen (`studyView`) answers "what is this study";
+ * Identify → Acquire → Send (#1080: the protocol is a card on Acquire, and only when one is published). The study screen (`studyView`) answers "what is this study";
  * the console also has to answer "who is on the table and how is it done", and each answer has one
  * owner on the server:
  *

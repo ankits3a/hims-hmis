@@ -14,20 +14,23 @@ import type { WireGate } from "../../lib/radiology-api";
 import { SeatLink } from "./imaging-counter";
 
 /**
- * PLAN 18-S RS6 — **THE ROOM CONSOLE: Identify → Protocol → Acquire → Send.**
+ * PLAN 18-S RS6 — **THE ROOM CONSOLE: Identify → Acquire → Send** (#1080: three steps always).
  *
  * The board's `room:console` (`docs/design/2026-09-28-radiology-stations/`, station "Modality
  * rooms"). The patient is on the table because the technologist opened them; every step below
  * reads the server and sends intents:
  *
  *   · **Identify** closes the ROOM gates — `identity_two_factor` (the second identifier is compared
- *     with the patient master by the server) and `laterality_confirm` (the patient points). Any
- *     other open gate belongs to the PREP bay: it is shown with a link to `/radiology/prep` and the
- *     dock stays shut. The console never satisfies a prep gate.
- *   · **Protocol** is the HOD's published book (`imaging_protocols`), with the contrast volume for
- *     this weight and the breath-hold words in English and Hindi. "No protocol published" is said
- *     plainly — the book is guidance, not a gate.
- *   · **Acquire** starts, records repeats and aborts; the dose fields are the modality's, and a
+ *     with the patient master by the server) and `laterality_confirm` (the patient points; the server
+ *     compares it with the ORDER's side). Identity is ONE act (#1080): the band box has focus when the
+ *     patient opens, a scan (value then Enter) submits, and submitting attests that the patient said
+ *     their name (`nameStated: true` — the server refuses identity without it). Typing the band value
+ *     works the same (ruling 0098). Any other open gate belongs to the PREP bay: it is shown with a
+ *     link to `/radiology/prep` and the dock stays shut. The console never satisfies a prep gate.
+ *   · **Acquire** shows the HOD's published protocol (`imaging_protocols`) as a card when there is
+ *     one — the contrast volume for this weight and the breath-hold words in English and Hindi — and
+ *     nothing when there is none (the book is guidance, not a gate, and not a step). It starts,
+ *     records repeats and aborts; the dose fields are the modality's, and a
  *     number above the published DRL asks for a reason (never blocks). A refusal names the seat
  *     that fixes it.
  *   · **Send** records the acquisition with the image source; the study leaves this list and
@@ -38,7 +41,7 @@ import { SeatLink } from "./imaging-counter";
  */
 
 export const ROOM_GATES = ["identity_two_factor", "laterality_confirm"] as const;
-const STEPS = ["identify", "protocol", "acquire", "send"] as const;
+const STEPS = ["identify", "acquire", "send"] as const;
 type Step = (typeof STEPS)[number];
 
 /** Where each refusal at the machine is fixed — the words stay the server's. */
@@ -112,9 +115,9 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   const [step, setStep] = useState<Step>("identify");
   const [refused, setRefused] = useState<Refused | null>(null);
   /* Identify */
-  const [nameSaid, setNameSaid] = useState(false);
   const [idKind, setIdKind] = useState<"wristband" | "uhid" | "dob">("wristband");
   const [idValue, setIdValue] = useState("");
+  const bandBox = useRef<HTMLInputElement | null>(null);
   /* Protocol */
   const [lang, setLang] = useState<"en" | "hi">(i18n.language === "hi" ? "hi" : "en");
   const [weight, setWeight] = useState("");
@@ -135,7 +138,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   const [uid, setUid] = useState<string | null>(null);
 
   const started = v?.status === "in_acquisition";
-  useEffect(() => { if (started) setStep((s) => (s === "identify" || s === "protocol" ? "acquire" : s)); }, [started]);
+  useEffect(() => { if (started) setStep((s) => (s === "identify" ? "acquire" : s)); }, [started]);
   useEffect(() => {
     if (v?.patient.weight !== null && v?.patient.weight !== undefined && weight === "") setWeight(String(v.patient.weight.kg));
   }, [v?.patient.weight, weight]);
@@ -213,6 +216,15 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   const gate = (k: string) => gates.find((g) => g.kind === k);
   const idGate = gate("identity_two_factor");
   const sideGate = gate("laterality_confirm");
+  const idOpen = idGate?.state === "open";
+  /** #1080 — the band box has focus when the patient opens, so a scan lands in it with no click. */
+  const loaded = v !== undefined;
+  useEffect(() => { if (loaded && idOpen && step === "identify") bandBox.current?.focus(); }, [loaded, idOpen, step]);
+  /** Submitting IS the attestation that the patient said their name (the first identifier). */
+  const submitIdentity = (): void => {
+    if (idValue.trim() === "" || satisfy.isPending) return;
+    satisfy.mutate({ kind: "identity_two_factor", evidence: { secondIdentifier: idKind, value: idValue.trim(), nameStated: true } });
+  };
   const prepOpen = gates.filter((g) => g.state === "open" && !(ROOM_GATES as readonly string[]).includes(g.kind));
   const roomOpen = gates.filter((g) => g.state === "open" && (ROOM_GATES as readonly string[]).includes(g.kind));
   const bayClear = mode !== "bedside" || (bay.distance && bay.apron && bay.pregnancy);
@@ -223,14 +235,12 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   if (v === undefined) dock = { label: t("common.loading"), hint: "", run: null };
   else if (step === "identify") {
     dock = !bayClear
-      ? { label: t("radiology.room.dock.toProtocol"), hint: t("radiology.room.bedside.clearFirst"), run: null }
+      ? { label: t("radiology.room.dock.toAcquire"), hint: t("radiology.room.bedside.clearFirst"), run: null }
       : prepOpen.length > 0
-      ? { label: t("radiology.room.dock.toProtocol"), hint: t("radiology.room.dock.prepHold"), run: null }
+      ? { label: t("radiology.room.dock.toAcquire"), hint: t("radiology.room.dock.prepHold"), run: null }
       : !identified
-      ? { label: t("radiology.room.dock.toProtocol"), hint: t("radiology.room.dock.identifyFirst"), run: null }
-      : { label: t("radiology.room.dock.toProtocol"), hint: t("radiology.room.dock.identified"), run: () => setStep("protocol") };
-  } else if (step === "protocol") {
-    dock = { label: t("radiology.room.dock.toAcquire"), hint: t("radiology.room.dock.protocolHint"), run: () => setStep("acquire") };
+      ? { label: t("radiology.room.dock.toAcquire"), hint: t("radiology.room.dock.identifyFirst"), run: null }
+      : { label: t("radiology.room.dock.toAcquire"), hint: t("radiology.room.dock.identified"), run: () => setStep("acquire") };
   } else if (step === "acquire") {
     if (!started) {
       dock = !identified || prepOpen.length > 0
@@ -253,6 +263,8 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const target = e.target as HTMLElement | null;
+      /** A field that handled its own Enter (the band box's scan) has already acted — one act per Enter. */
+      if (e.defaultPrevented) return;
       if (target !== null && ["TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)) return;
       if (e.key === "Enter" && dockRun.current !== null) { e.preventDefault(); dockRun.current(); }
     };
@@ -262,8 +274,6 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
 
   if (roomQ.isError) return <RoomRefusal r={refusedOf(roomQ.error)} />;
   if (v === undefined) return <p>{t("common.loading")}</p>;
-
-  const stepIndex = STEPS.indexOf(step);
 
   return (
     <div className="flex min-h-full flex-col" data-testid="room-console" data-step={step} data-state={v.status}>
@@ -297,7 +307,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
       <div className="flex-1 space-y-3 py-3">
         {refused !== null && <RoomRefusal r={refused} />}
 
-        {stepIndex === 0 && (
+        {step === "identify" && (
           <>
             {mode === "bedside" && (
               <Card title={t("radiology.room.bedside.title")} testid="bedside-checklist">
@@ -312,15 +322,14 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
             <Card title={t("radiology.room.identify.title")} testid="identify">
               {idGate === undefined
                 ? <Line ok={null} title={t("radiology.room.identify.noGate")} />
-                : idGate.state !== "open"
+                : !idOpen
                 ? <Line ok title={t("radiology.room.identify.done", { state: t(`radiology.room.gateState.${idGate.state}`, { defaultValue: idGate.state }) })} />
                 : (
                   <>
-                    <Line ok={nameSaid} title={t("radiology.room.identify.first")}>
-                      <label className="mt-1 flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={nameSaid} onChange={(e) => setNameSaid(e.target.checked)} data-testid="id-first" />
-                        {t("radiology.room.identify.firstSaid", { name: v.patient.name, age: v.patient.ageYears ?? "—" })}
-                      </label>
+                    <Line ok={false} title={t("radiology.room.identify.first")}>
+                      <p className="m-0 mt-1 text-sm" data-testid="id-first">
+                        {t("radiology.room.identify.firstAsk", { name: v.patient.name, age: v.patient.ageYears ?? "—" })}
+                      </p>
                     </Line>
                     <Line ok={false} title={t("radiology.room.identify.second")}>
                       <div className="mt-1 grid gap-2 sm:grid-cols-[10rem_1fr_auto]">
@@ -328,12 +337,13 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
                           onChange={(e) => setIdKind(e.target.value as typeof idKind)} data-testid="id-kind">
                           {(["wristband", "uhid", "dob"] as const).map((k) => <option key={k} value={k}>{t(`radiology.room.identify.kinds.${k}`)}</option>)}
                         </select>
-                        <input className={`${field} mo`} value={idValue} onChange={(e) => setIdValue(e.target.value)}
+                        <input ref={bandBox} className={`${field} mo`} value={idValue} onChange={(e) => setIdValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitIdentity(); } }}
                           placeholder={idKind === "dob" ? "YYYY-MM-DD" : t("radiology.room.identify.scanHint")}
                           aria-label={t("radiology.room.identify.value")} data-testid="id-value" />
                         <button type="button" className="rounded border px-3 py-1 text-sm font-medium disabled:opacity-50"
-                          disabled={!nameSaid || idValue.trim() === "" || satisfy.isPending} data-testid="id-check"
-                          onClick={() => satisfy.mutate({ kind: "identity_two_factor", evidence: { secondIdentifier: idKind, value: idValue.trim() } })}>
+                          disabled={idValue.trim() === "" || satisfy.isPending} data-testid="id-check"
+                          onClick={submitIdentity}>
                           {t("radiology.room.identify.check")}
                         </button>
                       </div>
@@ -369,15 +379,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
           </>
         )}
 
-        {stepIndex === 1 && (
-          protocol === null
-            ? (
-              <div role="note" data-testid="no-protocol" className="rounded border border-dashed p-3 text-sm">
-                <p className="m-0">{v.protocol.book === "none" ? t("radiology.room.protocol.noBook") : t("radiology.room.protocol.noEntry", { study: v.studyTypeName })}</p>
-                <p className="m-0 mt-1"><SeatLink to="/radiology/setup?view=books">{t("radiology.room.protocol.toBooks")}</SeatLink></p>
-              </div>
-            )
-            : (
+        {step === "acquire" && protocol !== null && (
               <>
                 <Card testid="protocol-card" title={<>{protocol.name}{v.protocol.matchedOn === "modality" ? <span className="ml-2 text-xs font-normal text-muted-foreground">{t("radiology.room.protocol.default")}</span> : null}<span className="mo ml-2 text-xs font-normal text-muted-foreground">v{v.protocol.version}</span></>}>
                   <p className="my-2 whitespace-pre-line text-sm">{protocol.technique}</p>
@@ -425,10 +427,9 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
                   </Card>
                 )}
               </>
-            )
         )}
 
-        {stepIndex === 2 && (
+        {step === "acquire" && (
           <>
             {!started
               ? (
@@ -528,7 +529,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
           </>
         )}
 
-        {stepIndex === 3 && (
+        {step === "send" && (
           <Card testid="send" title={t("radiology.room.send.title")}>
             <fieldset className="space-y-1 py-2 text-sm">
               <legend className="sr-only">{t("radiology.study.imageSource")}</legend>
