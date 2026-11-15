@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
@@ -10,7 +10,7 @@ import { placeOrder } from "../../kernel/orders/place";
 import { startInstance } from "../../kernel/workflow/instances";
 import { issueInvoice } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { getEncounter, LAB_DEPARTMENT_CODE, openLabWalkinInTx } from "../opd";
+import { getEncounter, IMAGING_VISIT_TYPE, LAB_DEPARTMENT_CODE, openLabWalkinInTx } from "../opd";
 import { getPatientSummaries, listMergedLoserIds, resolvePatientId, searchPatients } from "../patients";
 import { fulfilBookingInTx } from "./bookings";
 import { duplicateWarnings } from "./duplicates";
@@ -771,11 +771,19 @@ const TOKEN_RE = /^T-?(\d{1,5})$/i;
 const VISIT_RE = /^V\d{6,}$/i;
 const ORDER_RE = /^L\d{6,}$/i;
 
+/**
+ * The patient's latest visit of the day — never the imaging desk's walk-in (#1079): that visit is the
+ * radiologist's, opened for an outside slip, and a lab test placed on it would hang off the wrong doctor.
+ * A patient whose only visit today is that walk-in has no visit here, and the lab opens its own.
+ */
 async function todaysEncounterFor(exec: Db | Tx, patientId: string, serviceDate: string): Promise<EncounterRow | null> {
   const rows = await (exec as Db)
     .select()
     .from(opdEncounters)
-    .where(and(eq(opdEncounters.patientId, patientId), eq(opdEncounters.serviceDate, serviceDate)))
+    .where(and(
+      eq(opdEncounters.patientId, patientId), eq(opdEncounters.serviceDate, serviceDate),
+      ne(opdEncounters.type, IMAGING_VISIT_TYPE),
+    ))
     .orderBy(desc(opdEncounters.openedAt))
     .limit(1);
   return rows[0] ?? null;

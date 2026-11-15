@@ -44,6 +44,7 @@ superintendent, and a third person to draft.
 | 5 | The worker process running | §8 |
 | 6 | An active tariff version with imaging prices | §6 — otherwise acquisition refuses `402` |
 | 7 | 18c's licence register populated | `radiation-safety-go-live.md` §2 — otherwise every ionising study refuses |
+| 8 | An OPD department row with code `RAD` (active), and the radiologist of record as an active `opd_doctors` row **in it** (OPD admin → Departments / Doctors; one row per radiologist) | #1079 — the imaging desk's walk-in for an outside slip with no visit today opens its `V` visit there (`openImagingWalkinInTx`); without them it refuses `unknown_department` / `unknown_doctor`, and with two or more radiologists the desk names one |
 
 ---
 
