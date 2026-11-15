@@ -9,6 +9,7 @@ import { BillingError, billingHttpStatus } from "../billing";
 import { TariffError, tariffHttpStatus } from "../tariff";
 import { PcpndtError, pcpndtHttpStatus } from "../pcpndt";
 import { AerbError, aerbHttpStatus } from "../aerb";
+import { OpdError } from "../opd";
 import { RadiologyError, radiologyHttpStatus } from "./errors";
 
 /**
@@ -65,6 +66,18 @@ export function toHttp(e: unknown): never {
     throw httpError(e.code === "unknown_approval" ? 404 : 409, e.message, e.code);
   }
   if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation");
+  /**
+   * #1079 — the desk's walk-in opens a `V` visit through OPD, so OPD's refusals reach this mapper:
+   * `unknown_department` until the `RAD` row is stood up, `unknown_doctor` when radiology has no
+   * radiologist of record or several and none was named. OPD exports no status table; the shape of the
+   * code decides, exactly as `lab-http.ts` decides it for the lab's walk-in.
+   */
+  if (e instanceof OpdError) {
+    const code = String(e.code);
+    const status = /not_found$|^unknown_/.test(code) ? 404
+      : /inactive$|mismatch$|^user_actor_required$/.test(code) ? 409 : 422;
+    throw httpError(status, e.message, code, e.detail);
+  }
   throw e;
 }
 

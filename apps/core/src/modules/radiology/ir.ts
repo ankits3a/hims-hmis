@@ -8,12 +8,12 @@ import { users } from "../../kernel/db/schema/auth";
 import { resources } from "../../kernel/db/schema/resources";
 import { workflowInstances } from "../../kernel/db/schema/workflow";
 import { appendEvent } from "../../kernel/events/append";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccess, recordPhiAccessMany } from "../../kernel/phi/audit";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { newId } from "@hmis/contracts";
 import { displayName, guardiansWithAuthority } from "../patients";
 import { latestVerifiedInr, latestVerifiedPlatelets } from "../lab";
-import { ADULT_AGE_YEARS, NPO_CLEAR_FLUIDS_HOURS, NPO_SOLIDS_HOURS, consentSchema } from "../ot";
+import { ADULT_AGE_YEARS, NPO_CLEAR_FLUIDS_HOURS, NPO_SOLIDS_HOURS, consentSchema } from "../../kernel/consent";
 import { RadiologyError } from "./errors";
 import {
   IR_COAGULATION_VERDICTS, imagingIrCoagulationOverridden, imagingIrSkinDoseAlert,
@@ -49,7 +49,7 @@ import type { Actor } from "@hmis/contracts";
  *   · `skin_followup_required` — Send with Ka,r ≥ 3 Gy refuses until the skin follow-up is
  *     documented (patient told, skin check booked 2–4 weeks out — NCRP 168 / SIR).
  *
- * The OT's shapes are REUSED through `ot/index.ts`: the consent (`consentSchema` — procedure code,
+ * The OT's shapes are REUSED from `kernel/consent` (#1086): the consent (`consentSchema` — procedure code,
  * template version, language, interpreter, witness, signer/guardian, laterality), the fasting hours
  * (`NPO_SOLIDS_HOURS` 6 / `NPO_CLEAR_FLUIDS_HOURS` 2) and the adult age. The OT's `completeChecklist`
  * is bound to an OT case and cannot be called for a study; its A13 rule (a time-out needs at least
@@ -819,8 +819,7 @@ export async function irCaseList(db: Db, actor: Actor, now: Date = new Date()): 
     return (a.scheduledAt?.getTime() ?? 0) - (b.scheduledAt?.getTime() ?? 0);
   });
   const reason = `IR suite list, ${String(out.length)} rows`;
-  for (const patientId of new Set(out.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  /** #1076 / ruling 0098 — a list: once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(db, { actor, patientIds: out.map((r) => r.patientId), surface: "imaging.worklist", reason, now });
   return out;
 }

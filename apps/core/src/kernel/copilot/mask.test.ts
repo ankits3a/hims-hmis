@@ -209,3 +209,27 @@ describe("identifiers written in non-ASCII digits", () => {
     }
   });
 });
+
+/**
+ * #1082 — THE IMAGING ACCESSION, `X` + `YYMMDD` + a four-digit serial (`kernel/episodes/series.ts`). Typed
+ * whole it already fell to the visit-number shape; typed the way it is read off a label — `X-261114-0001`,
+ * `x 261114 0001` — the catch-all took the day and left the serial standing, and the slot held six digits
+ * rather than the accession.
+ */
+describe("maskQuestion — the imaging accession", () => {
+  it.each([
+    ["X2611140001 ka report ready hai?", "X2611140001"],
+    ["X-261114-0001 ka report ready hai?", "X-261114-0001"],
+    ["x 261114 0001 ki report taiyar hai?", "x 261114 0001"],
+    ["X२६१११४०००१ की रिपोर्ट तैयार है?", "X२६१११४०००१"],
+  ])("masks %s whole, as one placeholder", (typed, accession) => {
+    const { masked, slots } = maskQuestion(typed);
+    expect(slots).toEqual({ "<<P1>>": accession });
+    expect(masked.startsWith("<<P1>> ")).toBe(true);
+    expect(() => assertNoIdentifiers(masked)).not.toThrow();
+  });
+
+  it("leaves a sentence with a bare x and a small number alone", () => {
+    expect(maskQuestion("2 x 4 film sheets").masked).toBe("2 x 4 film sheets");
+  });
+});

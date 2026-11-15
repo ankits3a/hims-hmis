@@ -5,7 +5,8 @@ import { FIXTURE_COUNCIL_REG, FIXTURE_QUALIFICATION, acquireStudy, setupRadiolog
 import { mkUser } from "../../../test/helpers/opd";
 import { imagingCriticalFindings, imagingDefinitions, imagingReports, imagingStudies } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { cosignReport, draftReport, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { cosignReport, publishReport, signReport } from "./report-signature";
 import { readingContext, readingWorklist } from "./reading";
 import { assignRole, grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";

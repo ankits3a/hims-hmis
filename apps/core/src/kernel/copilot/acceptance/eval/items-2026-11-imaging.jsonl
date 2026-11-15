@@ -1,0 +1,31 @@
+{"id": "r001", "question": "what is on my reading list", "want": "radiology.my_list", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r002", "question": "how many reads are past target", "want": "radiology.overdue_reads", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r003", "question": "any open critical calls?", "want": "radiology.open_criticals", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r004", "question": "is the report ready for <<P1>>", "want": "radiology.report_ready", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r005", "question": "which machines are down", "want": "radiology.machine_status", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r006", "question": "follow-ups due this week", "want": "radiology.followups_due", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r007", "question": "book a scan slot for <<P1>>", "want": "radiology.book_slot", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r008", "question": "move <<P1>> scan to another slot", "want": "radiology.move_or_no_show", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r009", "question": "<<P1>> report acted: started antibiotics", "want": "radiology.mark_acted", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r010", "question": "request a CD for <<P1>>", "want": "radiology.request_film_cd", "script": "en", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r011", "question": "मेरी रीडिंग लिस्ट में कितने हैं", "want": "radiology.my_list", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r012", "question": "<<P1>> की जाँच कहाँ अटकी है", "want": "radiology.study_status", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r013", "question": "<<P1>> का अगला स्लॉट कब है", "want": "radiology.next_slot", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r014", "question": "<<P1>> की रिपोर्ट तैयार है क्या", "want": "radiology.report_ready", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r015", "question": "कौन सी मशीन बंद है", "want": "radiology.machine_status", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r016", "question": "आज इमेजिंग के आंकड़े बताओ", "want": "radiology.numbers", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r017", "question": "<<P1>> की रिपोर्ट का ड्राफ्ट बना दो", "want": "radiology.draft_report", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r018", "question": "<<P1>> का स्लॉट बुक करो", "want": "radiology.book_slot", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r019", "question": "<<P1>> नहीं आया, नो शो कर दो", "want": "radiology.move_or_no_show", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r020", "question": "<<P1>> की फिल्म चाहिए", "want": "radiology.request_film_cd", "script": "hi-deva", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r021", "question": "<<P1>> ka scan kahan atka hai", "want": "radiology.study_status", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r022", "question": "<<P1>> ka agla slot kab milega", "want": "radiology.next_slot", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r023", "question": "kitne reads late chal rahe hain", "want": "radiology.overdue_reads", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r024", "question": "koi critical call pending hai?", "want": "radiology.open_criticals", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r025", "question": "aaj ke imaging numbers batao", "want": "radiology.numbers", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r026", "question": "follow up kitne baaki hain", "want": "radiology.followups_due", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r027", "question": "<<P1>> ka report draft kar do", "want": "radiology.draft_report", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r028", "question": "<<P1>> ka slot book kar do", "want": "radiology.book_slot", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r029", "question": "<<P1>> aaya nahi, no show kar do", "want": "radiology.move_or_no_show", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r030", "question": "<<P1>> report pe action le liya: antibiotic shuru", "want": "radiology.mark_acted", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}
+{"id": "r031", "question": "x-ray machine chal rahi hai kya", "want": "radiology.machine_status", "script": "hi-latn", "typo": false, "source": "spec-1082-2026-11-14"}

@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { recordPhiAccess } from "../../kernel/phi/audit";
+import { recordPhiAccessMany } from "../../kernel/phi/audit";
 import { IST_UTC_OFFSET_MINUTES } from "../../kernel/approvals/cumulative";
 import { imagingStudies } from "../../kernel/db/schema/radiology";
 import { orders } from "../../kernel/db/schema/orders";
@@ -263,9 +263,8 @@ export async function mwlExport(
   const scope = opts.deviceResourceId === undefined ? "" : ` device ${opts.deviceResourceId}`;
   // Close review A3 — one row per patient DISCLOSED: a withheld or AE-less study left the process as nothing.
   const reason = `modality worklist ${opts.date}${scope}, ${String(out.length)} rows`;
-  for (const patientId of new Set(out.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
-  }
+  /** #1076 / ruling 0098 — a list: once per reader, patient and surface per 30 minutes, in one statement. */
+  await recordPhiAccessMany(db, { actor, patientIds: out.map((r) => r.patientId), surface: "imaging.worklist", reason });
   return { date: opts.date, rows: out, withheld, malformedAeTitle: [...malformed] };
 }
 

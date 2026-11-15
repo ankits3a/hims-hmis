@@ -10,6 +10,7 @@ import { RadiologyError } from "./errors";
 import { IMAGING_STUDY_DEF_KEY } from "./workflow-def";
 import { studyTypeByService } from "./study-types";
 import { pcpndtApplicability } from "./applicability";
+import { carryNoShowInvoice } from "./money";
 import { patients } from "../../kernel/db/schema/patients";
 import { events } from "../../kernel/db/schema/events";
 import { imagingBedsideRequested } from "./events";
@@ -91,13 +92,15 @@ export async function handleOrderPlaced(
        * same dead select this phase deleted from `read.ts` in the same commit.
        */
       id: orderItems.id, serviceId: orderItems.serviceId,
+      /** #1080 — the ordered side, which becomes the study's before any gate is opened. */
+      laterality: orderItems.laterality,
     })
     .from(orderItems)
     .where(inArray(orderItems.id, payload.itemIds));
   const itemById = new Map(items.map((i) => [i.id, i]));
 
   const orderRows = await (tx as unknown as Db)
-    .select({ priority: orders.priority, serviceDate: orders.serviceDate })
+    .select({ priority: orders.priority, serviceDate: orders.serviceDate, placedAt: orders.placedAt })
     .from(orders)
     .where(eq(orders.id, payload.orderId));
   const order = orderRows[0];
@@ -203,7 +206,20 @@ export async function handleOrderPlaced(
        * on the effective value, so a fixed CT cannot take this study until the desk clears it.
        */
       bedsideLocation: bedsideByItem.get(itemId) ?? null,
+      /**
+       * #1080 — THE ORDER'S SIDE, written at creation. This is the writer `gates.ts`'s
+       * `laterality_confirm` was missing (F59): the console now compares what the patient points to
+       * against what the doctor ordered, and a disagreement is the referrer's to resolve. An item with
+       * no side (a chest X-ray, or an order placed before the column existed) stays `na`.
+       */
+      laterality: item.laterality ?? "na",
     });
+
+    /**
+     * #1085 / ruling 0098 §3 — a paid no-show of this same study within 30 days: the rebooking is born
+     * authorised by that invoice, and the no-show gives its line up (`money.ts`, one line, one study).
+     */
+    await carryNoShowInvoice(tx, { id: studyId, patientId: payload.patientId, serviceId: item.serviceId }, order.placedAt);
 
     created.push({ studyId, accessionNo, orderItemId: itemId });
   }

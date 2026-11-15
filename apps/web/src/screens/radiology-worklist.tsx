@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { Button } from "@/components/ui/button";
 import type { WireWorklistRow } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
+import { PatientFacts, istSlot } from "../components/radiology/patient-facts";
 
 /**
  * PLAN 18a T9 — **THE IMAGING WORKLIST: the technologist's day and the radiologist's unread list.**
@@ -18,6 +19,9 @@ import { RadiologyStation } from "./radiology-station";
  * the reader is entitled to. Both rules are `read.ts`'s, and a client-side copy of either would be
  * the copy that drifts. What the screen adds is the thing a list is for: the `stat` rows read first,
  * and the two flags a technologist must not miss are visible without opening anything.
+ *
+ * #1076 — the row says words, not wire values: the status in words, the slot in IST, the study's name,
+ * and the patient's UHID, age and sex under the name. The list refreshes every 30 s like the stations.
  */
 const VIEWS = ["floor", "unread", "all"] as const;
 
@@ -28,7 +32,9 @@ export function RadiologyWorklist(): React.ReactElement {
   const q = useQuery({
     queryKey: ["radiology", "worklist", view],
     queryFn: () => fetchWorklist(view),
+    refetchInterval: 30_000,
   });
+  const now = Date.now();
 
   /**
    * 18-S RS5 T2 — the prep bay's "please override" requests, for the radiologist, under "Clocks
@@ -120,6 +126,7 @@ export function RadiologyWorklist(): React.ReactElement {
                   </td>
                   <td>
                     {r.patientName}
+                    <PatientFacts row={r} />
                     {/**
                       * The two flags a technologist must not miss. `form_f_required` is the one with
                       * a criminal statute behind it, and it is on the ROW rather than one click in.
@@ -133,14 +140,14 @@ export function RadiologyWorklist(): React.ReactElement {
                       ? <span className="ml-2 rounded bg-slate-200 px-1">{t("radiology.worklist.restricted")}</span>
                       : null}
                   </td>
-                  <td>{r.studyTypeCode}</td>
+                  <td>{r.studyTypeName ?? r.studyTypeCode}</td>
                   <td>
-                    {r.status}
+                    {t(`radiology.worklist.state.${r.status}`, { defaultValue: r.status })}
                     {r.priority === "stat"
                       ? <span className="ml-2 rounded bg-red-100 px-1 font-semibold">{t("radiology.worklist.stat")}</span>
                       : null}
                   </td>
-                  <td>{r.scheduledAt ?? t("radiology.worklist.unslotted")}</td>
+                  <td className="mo">{r.scheduledAt === null ? t("radiology.worklist.unslotted") : istSlot(r.scheduledAt, now)}</td>
                 </tr>
               ))}
             </tbody>

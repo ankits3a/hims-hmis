@@ -5,7 +5,9 @@ import {
   events, imagingCriticalCallAttempts, imagingCriticalFindings, imagingDefinitions, orders,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { acknowledgeCritical, draftReport, flagCritical, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { signReport } from "./report-signature";
+import { acknowledgeCritical, flagCritical } from "./criticals";
 import { criticalCallBoard, readBackNamesFinding, recordCallAttempt } from "./critical-ladder";
 import { sweepCriticalChaser } from "./chasers";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
@@ -74,6 +76,15 @@ describe("the critical-call ladder (18-S RS8b T2)", () => {
   const after = async (id: string, minutes: number) => new Date((await finding(id)).createdAt.getTime() + minutes * 60_000);
 
   /* ═══════════════════════ the read-back names the finding ═══════════════════════ */
+
+  it("#1076: a Devanagari read-back is matched by the term it transliterates, and a negated one is refused", () => {
+    const report = { impression: "Large left pneumothorax with mediastinal shift.", findings: null };
+    expect(readBackNamesFinding("बायाँ न्यूमोथोरेक्स, ड्रेन डाल रहे हैं", report)).toBe(true);
+    expect(readBackNamesFinding("न्यूमोथोरैक्स नहीं है", report)).toBe(false);
+    expect(readBackNamesFinding("ठीक है, देख लेंगे", report)).toBe(false);
+    const edh = { impression: "Acute extradural haematoma, right temporal.", findings: null };
+    expect(readBackNamesFinding("एक्स्ट्राड्यूरल हीमैटोमा — ओटी ले जा रहे हैं", edh)).toBe(true);
+  });
 
   it("readBackNamesFinding: the clinician's words must name what the report found", () => {
     const report = { impression: "Large left extradural haematoma with midline shift.", findings: null };

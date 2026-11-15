@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 import {
-  IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_KINDS, IMAGING_FOLLOWUP_SOURCES, IMAGING_MEDIA_KINDS,
+  IMAGING_ACTED_OUTCOMES, IMAGING_AUTOMATION_KINDS, IMAGING_COLLECTOR_KINDS, IMAGING_FOLLOWUP_SOURCES, IMAGING_MEDIA_KINDS,
 } from "../../kernel/db/schema/radiology";
 import { BEDSIDE_LOCATION_MAX_LENGTH } from "./kinds";
 
@@ -276,6 +276,13 @@ export const imagingReportHandedOver = defineEvent("imaging.report_handed_over",
   collectorKind: z.enum(IMAGING_COLLECTOR_KINDS),
   filmSheets: z.number().int().nonnegative(), cd: z.boolean(),
 }));
+/**
+ * #1076 — a released report was printed (the reading room's print, or the hand-over desk's reprint).
+ * Ids and the version only; the actor is the person who printed it.
+ */
+export const imagingReportPrinted = defineEvent("imaging.report_printed", MODULE, z.object({
+  reportId: id, studyId: id, version: z.number().int().positive(),
+}));
 export const imagingMediaRequested = defineEvent("imaging.media_requested", MODULE, z.object({
   requestId: id, studyId: id, kind: z.enum(IMAGING_MEDIA_KINDS), quantity: z.number().int().positive(), included: z.boolean(),
 }));
@@ -330,6 +337,33 @@ export const imagingOverreadRecorded = defineEvent("imaging.overread_recorded", 
   providerKey: z.string().min(1),
 }));
 
+/**
+ * #1081 — a reader opened a study in the reading room and it is now theirs to read: "Dr X is reading",
+ * with no PACS. `previousReaderId` names who held it before (a lapsed claim, or a live one this reader
+ * took over — `tookOver`), so a hand-over is on the record. Appended for a new claim and a take-over,
+ * never for a reader refreshing their own live claim. Ids only, as this file's rule says.
+ */
+export const imagingReadingClaimed = defineEvent("imaging.reading_claimed", MODULE, z.object({
+  studyId: id, readerId: id, previousReaderId: id.nullable(), tookOver: z.boolean(),
+}));
+
+/**
+ * #1085 — a morning-sweep automation was switched off or on, by whom (the event's actor) and why. The
+ * switch is the HOD's; the reason is the sentence the audit reads back.
+ */
+export const imagingAutomationSwitched = defineEvent("imaging.automation_switched", MODULE, z.object({
+  kind: z.enum(IMAGING_AUTOMATION_KINDS), enabled: z.boolean(), reason: z.string().min(3).max(400),
+}));
+
+/**
+ * #1085, ruling 0098 §3 — a paid no-show's invoice line moved to the rebooking of the same study within
+ * 30 days, so the rebooking is authorised by the original invoice and no second one is raised. One line
+ * still pays for one study: the no-show gives the line up in the same transaction. Ids only.
+ */
+export const imagingInvoiceCarried = defineEvent("imaging.invoice_carried", MODULE, z.object({
+  fromStudyId: id, toStudyId: id, invoiceLineId: id,
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -359,4 +393,8 @@ export const RADIOLOGY_EVENTS = [
   imagingFollowupOverdue,
   imagingFollowupBooked,
   imagingOverreadRecorded,
+  imagingReportPrinted,
+  imagingReadingClaimed,
+  imagingAutomationSwitched,
+  imagingInvoiceCarried,
 ] as const;

@@ -5,10 +5,9 @@ import {
 } from "../../../test/helpers/radiology";
 import { events, imagingCriticalFindings, imagingDefinitions, imagingReports, imagingStudies, notifications, orderItems, patients } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import {
-  SECOND_FACTOR_WINDOW_MINUTES, acknowledgeCritical, amendReport, draftReport, flagCritical,
-  latestSigned, publishReport, savePrelim, signReport,
-} from "./reports";
+import { draftReport, latestSigned, savePrelim } from "./report-authoring";
+import { SECOND_FACTOR_WINDOW_MINUTES, amendReport, publishReport, signReport } from "./report-signature";
+import { acknowledgeCritical, flagCritical } from "./criticals";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { StudyType } from "./definitions";
 import type { Db } from "../../kernel/db/client";
@@ -37,7 +36,7 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
   afterEach(() => { fx.unregister(); });
 
   let seq = 0;
-  const acquired = async (over: { serviceCode?: string; deviceKey?: string; dose?: boolean } = {}) => {
+  const acquired = async (over: { serviceCode?: string; deviceKey?: string; dose?: boolean; laterality?: "left" | "right" | "bilateral" } = {}) => {
     seq += 1;
     return await acquireStudy(db, fx, {
       idemKey: `r${String(seq)}`, now: new Date(NOW.getTime() + seq * 25 * 3_600_000),
@@ -246,8 +245,8 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
       bookRow("CT-HEAD", { modality: "ct", ionising: true }),
       bookRow("MRI-BRAIN", { modality: "mri" }),
     ]);
-    const study = await acquired();
-    await db.update(imagingStudies).set({ laterality: "left" }).where(eq(imagingStudies.id, study.studyId));
+    /** #1080 — the side is the ORDER's, written onto the study at creation and confirmed at the console. */
+    const study = await acquired({ laterality: "left" });
 
     const wrong = await draft(study.studyId, { laterality: "right" });
     await expect(sign(study.studyId, wrong.reportId)).rejects.toMatchObject({ code: "laterality_mismatch" });

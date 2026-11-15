@@ -9,12 +9,13 @@ import { appendEvent } from "../../kernel/events/append";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
-import { consentSchema, consentEvidence } from "../ot";
+import { consentSchema, consentEvidence } from "../../kernel/consent";
 import { guardiansWithAuthority, listAllergies } from "../patients";
 import { findLockoutHits } from "../pcpndt";
 import { latestVerifiedCreatinine } from "../lab";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { RadiologyError } from "./errors";
+import { assertNotAutomation } from "./automation-actor";
 import { imagingGateEvaluated } from "./events";
 import { requireStudyType } from "./study-types";
 import { ageInYearsOn } from "./applicability";
@@ -191,6 +192,13 @@ const identitySchema = z.object({
   secondIdentifier: z.enum(["dob", "uhid", "wristband"]),
   /** `YYYY-MM-DD` for `dob`, the UHID string for `uhid`, the band's printed id for `wristband`. */
   value: z.string().min(1).max(64),
+  /**
+   * #1080 — THE FIRST IDENTIFIER, ATTESTED. The patient (or the relative answering for them) said
+   * their name and age; the person submitting says so by submitting. It was a tick on the console
+   * that never reached the server, so the record held one identifier and a gate named "two factor".
+   * Refused below when absent — two identifiers stay (the NABH patient-identification goal).
+   */
+  nameStated: z.boolean().optional(),
 });
 
 /** The declaration, the LMP and the hCG pointer — which of them SUFFICES is the policy's answer. */
@@ -519,6 +527,14 @@ async function computeSatisfaction(
      */
     case "identity_two_factor": {
       const parsed = parseEvidence(identitySchema, raw, "identity_two_factor");
+      if (parsed.nameStated !== true) {
+        throw new RadiologyError(
+          "evidence_invalid",
+          "ask the patient their name and age first — a band or a number alone is one identifier, "
+          + "and this gate needs two",
+          { secondIdentifier: parsed.secondIdentifier },
+        );
+      }
       const patient = (await (tx as unknown as Db).select({
         uhid: patients.uhid, dob: patients.dob,
       }).from(patients).where(eq(patients.id, study.patientId)))[0]!;
@@ -652,7 +668,7 @@ async function computeSatisfaction(
     }
 
     /**
-     * The consent SHAPE is `ot/consents.ts`'s, imported rather than copied (the plan's own
+     * The consent SHAPE is `kernel/consent`'s (theatre's too), imported rather than copied (the plan's own
      * instruction): `procedureCode` + `templateVersion`, `language` + `interpreter`, thumb
      * impression + witness, and the guardian-authority rule. What differs is what it is checked
      * AGAINST — the study type instead of a procedure code, and a laterality that may be `na`.
@@ -948,6 +964,15 @@ async function computeSatisfaction(
     case "laterality_confirm": {
       const parsed = parseEvidence(lateralitySchema, raw, "laterality_confirm");
       /**
+       * ═══ #1080 — THE STUDY NOW CARRIES THE ORDER'S SIDE FROM CREATION ═══
+       *
+       * `order_items.laterality` exists, `placeImagingOrder` refuses a sided study without it, and the
+       * `radiology.order_placed` consumer writes it onto the study. So the comparison below is the
+       * ORDER against the PATIENT, which is E3's control: "left knee ordered, right imaged" is refused
+       * here with `laterality_mismatch` and the referrer named as the one who resolves it. The
+       * recording branch remains for a study whose order carried no side (placed before the column,
+       * or straight through the kernel by another module): the patient's statement is then the side.
+       *
        * ═══ F59 (CLOSE REVIEW) — THIS GATE NOW RECORDS THE SIDE. IT USED TO COMPARE AGAINST `'na'` ═══
        *
        * `imaging_studies.laterality` had NO WRITER anywhere in the tree: there is no order field, no
@@ -962,11 +987,8 @@ async function computeSatisfaction(
        * **What this fix is, and what it is honestly NOT.** The side is now taken from the patient
        * at check-in, in front of the patient, and written to the study; sign compares the report
        * against it, so *"the report names a different side from the one confirmed at the console"*
-       * is caught. What is still missing is the ORDER's own side — E3's *"left knee ordered, right
-       * imaged"* needs `order_items.laterality`, which is a KERNEL column this phase may not add
-       * (§8's freeze). **That is reported as a plan defect for the kernel, not taken here**, and
-       * until it exists a mis-ordered side is caught by the patient at the console rather than by
-       * the system at placement.
+       * is caught. (F59 also recorded that the ORDER's own side was missing — `order_items.laterality`
+       * was a kernel column that phase could not add. #1080 added it; see the paragraph above.)
        *
        * A study whose side is already recorded may not be silently re-sided: a second statement
        * that disagrees is a refusal, because that is a person changing their mind about which knee
@@ -974,9 +996,9 @@ async function computeSatisfaction(
        */
       if (study.laterality !== "na" && parsed.patientStated !== study.laterality) {
         throw new RadiologyError(
-          "gate_open",
-          `the patient says ${parsed.patientStated} and this study is already recorded as `
-          + `${study.laterality} — the referrer resolves a change of side, not the console`,
+          "laterality_mismatch",
+          `the patient says ${parsed.patientStated} and this study is ordered for `
+          + `${study.laterality} — the referring doctor resolves a change of side, not the console`,
           { patientStated: parsed.patientStated, recorded: study.laterality },
         );
       }
@@ -1016,6 +1038,8 @@ async function computeSatisfaction(
 export async function satisfyGate(
   tx: Tx, actor: Actor, gateId: string, evidence: unknown, now: Date = new Date(),
 ): Promise<{ state: string; kind: string }> {
+  /** #1085 — a safety gate is cleared by a person; the morning sweep's actor is refused before anything is read. */
+  assertNotAutomation(actor, "gate_satisfy");
   const { gate, study } = await loadGate(tx, gateId);
   const before = await gateState(tx, gateId);
   if (before !== "open") {
@@ -1067,6 +1091,7 @@ async function assertGateReasonClean(tx: Tx, studyId: string, reason: string): P
 export async function waiveGate(
   tx: Tx, actor: Actor, gateId: string, reason: string,
 ): Promise<{ state: string; kind: string }> {
+  assertNotAutomation(actor, "gate_waive");
   const { gate, study } = await loadGate(tx, gateId);
 
   /**
@@ -1129,6 +1154,7 @@ export async function waiveGate(
 export async function overrideGate(
   tx: Tx, actor: Actor, gateId: string, reason: string,
 ): Promise<{ state: string; kind: string }> {
+  assertNotAutomation(actor, "gate_override");
   const { gate, study } = await loadGate(tx, gateId);
 
   /** F79, second pass — as for a waiver: the override's reason is checked before it is stored. */

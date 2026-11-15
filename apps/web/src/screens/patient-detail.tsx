@@ -1547,6 +1547,7 @@ export function PatientDetail(): React.ReactElement {
     medicines: (n) => t("profile.tl.medicines", { count: n }),
     labSigned: t("profile.tl.labSigned"),
     labVisit: t("profile.tl.labVisit"),
+    imagingVisit: t("profile.tl.imagingVisit"),
     labResults: (n) => t("profile.tl.labResults", { count: n }),
     labReportVersion: (n) => t("profile.tl.version", { n }),
     paidDue: (paid, due) => t("profile.tl.paidDue", { paid, due }),

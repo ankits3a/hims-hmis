@@ -50,7 +50,8 @@ const FLOOR = {
   readers: { toRead: 3, stat: 1, drafted: 1, claimed: [{ userId: "r1", name: "Dr. Anjali Mehta", studies: 2 }], unclaimed: 2 },
   turnaround: {
     from: "2026-09-23", to: "2026-09-29",
-    rows: [{ modality: "ct", source: "ER", n: 4, medianMin: 22, p90Min: 41, targetMin: 30, withinTarget: false }],
+    /** #1077 — the sources are `studySource`'s (no `ER`: STAT is a priority); day care is held to the inpatient 6 h. */
+    rows: [{ modality: "ct", source: "daycare", n: 4, medianMin: 300, p90Min: 410, targetMin: 360, withinTarget: false }],
     northStar: { orderToActed: { n: 5, medianMin: 300, p90Min: 900 }, signedUnreadOver24h: 1, publishedNotActedOver72h: 0 },
   },
   leakage: { open: 1, estimatedPaise: 180000, unpriced: 0, rows: [] },
@@ -101,7 +102,8 @@ it("the floor: pipeline with each stage's longest wait, rooms, turnaround agains
   const rooms = screen.getByTestId("hod-rooms");
   expect(within(rooms).getByText("CT-1").closest("tr")).toHaveAttribute("data-down", "CT-1");
   expect(within(rooms).getByTestId("hod-tech-note")).toHaveTextContent("cannot say who is in which room");
-  expect(within(screen.getByTestId("hod-tat")).getByText(/30 min ✗/)).toBeInTheDocument();
+  expect(within(screen.getByTestId("hod-tat")).getByText(/6 h ✗/)).toBeInTheDocument();
+  expect(within(screen.getByTestId("hod-tat")).getByText("Day care")).toBeInTheDocument();
   expect(screen.getByTestId("hod-brief")).toHaveTextContent("XR-1 cannot expose");
   expect(within(screen.getByTestId("hod-five")).getByText("Dashboard UX")).toBeInTheDocument();
   // The right list is the escalations, red first; one item per cause.
@@ -130,7 +132,9 @@ it("an escalation in hand is answered with the spine's acts, and its one docked 
   await waitFor(() => expect(bodiesOf("POST /api/alerts/AL1/ack")).toEqual([{ kind: "owned", untilMinutes: 60 }]));
   expect(await screen.findByText("It is yours now, with a deadline.")).toBeInTheDocument();
 
-  // One the ladder has not reached this person: no acts offered, and it says why.
+  // One the ladder has not reached this person: no acts offered, and it says why. (#1082: with one in
+  // hand the copilot takes the column and the list folds to its line; open it to take the next.)
+  await user.click(screen.getByTestId("station-list-folded"));
   await user.click(within(screen.getByRole("region", { name: "Escalated · red first" })).getByText("Machine out of service"));
   expect(await screen.findByText(/The ladder has not reached you/)).toBeInTheDocument();
   expect(screen.getByTestId("dock-act")).toHaveTextContent("Open downtime");
@@ -147,7 +151,8 @@ it("a gate override is granted here with a reason (the existing decide route); a
   const list = await screen.findByRole("region", { name: "Waiting on you" });
   await user.click(within(list).getByText("Book to publish"));
   expect(await screen.findByRole("link", { name: "Open the approvals inbox" })).toHaveAttribute("href", "/approvals?focus=AP2");
-  await user.click(within(list).getByText("Gate override (prep bay asks)"));
+  await user.click(screen.getByTestId("station-list-folded"));
+  await user.click(within(screen.getByRole("region", { name: "Waiting on you" })).getByText("Gate override (prep bay asks)"));
   // The gate is named in words, never its code.
   expect(await within(screen.getByTestId("hod-approval")).findByText("Renal function · I2609290012 · CT-HEAD")).toBeInTheDocument();
   const dock = await screen.findByTestId("dock-act");
@@ -187,6 +192,63 @@ it("quality shows 'not measured yet' where there is nothing to count, never a ze
   expect(peer.closest("tr")).toHaveAttribute("data-status", "not_measured");
   expect(within(peer.closest("tr")!).getByText("not measured yet")).toBeInTheDocument();
   expect(within(q).getByText("Repeat rate").closest("tr")).toHaveTextContent("2 %");
+});
+
+/**
+ * #1085 — the morning sweep on the Quality view: this morning's digest (counts, no names), yesterday's
+ * register gaps by accession, and the four automations, each switched with a reason.
+ */
+it("quality carries the morning digest, the register gaps by accession and the automation switches, each switch with a reason", async () => {
+  const DIGEST = {
+    reportDay: "2026-09-28",
+    modalities: [{ modality: "ct", source: "opd", ordered: 7, orderToSignedMedianMin: 95, orderToSignedP90Min: 240 }],
+    total: { ordered: 7, orderToSignedMedianMin: 95, orderToSignedP90Min: 240 },
+    repeatRate: { value: 1.5, numerator: 1, denominator: 66 }, dosesOverDrlWithoutReason: 1, reportsUnreadOver24h: 3,
+    openCriticals: 0, overdueFollowups: 2, noShows: 4, machinesDown: 1, registerGaps: { pcpndt: 1, aerb: 1 },
+  };
+  const auto = (kind: string, enabled: boolean) => ({
+    kind, enabled, isDefault: true, reason: null, changedBy: null, changedByName: null, changedAt: null, lastRun: null,
+  });
+  mockRoutes({
+    "GET /api/radiology/supervisor/floor": { status: 200, body: FLOOR },
+    "GET /api/radiology/supervisor/quality": { status: 200, body: { from: "2026-09-29", to: "2026-09-29", indicators: [] } },
+    "GET /api/radiology/supervisor/digest": { status: 200, body: { digest: { day: "2026-09-29", ranAt: new Date().toISOString(), digest: DIGEST } } },
+    "GET /api/radiology/supervisor/completeness": {
+      status: 200,
+      body: {
+        day: "2026-09-28", counts: { pcpndt: 1, aerb: 1 },
+        gaps: [
+          { kind: "form_f_incomplete", register: "pcpndt", studyId: "S1", accessionNo: "X2609280004", missing: ["relative_name"] },
+          { kind: "dose_missing", register: "aerb", studyId: "S2", accessionNo: "X2609280009" },
+        ],
+      },
+    },
+    "GET /api/radiology/supervisor/automations": {
+      status: 200,
+      body: { automations: [auto("no_show_sweep", true), auto("patient_reminders", false), auto("hod_digest", true), auto("register_completeness", true)] },
+    },
+    "POST /api/radiology/supervisor/automations/no_show_sweep": { status: 201, body: { kind: "no_show_sweep", enabled: false, changed: true } },
+  });
+  renderWithProviders(<RadiologyHod view="quality" />);
+
+  const digest = await screen.findByTestId("hod-digest");
+  await within(digest).findByText("This morning's digest · 2026-09-28");
+  expect(within(digest).getByText("Reports unread over 24 h").parentElement).toHaveTextContent("3");
+  expect(within(digest).getByText("No-shows").parentElement).toHaveTextContent("4");
+  const gaps = screen.getByTestId("hod-register-gaps");
+  await waitFor(() => { expect(gaps.querySelector('[data-acc="X2609280004"]')).toHaveAttribute("data-gap-kind", "form_f_incomplete"); });
+  expect(gaps.querySelector('[data-acc="X2609280009"]')).toHaveTextContent("No dose row");
+
+  const autos = screen.getByTestId("hod-automations");
+  await waitFor(() => { expect(autos.querySelector('[data-automation="patient_reminders"]')).toHaveAttribute("data-enabled", "off"); });
+  const off = within(autos).getByTestId("switch-no_show_sweep");
+  expect(off).toBeDisabled();
+  const row = autos.querySelector('[data-automation="no_show_sweep"]') as HTMLElement;
+  await userEvent.type(within(row).getByRole("textbox"), "desk marks by hand this week");
+  await userEvent.click(off);
+  await waitFor(() => {
+    expect(bodiesOf("POST /api/radiology/supervisor/automations/no_show_sweep")).toEqual([{ enabled: false, reason: "desk marks by hand this week" }]);
+  });
 });
 
 it("the access log lists who opened whose images and flags break-glass in the right-hand list", async () => {
