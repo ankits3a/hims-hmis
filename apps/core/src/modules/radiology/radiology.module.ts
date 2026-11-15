@@ -27,6 +27,7 @@ import { RadiologyReleaseController } from "./radiology-release.controller";
 import { RadiologySupervisorController } from "./radiology-supervisor.controller";
 import { RadiologyReadingRoomController } from "./radiology-reading-room.controller";
 import { RadiologyMetricsController } from "./radiology-metrics.controller";
+import { RadiologyDeskController } from "./radiology-desk.controller";
 import { RADIOLOGY_TOPIC_SPACES, radiologyTopicRouter } from "./realtime";
 
 /**
@@ -99,6 +100,8 @@ export class RadiologyRealtimeRegistrar implements OnModuleInit {
     RadiologySupervisorController,
     // 18-S RS8c — the reading room, part 3: follow-ups, peer review, night & outside reads.
     RadiologyReadingRoomController,
+    // #1078 (IM2) — the imaging desk's acts: arrival, collect, walk-in now, the slot proposal, today's visits.
+    RadiologyDeskController,
     // #777 — imaging numbers: counts and turnaround times, read-only.
     RadiologyMetricsController,
   ],

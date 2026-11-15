@@ -709,6 +709,98 @@ export async function cancelStudy(
 }
 
 /**
+ * ═══ #1078 — THE TWO QUESTIONS THE WALK-IN AND THE DESK'S PROPOSAL BOTH ASK ═══
+ *
+ * Which machines may take a study of this modality now (`available`, a `device`, of the modality, in
+ * code order), and may the law let this one take it on that IST day (an ionising study needs an active
+ * AERB licence — 18-S RS4 T2). Extracted from `autoSlotWalkIn` so `proposeFreeSlot` asks them the same
+ * way: a proposal that offered a machine the walk-in would pass over would be a second rule.
+ */
+async function machinesAvailableFor(
+  exec: Db | Tx, modality: string,
+): Promise<{ id: string; code: string; name: string }[]> {
+  return await (exec as Db)
+    .select({ id: resources.id, code: resources.code, name: resources.name })
+    .from(resources)
+    .where(and(
+      eq(resources.kind, "device"),
+      eq(resources.status, "available"),
+      sql`${resources.attributes} ->> ${DEVICE_MODALITY_ATTRIBUTE} = ${modality}`,
+    ))
+    .orderBy(resources.code);
+}
+
+async function licensedOn(exec: Db | Tx, studyType: StudyType, deviceResourceId: string, at: Date): Promise<boolean> {
+  if (!studyType.ionising) return true;
+  return (await activeLicenceFor(exec, deviceResourceId, istDayString(at))) !== null;
+}
+
+/** The desk's grid, and how far ahead a proposal looks before it says there is none. */
+export const SLOT_STEP_MINUTES = 15;
+export const PROPOSAL_HORIZON_DAYS = 7;
+
+export type SlotProposal = {
+  studyId: string; deviceResourceId: string; code: string; name: string; scheduledAt: Date;
+};
+
+/**
+ * ═══ #1078 (L1) — THE FIRST FREE QUARTER HOUR, PROPOSED AND NOT BOOKED ═══
+ *
+ * The desk prefilled the next quarter hour without asking whether the machine was free. This walks the
+ * quarter hours from `from` (rounded up) for `PROPOSAL_HORIZON_DAYS`, and at each one the machines in
+ * `machinesAvailableFor`'s order, and answers the first that is licensed for the day (`licensedOn`) and
+ * holds no live booking overlapping the study type's block. `null` when there is none in the horizon,
+ * or no machine at all.
+ *
+ * **It READS only, and a proposal is not a promise.** The bookings are read once, so the overlap below
+ * is the same comparison `assertSlotFree` makes in SQL — but `assertSlotFree`, under the machine's row
+ * lock, stays the one authority: a slot taken between the proposal and Enter is `slot_taken` at
+ * booking, never a double booking.
+ */
+export async function proposeFreeSlot(
+  exec: Db | Tx, input: { studyId: string; from: Date },
+): Promise<SlotProposal | null> {
+  const study = await loadStudy(exec, input.studyId);
+  const studyType = await requireStudyType(exec, study.studyTypeCode);
+  const machines = await machinesAvailableFor(exec, studyType.modality);
+  if (machines.length === 0) return null;
+
+  const stepMs = SLOT_STEP_MINUTES * 60_000;
+  const first = Math.ceil(input.from.getTime() / stepMs) * stepMs;
+  const until = first + PROPOSAL_HORIZON_DAYS * 86_400_000;
+  const lengthMs = studyType.duration_min * 60_000;
+  const booked = await (exec as Db)
+    .select({
+      deviceResourceId: imagingStudies.deviceResourceId, scheduledAt: imagingStudies.scheduledAt,
+      durationMin: imagingStudies.durationMin,
+    })
+    .from(imagingStudies)
+    .where(and(
+      inArray(imagingStudies.deviceResourceId, machines.map((m) => m.id)),
+      inArray(imagingStudies.status, [...LIVE_SLOT_STATUSES]),
+      ne(imagingStudies.id, study.id),
+      sql`${imagingStudies.scheduledAt} < ${new Date(until + lengthMs).toISOString()}`,
+      sql`${imagingStudies.scheduledAt} + make_interval(mins => ${imagingStudies.durationMin}) > ${new Date(first).toISOString()}`,
+    ));
+
+  const licensed = new Map<string, boolean>();
+  for (let t = first; t < until; t += stepMs) {
+    const at = new Date(t);
+    for (const machine of machines) {
+      const key = `${machine.id}:${istDayString(at)}`;
+      if (!licensed.has(key)) licensed.set(key, await licensedOn(exec, studyType, machine.id, at));
+      if (licensed.get(key) !== true) continue;
+      const clash = booked.some((b) => b.deviceResourceId === machine.id && b.scheduledAt !== null
+        && b.scheduledAt.getTime() < t + lengthMs && b.scheduledAt.getTime() + b.durationMin * 60_000 > t);
+      if (!clash) {
+        return { studyId: study.id, deviceResourceId: machine.id, code: machine.code, name: machine.name, scheduledAt: at };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * ═══ A3's SECOND HALF — THE WALK-IN AUTO-SLOT ═══
  *
  * A patient at the counter with an outside slip is not booked for Thursday; they are booked for
@@ -729,15 +821,7 @@ export async function autoSlotWalkIn(
   const study = await loadStudy(tx, input.studyId);
   const studyType = await requireStudyType(tx, study.studyTypeCode);
 
-  const candidates = await (tx as unknown as Db)
-    .select({ id: resources.id, attributes: resources.attributes })
-    .from(resources)
-    .where(and(
-      eq(resources.kind, "device"),
-      eq(resources.status, "available"),
-      sql`${resources.attributes} ->> ${DEVICE_MODALITY_ATTRIBUTE} = ${studyType.modality}`,
-    ))
-    .orderBy(resources.code);
+  const candidates = await machinesAvailableFor(tx, studyType.modality);
 
   /**
    * ═══ F55, SECOND PASS — THE WALK-IN WALKS DOWN THE LIST ═══
@@ -774,7 +858,7 @@ export async function autoSlotWalkIn(
   /** 18-S RS4 T2 — an unlicensed ionising machine is passed over, never booked and then refused. */
   const unlicensed: string[] = [];
   for (const device of candidates) {
-    if (studyType.ionising && (await activeLicenceFor(tx, device.id, istDayString(now))) === null) {
+    if (!(await licensedOn(tx, studyType, device.id, now))) {
       unlicensed.push(device.id);
       continue;
     }
