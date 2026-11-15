@@ -99,6 +99,8 @@ export const imagingAcquiredBody = z.object({
   contrastNotGivenReason: z.string().min(1).max(400).nullish(),
   /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is derived, never sent. */
   acquiredAt: z.string().datetime().optional(),
+  /** #1084 — the protocol worked from, by its name in the active book (the suggestion kept, or another). */
+  protocolName: z.string().min(1).max(160).nullish(),
 });
 
 /**

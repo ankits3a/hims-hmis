@@ -137,6 +137,7 @@ export class RadiologyAcquisitionController {
         drlReason: input.drlReason ?? null,
         contrastNotGivenReason: input.contrastNotGivenReason ?? null,
         acquiredAt: input.acquiredAt === undefined ? undefined : new Date(input.acquiredAt),
+        protocolName: input.protocolName ?? null,
       }));
     } catch (e) { toHttp(e); }
   }

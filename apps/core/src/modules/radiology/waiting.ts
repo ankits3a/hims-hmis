@@ -1,10 +1,12 @@
-import { and, countDistinct, eq, isNotNull, isNull, min, or } from "drizzle-orm";
+import { and, countDistinct, eq, inArray, isNotNull, isNull, lte, min, or } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
-  imagingCriticalFindings, imagingReportDelivery, imagingReports, imagingStudies,
+  imagingCriticalFindings, imagingFollowups, imagingReportDelivery, imagingReports, imagingStudies,
 } from "../../kernel/db/schema/radiology";
 import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { waitingItem } from "../../kernel/desk/waiting";
+import { addDays } from "../../kernel/desk/rollup";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { TAT_MINUTES, tatClassOf } from "./reading";
 import { studySource } from "./study-source";
 import { treatingDoctorIs } from "./closed-loop";
@@ -22,6 +24,8 @@ import type { DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
  * the visit — and a restricted study counts only for whoever the inbox would show it to, because for
  * a restricted study the existence of the study is the sensitive fact.
  *
+ * #1084 adds a third: the follow-ups the radiologist recommended that fall due within 14 days.
+ *
  * The reading room's one: studies whose images are in and whose reading clock has run out
  * (`reading.ts` — STAT 30 min, ER 60, IPD 6 h, OPD 24 h).
  *
@@ -35,6 +39,9 @@ async function treatedBy(ctx: DeskProviderCtx): Promise<SQL> {
   return canSeeRestricted ? treating
     : and(treating, or(eq(orderItems.restricted, false), eq(orders.orderingClinicianId, me)))!;
 }
+
+/** #1084 — a follow-up joins the treating doctor's waiting items this many days before it falls due. */
+export const FOLLOWUP_PROMPT_DAYS = 14;
 
 async function mine(ctx: DeskProviderCtx): Promise<WaitingItem[]> {
   const mineOnly = await treatedBy(ctx);
@@ -55,9 +62,23 @@ async function mine(ctx: DeskProviderCtx): Promise<WaitingItem[]> {
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
     .where(and(released, mineOnly, isNull(imagingCriticalFindings.acknowledgedAt)));
+  /**
+   * #1084 (A7, L1) — follow-ups the radiologist recommended that fall due within FOLLOWUP_PROMPT_DAYS, or
+   * already have, not yet booked or closed: the doctor sees them BEFORE they are overdue. The line opens
+   * the consult's results inbox, where "Book it" (`bookFollowup`) sits beside each one. A count, so no age.
+   */
+  const dueBy = addDays(istDayString(ctx.now), FOLLOWUP_PROMPT_DAYS);
+  const [due] = await ctx.db
+    .select({ n: countDistinct(imagingFollowups.id) })
+    .from(imagingFollowups)
+    .innerJoin(imagingStudies, eq(imagingStudies.id, imagingFollowups.studyId))
+    .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
+    .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
+    .where(and(inArray(imagingFollowups.state, ["open", "notified"]), lte(imagingFollowups.dueOn, dueBy), mineOnly));
   return [
     waitingItem("radiology.criticalsMine", crit?.n ?? 0, crit?.oldest ?? null),
     waitingItem("radiology.unreadMine", unread?.n ?? 0, unread?.oldest ?? null),
+    waitingItem("radiology.followupsDue", due?.n ?? 0, null),
   ].filter((i): i is WaitingItem => i !== null);
 }
 
