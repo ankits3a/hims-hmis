@@ -132,7 +132,9 @@ it("an escalation in hand is answered with the spine's acts, and its one docked 
   await waitFor(() => expect(bodiesOf("POST /api/alerts/AL1/ack")).toEqual([{ kind: "owned", untilMinutes: 60 }]));
   expect(await screen.findByText("It is yours now, with a deadline.")).toBeInTheDocument();
 
-  // One the ladder has not reached this person: no acts offered, and it says why.
+  // One the ladder has not reached this person: no acts offered, and it says why. (#1082: with one in
+  // hand the copilot takes the column and the list folds to its line; open it to take the next.)
+  await user.click(screen.getByTestId("station-list-folded"));
   await user.click(within(screen.getByRole("region", { name: "Escalated · red first" })).getByText("Machine out of service"));
   expect(await screen.findByText(/The ladder has not reached you/)).toBeInTheDocument();
   expect(screen.getByTestId("dock-act")).toHaveTextContent("Open downtime");
@@ -149,7 +151,8 @@ it("a gate override is granted here with a reason (the existing decide route); a
   const list = await screen.findByRole("region", { name: "Waiting on you" });
   await user.click(within(list).getByText("Book to publish"));
   expect(await screen.findByRole("link", { name: "Open the approvals inbox" })).toHaveAttribute("href", "/approvals?focus=AP2");
-  await user.click(within(list).getByText("Gate override (prep bay asks)"));
+  await user.click(screen.getByTestId("station-list-folded"));
+  await user.click(within(screen.getByRole("region", { name: "Waiting on you" })).getByText("Gate override (prep bay asks)"));
   // The gate is named in words, never its code.
   expect(await within(screen.getByTestId("hod-approval")).findByText("Renal function · I2609290012 · CT-HEAD")).toBeInTheDocument();
   const dock = await screen.findByTestId("dock-act");
