@@ -9,7 +9,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
-import { consentSchema, consentEvidence } from "../ot";
+import { consentSchema, consentEvidence } from "../../kernel/consent";
 import { guardiansWithAuthority, listAllergies } from "../patients";
 import { findLockoutHits } from "../pcpndt";
 import { latestVerifiedCreatinine } from "../lab";
@@ -667,7 +667,7 @@ async function computeSatisfaction(
     }
 
     /**
-     * The consent SHAPE is `ot/consents.ts`'s, imported rather than copied (the plan's own
+     * The consent SHAPE is `kernel/consent`'s (theatre's too), imported rather than copied (the plan's own
      * instruction): `procedureCode` + `templateVersion`, `language` + `interpreter`, thumb
      * impression + witness, and the guardian-authority rule. What differs is what it is checked
      * AGAINST — the study type instead of a procedure code, and a laterality that may be `na`.
