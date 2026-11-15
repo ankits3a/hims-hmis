@@ -12,8 +12,9 @@ import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { imagingDevices } from "./devices";
 import { pacsArchiveConfigured } from "./pacs";
 import { escalationCauses, openEscalations } from "./escalations";
-import { northStar, percentiles, sourceOf } from "./north-star";
+import { northStar, percentiles } from "./north-star";
 import { READING_WRITE, TAT_MINUTES, tatClassOf } from "./reading";
+import { studySource } from "./study-source";
 import { roomRejects } from "./room";
 import { activeStudyTypes } from "./study-types";
 import { clearanceOf } from "./read";
@@ -123,11 +124,13 @@ export type SupervisorFloor = {
   approvals: { pending: number };
 };
 
-/** Target turnaround by north-star source: ER = STAT (30 min), IPD 6 h, OPD and outside 24 h (RS8a DECIDED). */
+/**
+ * Target turnaround by source: the reading clock's class for a routine study from that place
+ * (`tatClassOf`, RS8a) — `ipd` and `daycare` 6 h, `opd` and `walk_in` 24 h. #1077: STAT is a
+ * priority, not a source, so the STAT target belongs to the study's clock, not to a row.
+ */
 export function targetFor(source: NorthStarSource): number {
-  if (source === "ER") return TAT_MINUTES.stat;
-  if (source === "IPD") return TAT_MINUTES.ipd;
-  return TAT_MINUTES.opd;
+  return TAT_MINUTES[tatClassOf("routine", source)];
 }
 
 export async function supervisorFloor(db: Db, now: Date = new Date()): Promise<SupervisorFloor> {
@@ -439,14 +442,17 @@ export async function supervisorQuality(db: Db, input: { from: string; to: strin
   const measure = async (lo: Date, hi: Date): Promise<Record<QualityIndicator["key"], Measure>> => {
     // TAT: images in → first signature, against the class target (RS8a).
     const signed = await rowsOf(db, sql`
-      select s.priority, s.bedside_location, s.acquired_at, min(r.signed_at) as first_signed
-        from imaging_studies s join imaging_reports r on r.study_id = s.id
+      select s.priority, s.encounter_no, s.bedside_location, o.authority, s.acquired_at, min(r.signed_at) as first_signed
+        from imaging_studies s join imaging_reports r on r.study_id = s.id join orders o on o.id = s.order_id
        where r.signed_at is not null and s.acquired_at is not null
-       group by s.id, s.priority, s.bedside_location, s.acquired_at
+       group by s.id, s.priority, s.encounter_no, s.bedside_location, o.authority, s.acquired_at
       having min(r.signed_at) >= ${lo} and min(r.signed_at) < ${hi}
     `);
     const inTat = signed.filter((r) => minsBetween(asDate(r.acquired_at), asDate(r.first_signed))
-      <= TAT_MINUTES[tatClassOf(String(r.priority), r.bedside_location === null ? null : String(r.bedside_location))]).length;
+      <= TAT_MINUTES[tatClassOf(String(r.priority), studySource(
+        { encounterNo: String(r.encounter_no), bedsideLocation: r.bedside_location === null ? null : String(r.bedside_location) },
+        { authority: String(r.authority) },
+      ))]).length;
 
     let critical: Measure = { value: null, numerator: null, denominator: null };
     if (windows !== null) {
@@ -646,7 +652,7 @@ export async function supervisorMoney(db: Db, input: { day?: string; now?: Date 
     modalityOf = (code) => by.get(code) ?? "other";
   } catch { /* no active book */ }
   const lines = await rowsOf(db, sql`
-    select s.study_type_code, s.encounter_no, s.bedside_location, s.priority, o.authority, i.service_day, l.net_paise
+    select s.study_type_code, s.encounter_no, s.bedside_location, o.authority, i.service_day, l.net_paise
       from imaging_studies s
       join invoice_lines l on l.id = s.invoice_line_id
       join invoices i on i.id = l.invoice_id
@@ -661,10 +667,10 @@ export async function supervisorMoney(db: Db, input: { day?: string; now?: Date 
     const m = mtd.get(modality) ?? { modality, studies: 0, netPaise: 0 };
     m.studies += 1; m.netPaise += net; mtd.set(modality, m);
     if (String(l.service_day) !== day) continue;
-    const source = sourceOf({
-      authority: String(l.authority), encounterNo: String(l.encounter_no),
-      bedsideLocation: l.bedside_location === null ? null : String(l.bedside_location), priority: String(l.priority),
-    });
+    const source = studySource(
+      { encounterNo: String(l.encounter_no), bedsideLocation: l.bedside_location === null ? null : String(l.bedside_location) },
+      { authority: String(l.authority) },
+    );
     const key = `${modality}|${source}`;
     const b = billed.get(key) ?? { modality, source, studies: 0, netPaise: 0 };
     b.studies += 1; b.netPaise += net; billed.set(key, b);

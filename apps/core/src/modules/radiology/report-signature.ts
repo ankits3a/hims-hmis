@@ -1,63 +1,45 @@
-import { and, desc, eq, gte } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { and, eq } from "drizzle-orm";
 import { appendEvent } from "../../kernel/events/append";
 import { enqueueNotification } from "../../kernel/notify/enqueue";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { secondFactorFresh } from "../../kernel/auth/totp";
 import { transition } from "../../kernel/workflow/instances";
 import {
-  imagingCriticalCallAttempts, imagingCriticalFindings, imagingReports, imagingStudies, imagingTeleReads,
+  imagingCriticalFindings, imagingReports, imagingStudies, imagingTeleReads,
 } from "../../kernel/db/schema/radiology";
 import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { invoiceLines } from "../../kernel/db/schema/billing";
-import { users } from "../../kernel/db/schema/auth";
+import { patients } from "../../kernel/db/schema/patients";
 import { invoiceSettlement } from "../billing";
 import { assertMachineRegistered, assertPersonRegistered, findLockoutHits } from "../pcpndt";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
-import type { LockoutTier } from "../pcpndt";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { RadiologyError } from "./errors";
-import { outsideStudyFor } from "./outside";
-import {
-  imagingCriticalAcknowledged, imagingCriticalFlagged, imagingReportPublished,
-} from "./events";
+import { imagingReportPublished } from "./events";
 import { requireStudyType } from "./study-types";
-import { activeDrafter, proposalLockoutHits } from "./drafter";
-import { hasPermission } from "../../kernel/auth/permissions";
-import { PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn } from "./applicability";
-import { patients } from "../../kernel/db/schema/patients";
-import { templateKeyFor } from "./templates";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { PRE_SIGN_CHECKS, runPreSignChecks } from "./checks";
 import { residentSignature, signerSnapshot } from "./signer";
-import { findingOf, readBackNamesFinding } from "./critical-ladder";
-import type { PreSignContext, PreSignFinding } from "./checks";
-import type { ResidentSignature, SignerBlock } from "./signer";
 import {
   assertNoFoetalSexDisclosure, isObstetricReport, normaliseReportBody, reportText, scanDayOf, withDeclaration,
 } from "./obstetric-report";
-import { istDayString } from "../../kernel/approvals/cumulative";
+import { openFollowupsAtSignature, reconcileFollowupsAtAmendment } from "./followups";
+import { openAmendmentReview } from "./peer-review";
+import { assertNotTeleReader, overRead } from "./tele";
+import {
+  defaultTemplateKey, draftReport, insertVersion, latestSigned, loadStudy, lockoutTierFor,
+} from "./report-authoring";
+import { flagCritical } from "./criticals";
+import type { ReportContent, ReportRow } from "./report-authoring";
+import type { PreSignContext, PreSignFinding } from "./checks";
+import type { ResidentSignature, SignerBlock } from "./signer";
 import type { ImagingCriticalCategory } from "../../kernel/db/schema/radiology";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
-import { openFollowupsAtSignature, reconcileFollowupsAtAmendment } from "./followups";
-import { openAmendmentReview } from "./peer-review";
-import { assertNotTeleReader, openTeleRead, overRead, teleReaderOf } from "./tele";
 
 /**
- * PLAN 18a T8 — **THE REPORT: versioned, signed under a fresh second factor, and never overwritten.**
- *
- * ═══ EVERY ACT INSERTS A VERSION. NOTHING IS EDITED. ═══
- *
- * `imaging_reports_immutable` permits `status` and `published_at` to change and NOTHING else, so
- * there is no such thing as "editing a report" in this system. A draft saved twice is two rows; a
- * signature is its own row; an amendment is v(n+1) with v(n) flipped to `superseded`. **This is the
- * table a courtroom reads**, and the property it has to have is that the document somebody signed
- * is byte-for-byte the document that is still there.
- *
- * A2's mutant is *"amend by UPDATE of v1"*, and the consequence it names is the whole point: *"the
- * courtroom has one version"* — the amended text, with the original gone and no way to show what
- * was communicated at 02:00 and acted on.
+ * PLAN 18a T8 — **THE SIGNATURE: under a fresh second factor, checked before the insert, then published.**
  *
  * ═══ THREE THINGS ARE CHECKED AT SIGN, AND ALL THREE ARE CHECKED BEFORE THE INSERT ═══
  *
@@ -67,6 +49,11 @@ import { assertNotTeleReader, openTeleRead, overRead, teleReaderOf } from "./tel
  *     applies it only when `form_f_required`, and N9 is what slips through: the pregnant trauma
  *     patient's CT, which is not an obstetric scan and can still disclose a foetal sex.
  *   · **the laterality** (A4) — against the ORDER ITEM's, on types where a side exists at all.
+ *
+ * #1077 — split out of `reports.ts` (see `report-authoring.ts`): the signature, the resident's
+ * signature and the consultant's co-sign, the pre-sign checks, the amendment, publication and the
+ * patient's notice, and the morning over-read of a night prelim. A critical these acts carry is
+ * raised in `criticals.ts`.
  */
 
 /**
@@ -85,258 +72,6 @@ import { assertNotTeleReader, openTeleRead, overRead, teleReaderOf } from "./tel
  * config gets, and it matches the shipped default.
  */
 export const SECOND_FACTOR_WINDOW_MINUTES = 15;
-
-export type ReportRow = typeof imagingReports.$inferSelect;
-
-async function loadStudy(exec: Db | Tx, studyId: string) {
-  const rows = await (exec as Db).select().from(imagingStudies).where(eq(imagingStudies.id, studyId));
-  const study = rows[0];
-  if (!study) throw new RadiologyError("unknown_study", `no study ${studyId}`, { studyId });
-  return study;
-}
-
-async function nextVersion(exec: Db | Tx, studyId: string): Promise<number> {
-  const rows = await (exec as Db)
-    .select({ version: imagingReports.version })
-    .from(imagingReports)
-    .where(eq(imagingReports.studyId, studyId))
-    .orderBy(desc(imagingReports.version))
-    .limit(1);
-  return (rows[0]?.version ?? 0) + 1;
-}
-
-export async function latestSigned(exec: Db | Tx, studyId: string): Promise<ReportRow | undefined> {
-  const rows = await (exec as Db).select().from(imagingReports)
-    .where(and(eq(imagingReports.studyId, studyId), eq(imagingReports.status, "signed")))
-    .limit(1);
-  return rows[0];
-}
-
-export type ReportContent = {
-  templateKey?: string;
-  body: Record<string, unknown>;
-  impression?: string | null;
-  laterality?: string | null;
-  /**
-   * 18-S RS8c — the night-read provider's key, set ONLY by `savePrelim` for a listed teleradiology
-   * reader (`imaging_reports.external_reporter_id`, the column 18a reserved for O-3). Never copied
-   * forward: the signed version is the hospital consultant's.
-   */
-  externalReporterId?: string | null;
-};
-
-/** The default skeleton for a study, when the caller does not name one. */
-async function defaultTemplateKey(exec: Db | Tx, studyTypeCode: string): Promise<string> {
-  const type = await requireStudyType(exec, studyTypeCode);
-  return templateKeyFor(type.modality, type.body_part);
-}
-
-async function insertVersion(
-  tx: Tx,
-  study: { id: string; studyTypeCode: string },
-  status: "draft" | "prelim" | "signed" | "awaiting_cosign",
-  content: ReportContent,
-  signer?: {
-    actorId: string; signedAt: Date; secondFactorAt: Date;
-    amendmentReason?: string | null; supersedesId?: string | null;
-    lockoutOverride?: { approvedBy: string; reason: string } | null;
-    /** 18-S RS8a — the signer block (ruling 4) and the pre-sign checks as they ran. RS8b: a resident's signature on `awaiting_cosign`. */
-    block?: SignerBlock | ResidentSignature | null;
-    checks?: SignChecksRecord | null;
-  },
-  criticalCategory?: ImagingCriticalCategory | null,
-  /** 18b T4 / §6.8 — set ONLY by `proposeDraft`. Never copied forward: the signed document is a human's. */
-  provenance?: Record<string, unknown> | null,
-): Promise<{ reportId: string; version: number }> {
-  const version = await nextVersion(tx, study.id);
-  const templateKey = content.templateKey ?? await defaultTemplateKey(tx, study.studyTypeCode);
-  const reportId = newId();
-  try {
-    await tx.insert(imagingReports).values({
-    id: reportId,
-    studyId: study.id,
-    version,
-    status,
-    templateKey,
-    body: content.body,
-    impression: content.impression ?? null,
-    laterality: content.laterality ?? null,
-    criticalCategory: criticalCategory ?? null,
-    signerId: signer?.actorId ?? null,
-    signedAt: signer?.signedAt ?? null,
-    secondFactorAt: signer?.secondFactorAt ?? null,
-      amendmentReason: signer?.amendmentReason ?? null,
-      supersedesId: signer?.supersedesId ?? null,
-      lockoutOverride: signer?.lockoutOverride ?? null,
-      provenance: provenance ?? null,
-      externalReporterId: status === "prelim" ? content.externalReporterId ?? null : null,
-      signer: signer?.block ?? null,
-      signChecks: signer?.checks ?? null,
-    });
-  } catch (e) {
-    /**
-     * ═══ F78 (CLOSE REVIEW) — TWO CONCURRENT SAVES ARE A 409, NOT A 500 ═══
-     *
-     * `nextVersion` is read-max-plus-one, so two overlapping inserts compute the same version and
-     * one violates `imaging_reports_study_version_ux`. Nothing caught it: `signReport`'s handler
-     * inspects the constraint name and only maps the ONE-SIGNED index, so the version collision
-     * fell through `toHttp`'s families and Nest rendered a bare **500 with no code**. A radiologist
-     * who double-clicks Save (the button has no pending guard) could not tell whether the draft was
-     * stored. The concurrency suite races amends and first-signatures — both of which collide on
-     * the signed index, which WAS mapped — and never races two drafts.
-     */
-    const constraint = String((e as { constraint?: unknown })?.constraint ?? "");
-    if (constraint.includes("imaging_reports_study_version_ux")) {
-      throw new RadiologyError(
-        "stale_state",
-        `another version of this report was written at the same instant — reload the study and `
-        + "apply your change to the version that landed",
-        { studyId: study.id, version },
-      );
-    }
-    throw e;
-  }
-  return { reportId, version };
-}
-
-/** A working draft. Nothing is visible to anybody outside the department until it is published. */
-export async function draftReport(
-  tx: Tx, actor: Actor, input: { studyId: string } & ReportContent,
-): Promise<{ reportId: string; version: number }> {
-  const study = await loadStudy(tx, input.studyId);
-  assertReportable(study.status, input.studyId);
-  /** 18-S RS7 T2 — biometry recomputed by the server, the declaration key the server's alone. */
-  const obstetric = await isObstetricReport(tx, study, input.templateKey);
-  const body = normaliseReportBody(input.body, obstetric, scanDayOf(study, new Date()));
-  return await insertVersion(tx, study, "draft", { ...input, body });
-}
-
-/**
- * O-11's UNVERIFIED read. A prelim is a real, quotable document — the night registrar's opinion,
- * available to the ward — and it is deliberately NOT publishable (A6): a patient must never be
- * handed a report nobody has signed.
- */
-/**
- * PLAN 18b T4 / D7 — **THE DRAFTER WRITES A `draft` VERSION AND SAYS SO.**
- *
- * The facts handed to the drafter are what the study RECORDED (type, side, contrast, dose) and
- * nothing a human typed. The proposal goes through the lockout before it is stored: a machine
- * that emitted a §5(2) term is refused with `lexical_lockout`, the same code a human gets, and
- * there is no override lane for it. The row carries `provenance` — the column 18a reserved and
- * nobody wrote — and `signReport` copies content, never provenance (§6.8).
- */
-export async function proposeDraft(
-  tx: Tx, actor: Actor, input: { studyId: string; now?: Date },
-): Promise<{
-  reportId: string; version: number; templateKey: string;
-  body: Record<string, string>; impression: string | null; laterality: string | null;
-  provenance: Record<string, unknown>;
-}> {
-  // Close review B7 — the boundary names who asked, like `openImages`; the row records it in provenance.
-  if (actor.type !== "user") {
-    throw new RadiologyError("forbidden", `a ${actor.type} actor may not ask for a draft`);
-  }
-  if (!(await hasPermission(tx, actor.id, "radiology.reports.write", "hospital"))) {
-    throw new RadiologyError("forbidden", `${actor.id} does not hold radiology.reports.write`);
-  }
-  const now = input.now ?? new Date();
-  const study = await loadStudy(tx, input.studyId);
-  assertReportable(study.status, input.studyId);
-  const type = await requireStudyType(tx, study.studyTypeCode);
-  const tier = await lockoutTierFor(tx, study, now);
-  /** 18a-iii T4 — null for our own studies; the drafter prints the label when it is not. */
-  const outsideRow = await outsideStudyFor(tx, study.id);
-  const outsideFacts = outsideRow === null
-    ? null
-    : { centreName: outsideRow.centreName, studyDate: outsideRow.studyDate, arrival: outsideRow.arrival };
-  const proposal = await activeDrafter().draft({
-    studyId: study.id, accessionNo: study.accessionNo,
-    studyType: {
-      code: type.code, name: type.name, modality: type.modality, body_part: type.body_part,
-      contrast_option: type.contrast_option, ionising: type.ionising,
-    },
-    laterality: study.laterality, lockoutTier: tier, contrastGiven: study.contrastGiven,
-    contrastAgent: study.contrastAgent, contrastVolumeMl: study.contrastVolumeMl,
-    dose: { ctdivol: study.doseCtdivol, dlp: study.doseDlp, dap: study.doseDap, fluoroSeconds: study.fluoroSeconds },
-    outside: outsideFacts,
-  }, now);
-  // Close review B1 — the SAME tier a human's text gets (F66: the demographic terms only in an
-  // obstetric context), so "USG female pelvis" on a man's scan is not refused on the type's name.
-  const terms = proposalLockoutHits(proposal, tier);
-  if (terms.length > 0) {
-    throw new RadiologyError(
-      "lexical_lockout",
-      `the drafter "${proposal.provenance.drafter}" proposed text containing ${terms.map((t) => `"${t}"`).join(", ")} — `
-      + "a machine draft is refused under §5(2) exactly as a human's is, and nobody may override it",
-      { terms, drafter: proposal.provenance.drafter },
-    );
-  }
-  const provenance = { ...proposal.provenance, inputs: { ...proposal.provenance.inputs, requestedBy: actor.id } };
-  const created = await insertVersion(tx, study, "draft", {
-    templateKey: proposal.templateKey, body: proposal.body,
-    impression: proposal.impression, laterality: proposal.laterality,
-  }, undefined, null, provenance);
-  // Close review C4 — the body rides back so the screen needs no second read (and no PHI row for it).
-  return {
-    ...created, templateKey: proposal.templateKey, body: proposal.body,
-    impression: proposal.impression, laterality: proposal.laterality, provenance,
-  };
-}
-
-export async function savePrelim(
-  tx: Tx, actor: Actor, input: { studyId: string } & ReportContent,
-): Promise<{ reportId: string; version: number }> {
-  const study = await loadStudy(tx, input.studyId);
-  assertReportable(study.status, input.studyId);
-  /**
-   * ═══ F68 (CLOSE REVIEW) — THE PRELIM IS A COMMUNICATION, SO THE LOCKOUT RUNS ON IT ═══
-   *
-   * `assertSignable` — the only caller of `findLockoutHits` — ran on sign and on amend, and NOT
-   * here. This function's own docstring is what makes that a defect rather than an omission: a
-   * prelim is *"a real, quotable document — the night registrar's opinion, **available to the
-   * ward**"*, `reportView` applies no status filter and serves it in full to any holder of
-   * `radiology.reports.read`, and the row is immutable so the text cannot afterwards be removed.
-   *
-   * §5(2) is about the COMMUNICATION. A night registrar who types *"it's a boy — congratulate the
-   * family"* and presses **Save prelim** instead of **Sign** was communicating it, and the refusal
-   * the whole file exists to make never fired.
-   *
-   * A DRAFT is deliberately still unchecked: nothing outside the department can read one, it is the
-   * radiologist's own scratch text, and refusing a draft would move the refusal to a place where
-   * the author cannot yet see the whole report they are being refused.
-   */
-  /** 18-S RS7 T1 — a prelim that states the sex of a foetus is refused before any word list runs. */
-  const obstetric = await isObstetricReport(tx, study, input.templateKey);
-  const body = normaliseReportBody(input.body, obstetric, scanDayOf(study, new Date()));
-  assertNoFoetalSexDisclosure(reportText([body, input.impression ?? ""]), obstetric, "prelim");
-  const tier = await lockoutTierFor(tx, study, new Date());
-  const hits = findLockoutHits(
-    `${JSON.stringify(body)} ${input.impression ?? ""}`, tier,
-  );
-  if (hits.length > 0) {
-    throw new RadiologyError(
-      "lexical_lockout",
-      `this PRELIM cannot be saved: it contains ${hits.map((h) => `"${h.term}"`).join(", ")} — a `
-      + "prelim is readable by the ward, so §5(2) applies to it exactly as it applies to a signature",
-      { terms: hits.map((h) => h.term), tier },
-    );
-  }
-  /** 18-S RS8c T3 — a night-read partner's prelim carries the provider and opens the over-read row. */
-  const tele = await teleReaderOf(tx, actor.id);
-  const created = await insertVersion(tx, study, "prelim", { ...input, body, externalReporterId: tele?.provider.key ?? null });
-  if (tele !== null) await openTeleRead(tx, tele, study, created.reportId, new Date());
-  return created;
-}
-
-function assertReportable(status: string, studyId: string): void {
-  if (!["acquired", "reported", "published"].includes(status)) {
-    throw new RadiologyError(
-      "report_not_signed",
-      `study ${studyId} is ${status} — a report is written about images that exist`,
-      { studyId, status },
-    );
-  }
-}
 
 /**
  * ═══ A1/A3/A4 — THE SIGNATURE ═══
@@ -692,90 +427,6 @@ function asAlreadySigned(e: unknown, studyId: string): unknown {
     );
   }
   return e;
-}
-
-/**
- * ═══ F66 (CLOSE REVIEW, OWNER RULING) — WHICH TIER OF THE LEXICON THIS REPORT IS CHECKED AGAINST ═══
- *
- * `coded` is the floor and it applies to EVERY report: the euphemisms, the karyotype and the naming
- * of the act have no innocent use in a radiology report, so there is nothing to trade away.
- *
- * `full` adds the plain demographic words, and it applies in an OBSTETRIC CONTEXT — which is where
- * §5(2)'s harm actually lives, and E24's own words: *"on obstetric types AND on any patient with a
- * pregnancy declaration in 280 days"*. Three ways to be in that context, any one is enough:
- *
- *   1. the study is PCPNDT-applicable (`form_f_required`) — the Act covers this very scan;
- *   2. the study type's body part is obstetric — including the types the applicability rule exempts
- *      by age or sex, because N9's harm is the COMMUNICATION and not the applicability;
- *   3. this patient had ANY PCPNDT-applicable study in the last 280 days — 280 days is a full
- *      gestation, and the register-bearing scan is the record the hospital actually holds;
- *   4. **the patient is female and inside the Act's own age band (10–55).** This is the clause that
- *      keeps N9 intact, and the first draft of this fix did not have it. A3's harm is *the pregnant
- *      trauma patient's CT abdomen* — a scan that is not obstetric, carries no Form F, may be the
- *      first imaging this woman has ever had, and can disclose a foetal sex as easily as an anomaly
- *      scan. Clauses 1–3 all miss her. **Her sex and her age do not**, and they are exactly the
- *      population §5(2) is written about, so this is the Act's own line rather than one invented
- *      here.
- *
- * What that leaves free, which is the whole point of the narrowing: a 45-year-old man's chest film,
- * a child's, an older woman's. `"45-year-old male, chest PA view. No focal consolidation."` signs.
- * `"Also, it is a boy."` on a 30-year-old woman's abdomen does not.
- */
-const OBSTETRIC_CONTEXT_DAYS = 280;
-
-async function lockoutTierFor(
-  tx: Tx, study: typeof imagingStudies.$inferSelect, now: Date,
-): Promise<LockoutTier> {
-  if (study.formFRequired) return "full";
-  const type = await requireStudyType(tx, study.studyTypeCode);
-  if (type.body_part.toLowerCase().includes("obstetric")) return "full";
-  const since = new Date(now.getTime() - OBSTETRIC_CONTEXT_DAYS * 86_400_000);
-  const prior = await (tx as unknown as Db).select({ id: imagingStudies.id })
-    .from(imagingStudies)
-    .where(and(
-      eq(imagingStudies.patientId, study.patientId),
-      eq(imagingStudies.formFRequired, true),
-      gte(imagingStudies.createdAt, since),
-    ))
-    .limit(1);
-  if (prior.length > 0) return "full";
-
-  /** (4) The Act's own population, read from the patient rather than from the examination. */
-  const rows = await (tx as unknown as Db)
-    .select({ sex: patients.sex, dob: patients.dob })
-    .from(patients).where(eq(patients.id, study.patientId));
-  const patient = rows[0];
-  if (!patient || patient.sex !== "female") return "coded";
-  /** A null DOB is `full`, for the same asymmetry `applicability.ts` argues at length. */
-  if (patient.dob === null) return "full";
-  const age = ageInYearsOn(patient.dob, now);
-  return age >= PCPNDT_AGE_MIN_YEARS && age <= PCPNDT_AGE_MAX_YEARS ? "full" : "coded";
-}
-
-/**
- * F79 — the lockout applied to ONE free-text field that is not a report body: a critical's
- * `communicatedTo`, a read-back, an amendment reason. Same tier rule, same words, same refusal —
- * because §5(2) is about the communication and these fields are communications that get stored,
- * served by `reportView`, and read out in a courtroom exactly like an impression.
- *
- * There is no override lane here on purpose: these fields have no demographic line to protect, so
- * anything they trip is worth a rephrase.
- */
-async function assertFreeTextSignable(
-  tx: Tx, studyId: string, text: string, now: Date = new Date(),
-): Promise<void> {
-  if (text.trim() === "") return;
-  const study = await loadStudy(tx, studyId);
-  assertNoFoetalSexDisclosure(text, await isObstetricReport(tx, study), "note");
-  const hits = findLockoutHits(text, await lockoutTierFor(tx, study, now));
-  if (hits.length > 0) {
-    throw new RadiologyError(
-      "lexical_lockout",
-      `this text cannot be recorded: it contains ${hits.map((h) => `"${h.term}"`).join(", ")} — `
-      + "§5(2) forbids communicating the sex of a foetus in any manner, including in a note",
-      { terms: hits.map((h) => h.term) },
-    );
-  }
 }
 
 /** A3 and A4, in the order a reader would check them: the statute, then the side. */
@@ -1340,196 +991,6 @@ async function invoiceIsSettled(exec: Db | Tx, invoiceLineId: string | null): Pr
   if (invoiceId === undefined) return false;
   const settlement = await invoiceSettlement(exec, invoiceId);
   return settlement.state === "settled";
-}
-
-/* ═══════════════════════════ DD15 — the criticals ═══════════════════════════ */
-
-/**
- * A `red` finding pages a human. 18a-iii's Critical Chaser is the consumer that will not let it
- * rest; this phase records the fact and the clock so that ladder has history to tune against.
- */
-export async function flagCritical(
-  tx: Tx,
-  actor: Actor,
-  input: { reportId: string; category: ImagingCriticalCategory; communicatedTo?: string | null; now?: Date },
-): Promise<{ criticalId: string }> {
-  const rows = await (tx as unknown as Db).select().from(imagingReports)
-    .where(eq(imagingReports.id, input.reportId));
-  const report = rows[0];
-  if (!report) throw new RadiologyError("unknown_study", `no report ${input.reportId}`);
-
-  /**
-   * F69 — IDEMPOTENT PER REPORT. `signReport` now raises the critical itself, and this route stays
-   * for a category raised after the fact; two paths writing one fact must not be able to produce
-   * two rows for one finding, or 18a-iii's chaser chases the same haematoma twice and the second
-   * acknowledgement closes a loop nobody opened.
-   */
-  const already = await (tx as unknown as Db).select({ id: imagingCriticalFindings.id })
-    .from(imagingCriticalFindings).where(eq(imagingCriticalFindings.reportId, report.id));
-  if (already[0]) return { criticalId: already[0].id };
-
-  /**
-   * F79 — the free text a critical carries is checked against the lockout like any other report
-   * text. `communicatedTo` is stored and travels in the event payload.
-   */
-  await assertFreeTextSignable(tx, report.studyId, input.communicatedTo ?? "");
-
-  const criticalId = newId();
-  await tx.insert(imagingCriticalFindings).values({
-    id: criticalId,
-    reportId: report.id,
-    category: input.category,
-    communicatedTo: input.communicatedTo ?? null,
-    communicatedAt: input.communicatedTo === undefined || input.communicatedTo === null
-      ? null : (input.now ?? new Date()),
-  });
-  await appendEvent(tx, imagingCriticalFlagged.make({
-    actor,
-    payload: {
-      reportId: report.id, studyId: report.studyId, category: input.category,
-      communicatedTo: input.communicatedTo ?? null,
-    },
-  }));
-  return { criticalId };
-}
-
-/**
- * ═══ F76 (CLOSE REVIEW) — THE LOOP IS CLOSED BY THE CLINICIAN, NOT BY WHOEVER TYPED IT ═══
- *
- * The first version wrote `acknowledgedBy: actor.id` and had no field for the person who actually
- * received the call. `radiology.criticals.ack` is granted to `radiologist` alone, so
- * `acknowledged_by` was structurally always a radiologist and usually the signer — the loop closed
- * at both ends by one person, and `imaging.critical_acknowledged` told 18a-iii's chaser that the
- * finding *"reached a human"*. `reports.test.ts` pinned that as correct: it flagged and acknowledged
- * as the same radiologist and asserted the identity, so an implementation that refused a
- * self-acknowledgement would have failed the suite.
- *
- * Now: `acknowledgedByClinicianId` is REQUIRED and names the clinician who read the finding back;
- * the actor who recorded it is kept separately as `recordedBy`. **The clinician may not be the
- * report's signer** — a radiologist telephoning themselves is not a communication. The actor may
- * still be the radiologist, because at 02:10 the radiologist is who is at a keyboard.
- */
-export async function acknowledgeCritical(
-  tx: Tx,
-  actor: Actor,
-  input: {
-    criticalId: string;
-    /** F76 — the clinician who received the call and repeated it back. */
-    acknowledgedByClinicianId: string;
-    readBack?: string | null;
-    now?: Date;
-  },
-): Promise<{ criticalId: string; acknowledgedAt: Date }> {
-  const rows = await (tx as unknown as Db).select().from(imagingCriticalFindings)
-    .where(eq(imagingCriticalFindings.id, input.criticalId));
-  const critical = rows[0];
-  if (!critical) throw new RadiologyError("unknown_study", `no critical finding ${input.criticalId}`);
-  if (critical.acknowledgedAt !== null) {
-    throw new RadiologyError("already_signed", `critical ${input.criticalId} is already acknowledged`);
-  }
-  /** DD15 — `red` demands a READ-BACK; the other two are satisfied by an acknowledgement. */
-  if (critical.category === "red" && (input.readBack === undefined || input.readBack === null || input.readBack.trim() === "")) {
-    throw new RadiologyError(
-      "reason_required",
-      "a RED critical is acknowledged with a read-back — the clinician repeats the finding in their own words",
-      { criticalId: input.criticalId },
-    );
-  }
-  /** The table hangs off the REPORT; the study comes from it, which keeps one owner for the link. */
-  const reportRows = await (tx as unknown as Db)
-    .select({
-      studyId: imagingReports.studyId, signerId: imagingReports.signerId,
-      impression: imagingReports.impression, body: imagingReports.body,
-    })
-    .from(imagingReports).where(eq(imagingReports.id, critical.reportId));
-  const report = reportRows[0]!;
-
-  /**
-   * ═══ F76, SECOND PASS — A NAMED PERSON WHO DOES NOT EXIST IS NOT A CLINICIAN ═══
-   *
-   * The first fix separated WHO received the call from WHO typed it, and then validated the
-   * clinician against exactly one thing: that they are not the signer. `acknowledged_by` is plain
-   * `text` with no foreign key, so `{"acknowledgedByClinicianId": "x"}` wrote the row, emitted
-   * `imaging.critical_acknowledged` naming `"x"`, and stopped 18a-iii's chaser — *"did this reach a
-   * human"* answered by a string nobody typed a name into.
-   *
-   * The argument is F64's, one commit old and in this same phase: *"a named person who does not
-   * exist is not a chaperone; it is a field that was filled in."* It applies with more force to the
-   * person who received a red critical.
-   */
-  const clinician = await (tx as unknown as Db)
-    .select({ id: users.id, active: users.active })
-    .from(users).where(eq(users.id, input.acknowledgedByClinicianId));
-  if (!clinician[0]) {
-    throw new RadiologyError(
-      "evidence_invalid",
-      `${input.acknowledgedByClinicianId} is not a user of this hospital — a critical is read back `
-      + "by a person, and the record of who has to name one",
-      { acknowledgedByClinicianId: input.acknowledgedByClinicianId },
-    );
-  }
-  if (clinician[0].active === false) {
-    throw new RadiologyError(
-      "evidence_invalid",
-      `${input.acknowledgedByClinicianId} is not an active member of staff`,
-      { acknowledgedByClinicianId: input.acknowledgedByClinicianId },
-    );
-  }
-
-  /** F76 — the signer telephoning themselves is not a read-back. */
-  if (input.acknowledgedByClinicianId === report.signerId) {
-    throw new RadiologyError(
-      "evidence_invalid",
-      "the report's own signer cannot be the clinician who received the critical — a read-back is a "
-      + "communication to somebody else",
-      { criticalId: input.criticalId, signerId: report.signerId },
-    );
-  }
-  /** F79 — the read-back is the likeliest place in the system for a verbatim sex disclosure. */
-  await assertFreeTextSignable(tx, report.studyId, input.readBack ?? "");
-
-  /**
-   * ═══ 18-S RS8b — THE READ-BACK NAMES THE FINDING ═══
-   *
-   * The board closes a critical call "only on a correct read-back". Until now any non-empty text
-   * closed a red call — "noted" was a read-back. The clinician's words must now name what the report
-   * found (`critical-ladder.ts` `readBackNamesFinding`): a critical term the report states, or a word
-   * of its impression. Every path that closes a call comes through here, so the doctor's own
-   * read-back (RS9) meets the same rule.
-   */
-  const readBack = input.readBack?.trim() ?? "";
-  if (readBack !== "" && !readBackNamesFinding(readBack, findingOf(report))) {
-    throw new RadiologyError(
-      "read_back_mismatch",
-      "the read-back does not name the finding — ask the clinician to repeat what the report found, in their own "
-      + "words, and type what they said",
-      { criticalId: input.criticalId },
-    );
-  }
-
-  const acknowledgedAt = input.now ?? new Date();
-  await tx.update(imagingCriticalFindings)
-    .set({
-      acknowledgedBy: input.acknowledgedByClinicianId,
-      recordedBy: actor.id,
-      acknowledgedAt,
-      readBackText: input.readBack ?? null,
-    })
-    .where(eq(imagingCriticalFindings.id, input.criticalId));
-  /** 18-S RS8b — the closing call is the ladder's last row: who read it back, on which rung. */
-  await tx.insert(imagingCriticalCallAttempts).values({
-    id: newId(), criticalId: critical.id, rung: critical.ladderRung,
-    calledUserId: input.acknowledgedByClinicianId, calledName: null,
-    outcome: "read_back_ok", recordedBy: actor.id, at: acknowledgedAt,
-  });
-  await appendEvent(tx, imagingCriticalAcknowledged.make({
-    actor,
-    payload: {
-      reportId: critical.reportId, studyId: report.studyId,
-      category: critical.category, acknowledgedBy: input.acknowledgedByClinicianId,
-    },
-  }));
-  return { criticalId: input.criticalId, acknowledgedAt };
 }
 
 /* ═══════════════════════ 18-S RS8c T3 — the morning over-read of a night prelim ═══════════════════════ */

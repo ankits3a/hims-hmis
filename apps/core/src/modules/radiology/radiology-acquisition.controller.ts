@@ -2,7 +2,6 @@ import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
 import { z } from "zod";
 import {
   CONTRAST_REACTION_ONSETS, CONTRAST_REACTION_OUTCOMES, CONTRAST_REACTION_SEVERITIES,
-  CONTRAST_ROUTES,
 } from "../../kernel/db/schema/radiology";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -14,6 +13,7 @@ import { recordContrastReaction } from "./reactions";
 import { studyContrastAdministrations, studyContrastReactions } from "./read";
 import { linkInvoiceLine } from "./money";
 import { idSchema, parsed, toHttp } from "./radiology-http";
+import { imagingAcquiredBody, imagingContrastBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
@@ -49,47 +49,15 @@ const startBody = z.object({
   bedsideSafety: z.string().min(1).max(400).optional(),
 }).strict();
 
-const acquiredBody = z.object({
-  imageSource: z.enum(["pacs", "no_pacs_images", "outside"]),
-  /** 18b T2 — optional for `pacs` (the minted one is used), refused for the other two sources. */
-  studyInstanceUid: z.string().min(1).max(64).nullish(),
-  doseCtdivol: z.number().nonnegative().max(9_999_999).nullish(),
-  doseDlp: z.number().nonnegative().max(9_999_999).nullish(),
-  doseDap: z.number().nonnegative().max(9_999_999).nullish(),
-  fluoroSeconds: z.number().int().nonnegative().max(86_400).nullish(),
-  /** 18-S RS12 — mammography's Average Glandular Dose, mGy. */
-  doseAgd: z.number().nonnegative().max(9_999_999).nullish(),
-  /** 18-S RS12b — reference-point air kerma Ka,r, mGy. */
-  doseKar: z.number().nonnegative().max(9_999_999).nullish(),
-  doseManual: z.boolean().optional(),
-  contrastGiven: z.boolean().optional(),
-  contrastAgent: z.string().min(1).max(120).nullish(),
-  contrastVolumeMl: z.number().positive().max(999_999).nullish(),
-  repeatOfStudyId: idSchema.nullish(),
-  repeatReason: z.string().min(1).max(400).nullish(),
-  /** 18-S RS6 — why the dose came in above the DRL; kept only beside an over-DRL verdict. */
-  drlReason: z.string().min(1).max(400).nullish(),
-  /** 18-S RS6 — why a with-contrast examination was scanned plain; rides the bill decision. */
-  contrastNotGivenReason: z.string().min(1).max(400).nullish(),
-  /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is derived, never sent. */
-  acquiredAt: z.string().datetime().optional(),
-});
-
 /**
- * 18a-iii T1 — the injection. `volumeMl` is `.positive()` for the reason the service repeats: a
- * one-millilitre TEST DOSE is a real administration and a zero-millilitre one is not an event.
- * `vialExpiry` is a DATE on a label, never an instant, and the service refuses an expired one.
+ * #1077 — the acquisition and the injection are `@hmis/contracts`'s act bodies
+ * (`imagingAcquiredBody`, `imagingContrastBody`; the contrast routes held equal to
+ * `CONTRAST_ROUTES` by `act-bodies.test.ts`). `volumeMl` is `.positive()` for the reason the service
+ * repeats: a one-millilitre TEST DOSE is a real administration and a zero-millilitre one is not an
+ * event. `vialExpiry` is a DATE on a label, never an instant, and the service refuses an expired one.
  */
-const contrastBody = z.object({
-  agent: z.string().min(1).max(120),
-  volumeMl: z.number().positive().max(9_999),
-  route: z.enum(CONTRAST_ROUTES),
-  site: z.string().min(1).max(120).nullish(),
-  vialBatchNo: z.string().min(1).max(60).nullish(),
-  vialExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
-  givenBy: idSchema,
-  givenAt: z.string().datetime(),
-});
+const acquiredBody = imagingAcquiredBody;
+const contrastBody = imagingContrastBody;
 
 /**
  * 18a-iii T2 — the reaction. `treatmentGiven` and `managingClinicianId` are optional HERE and

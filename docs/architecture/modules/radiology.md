@@ -93,6 +93,9 @@ Source: `apps/core/src/modules/radiology/`
   - `readBackNamesFinding(readBack: string, report: { impression: string | null; findings: string | null }): boolean`
   - `recordCallAttempt(tx: Tx, actor: Actor, input: { criticalId: string; rung: number; calledUserId?: string | null; calledName?: string | null…`
   - types: `CriticalCallView`, `LadderRungView`
+- `criticals.ts`
+  - `acknowledgeCritical(tx: Tx, actor: Actor, input: { criticalId: string; acknowledgedByClinicianId: string; readBack?: string | null; now?: D…`
+  - `flagCritical(tx: Tx, actor: Actor, input: { reportId: string; category: ImagingCriticalCategory; communicatedTo?: string | null; now?: Date…`
 - `definitions.ts`
   - `IMAGING_DEFINITION_KINDS`
   - `REPORT_SECTION_KEYS`
@@ -332,31 +335,32 @@ Source: `apps/core/src/modules/radiology/`
   - `readingContext(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<ReadingContext | null>`
   - `readingWorklist(db: Db, actor: Actor, now: Date = new Date()): Promise<ReadingRow[]>`
   - `reportPrintView(db: Db, actor: Actor, reportId: string, now: Date = new Date()): Promise<ReportPrintView | null>`
-  - `tatClassOf(priority: string, bedsideLocation: string | null): TatClass`
+  - `tatClassOf(priority: string, source: StudySource): TatClass`
   - types: `ReadingContext`, `ReadingRow`, `ReadingTemplate`, `ReportPrintView`, `TatClass`
 - `ready-on-payment.ts`
   - `RADIOLOGY_READY_ON_PAYMENT_CONSUMER`
   - `READY_ON_PAYMENT_EVENTS`
   - `handleSettlementEvent(tx: Tx, e: Pick<DispatchedEvent, "name" | "payload" | "occurredAt">): Promise<{ queued: string[] }>`
   - `readyOnPaymentConsumer(db: Db): Handler`
-- `reports.ts`
+- `report-authoring.ts`
+  - `draftReport(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
+  - `latestSigned(exec: Db | Tx, studyId: string): Promise<ReportRow | undefined>`
+  - `proposeDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<{ reportId: string; version: number; templateKey: strin…`
+  - `savePrelim(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
+  - types: `ReportContent`, `ReportRow`
+- `report-signature.ts`
   - `CONSULTANT_ROLE`
   - `RESIDENT_ROLE`
   - `SECOND_FACTOR_WINDOW_MINUTES`
-  - `acknowledgeCritical(tx: Tx, actor: Actor, input: { criticalId: string; acknowledgedByClinicianId: string; readBack?: string | null; now?: D…`
   - `amendReport(tx: Tx, actor: Actor, input: { studyId: string; secondFactorAt: Date | null; reason: string; windowMinutes?: number; criticalCa…`
   - `cosignReport(tx: Tx, actor: Actor, input: { studyId: string; reportId: string; secondFactorAt: Date | null; windowMinutes?: number; acknowl…`
-  - `draftReport(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
   - `dryRunPreSign(tx: Tx, actor: Actor, input: { studyId: string; templateKey?: string; body: Record<string, unknown>; impression?: string | nu…`
-  - `flagCritical(tx: Tx, actor: Actor, input: { reportId: string; category: ImagingCriticalCategory; communicatedTo?: string | null; now?: Date…`
-  - `latestSigned(exec: Db | Tx, studyId: string): Promise<ReportRow | undefined>`
+  - `enqueueReportReady(tx: Tx, study: Pick<typeof imagingStudies.$inferSelect, "orderId" | "accessionNo" | "patientId">, reportId: string, now:…`
   - `overReadNightPrelim(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { teleReadId: string; grade: string; note?: string | null…`
-  - `proposeDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<{ reportId: string; version: number; templateKey: strin…`
   - `publishReport(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; now?: Date }): Promise<{ reportId: string; v…`
-  - `savePrelim(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
   - `signReport(tx: Tx, actor: Actor, input: { studyId: string; reportId: string; secondFactorAt: Date | null; windowMinutes?: number; criticalC…`
   - `signsAsResident(tx: Tx, actor: Actor): Promise<boolean>`
-  - types: `ReportContent`, `ReportRow`, `SignChecksRecord`
+  - types: `SignChecksRecord`
 - `schedule.ts`
   - `autoSlotWalkIn(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<ScheduleResult>`
   - `cancelStudy(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; reason?: string | null }): Promise<{ studyId: …`
@@ -376,6 +380,10 @@ Source: `apps/core/src/modules/radiology/`
   - `signedContentDigest(content: { templateKey: string; body: unknown; impression: string | null; laterality: string | null; }): string`
   - `signerSnapshot(tx: Tx, input: { userId: string; now: Date; secondFactorAt: Date; content: { templateKey: string; body: unknown; impression:…`
   - types: `ResidentSignature`, `SignerBlock`
+- `study-source.ts`
+  - `STUDY_SOURCES`
+  - `studySource(study: { encounterNo: string; bedsideLocation: string | null }, order: { authority: string }): StudySource`
+  - types: `StudySource`
 - `study-types.ts`
   - `STUDY_TYPE_SEEDS: readonly StudyTypeSeed[]`
   - `activeStudyTypes(exec: Db | Tx): Promise<StudyType[]>`

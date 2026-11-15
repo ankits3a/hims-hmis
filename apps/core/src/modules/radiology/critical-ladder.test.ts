@@ -5,7 +5,9 @@ import {
   events, imagingCriticalCallAttempts, imagingCriticalFindings, imagingDefinitions, orders,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { acknowledgeCritical, draftReport, flagCritical, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { signReport } from "./report-signature";
+import { acknowledgeCritical, flagCritical } from "./criticals";
 import { criticalCallBoard, readBackNamesFinding, recordCallAttempt } from "./critical-ladder";
 import { sweepCriticalChaser } from "./chasers";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";

@@ -4,7 +4,7 @@ import { withTx } from "../../kernel/db/client";
 import { imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
 import { invoiceLines } from "../../kernel/db/schema/billing";
 import { invoiceSettlement } from "../billing";
-import { enqueueReportReady } from "./reports";
+import { enqueueReportReady } from "./report-signature";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { DispatchedEvent, Handler } from "../../kernel/events/subscriptions";
 

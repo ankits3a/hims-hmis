@@ -8,7 +8,9 @@ import {
   events, imagingCriticalFindings, imagingReportDelivery, opdEncounters, orders,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { amendReport, draftReport, flagCritical, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { amendReport, publishReport, signReport } from "./report-signature";
+import { flagCritical } from "./criticals";
 import { reportView } from "./read";
 import { doctorReadBack, doctorResultsInbox, markActedUpon } from "./closed-loop";
 import { sweepUnreadWatchman, UNREAD_REPORT_HOURS } from "./chasers";

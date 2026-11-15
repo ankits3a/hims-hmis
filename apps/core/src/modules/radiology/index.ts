@@ -112,25 +112,26 @@ export {
   raiseBillDecision, resolveBillDecision,
 } from "./money";
 export type { AuthorisationEncounterFacts, AuthorisationStudyFacts } from "./money";
-export {
-  SECOND_FACTOR_WINDOW_MINUTES, acknowledgeCritical, amendReport, draftReport, flagCritical,
-  latestSigned, proposeDraft, publishReport, savePrelim, signReport,
-} from "./reports";
+// #1077 — `reports.ts` split by act: authoring (draft, proposal, prelim), the signature (sign, co-sign,
+// amend, publish, the patient's notice, the over-read) and the criticals. Every name it exported is here.
+export { draftReport, latestSigned, proposeDraft, savePrelim } from "./report-authoring";
+export { SECOND_FACTOR_WINDOW_MINUTES, amendReport, enqueueReportReady, publishReport, signReport } from "./report-signature";
+export { acknowledgeCritical, flagCritical } from "./criticals";
 export { activeDrafter, offlineTemplateDrafter, proposalLockoutHits } from "./drafter";
 export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
-export type { ReportContent, ReportRow } from "./reports";
+export type { ReportContent, ReportRow } from "./report-authoring";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
 // 18-S RS8a — the reading room: the pre-sign pipeline (a later guard joins PRE_SIGN_CHECKS), the
 // signer block (ruling 4), the governed templates/signatories books and the reading reads.
 export { CRITICAL_TERMS, PRE_SIGN_CHECKS, criticalTermsIn, runPreSignChecks } from "./checks";
 export type { PreSignCheck, PreSignContext, PreSignFinding, PreSignLevel } from "./checks";
-export { dryRunPreSign } from "./reports";
-export type { SignChecksRecord } from "./reports";
+export { dryRunPreSign } from "./report-signature";
+export type { SignChecksRecord } from "./report-signature";
 export { signedContentDigest, signerSnapshot } from "./signer";
 export type { SignerBlock } from "./signer";
 // 18-S RS8b — co-sign (the resident signs, the consultant co-signs) and the critical-call ladder.
-export { CONSULTANT_ROLE, RESIDENT_ROLE, cosignReport, signsAsResident } from "./reports";
+export { CONSULTANT_ROLE, RESIDENT_ROLE, cosignReport, signsAsResident } from "./report-signature";
 export {
   ACKNOWLEDGED_LOG_HOURS, CRITICAL_RUNG_ROLES, criticalCallBoard, readBackNamesFinding, recordCallAttempt,
 } from "./critical-ladder";
@@ -183,6 +184,9 @@ export type { ImagingReleaseReport } from "./abdm-release";
 export { isTreatingDoctor, treatingDoctorsOf } from "./closed-loop";
 export type { InboxRow, TreatingDoctors } from "./closed-loop";
 export { NORTH_STAR_SOURCES, northStar } from "./north-star";
+// #1077 — where a study came from: one rule for the metrics, the north star, the HOD and the reading clock.
+export { STUDY_SOURCES, studySource } from "./study-source";
+export type { StudySource } from "./study-source";
 export type { NorthStar, NorthStarRow, NorthStarSource } from "./north-star";
 // ── 18-S RS12b — the IR suite: the list and the Ka,r triggers RS10's spine will consume ──
 export { IR_KAR_SKIN_FOLLOWUP_MGY, IR_KAR_SRDL_MGY, IR_THRESHOLDS, irCaseList, skinDoseLevels } from "./ir";
@@ -212,7 +216,7 @@ export {
 export type { PeerBoard, PeerCase, PeerScore, ReaderAgreement } from "./peer-review";
 export { assertNotTeleReader, teleBoard, teleReaderOf } from "./tele";
 export type { TeleBoard, TeleQueueRow, TeleReader } from "./tele";
-export { overReadNightPrelim } from "./reports";
+export { overReadNightPrelim } from "./report-signature";
 export type { TeleradiologyBody } from "./definitions";
 // DOCTOR DESK DD-0.2 (#626) — the treating doctor's imaging rows: unread released reports and open criticals.
 export { unreadReportsForClinician } from "./clinician-reads";

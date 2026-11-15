@@ -6,7 +6,8 @@ import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permis
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { orderItems, orders } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { draftReport, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { publishReport, signReport } from "./report-signature";
 import { reportView } from "./read";
 import { reportPrintView } from "./reading";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";

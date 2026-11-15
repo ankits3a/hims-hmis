@@ -4,7 +4,8 @@ import { acquireStudy, setupRadiologyFixture, studyTypeRow } from "../../../test
 import { mkUser } from "../../../test/helpers/opd";
 import { events, imagingDefinitions, imagingFollowups, imagingStudies, orderItems, orders } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { amendReport, cosignReport, draftReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { amendReport, cosignReport, signReport } from "./report-signature";
 import {
   addInterval, bookFollowup, closeFollowup, doctorFollowups, followupBoard, followupsFromBody, markFollowupNotified,
   sweepOverdueFollowups,

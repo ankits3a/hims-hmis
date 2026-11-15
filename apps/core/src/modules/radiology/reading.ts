@@ -22,6 +22,8 @@ import { REPORT_TEMPLATES, templateKeyFor } from "./templates";
 import { clearanceOf } from "./read";
 import { IMAGES_READ } from "./views";
 import { ageInYearsOn } from "./applicability";
+import { studySource } from "./study-source";
+import type { StudySource } from "./study-source";
 import type { CodedSystem } from "@hmis/contracts";
 import type { GovernedReportTemplate } from "./definitions";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
@@ -38,11 +40,12 @@ import type { Actor } from "@hmis/contracts";
  *
  * ═══ THE CLOCKS (board: STAT 30 min, ER 60, IPD 6 h, OPD 24 h) — DECIDED, RS8a ═══
  *
- * There is no source column (no ER or IPD module exists), so the class is derived from what the
- * study carries: `priority = stat` → STAT, 30 min; `priority = urgent` → the ER/urgent class, 60 min
- * (urgent is what the emergency and the wards order); a bedside location → IPD, 6 h; otherwise OPD,
- * 24 h. The clock starts when the images are in (`acquired_at`); a study still on the table has no
- * clock yet and is listed dimmed.
+ * Priority first, then the study's source (`study-source.ts`, the one rule — #1077): `priority =
+ * stat` → STAT, 30 min; `priority = urgent` → the ER/urgent class, 60 min (urgent is what the
+ * emergency and the wards order); an `ipd` or `daycare` study → IPD, 6 h (DECIDED #1077: a day-care
+ * patient is admitted for the day, so the inpatient clock, as the HOD's turnaround target already
+ * read it); `opd` and `walk_in` → OPD, 24 h. The clock starts when the images are in
+ * (`acquired_at`); a study still on the table has no clock yet and is listed dimmed.
  *
  * ═══ THE LOCK IS DERIVED, NOT CLICKED (the owner's "presence is derived") ═══
  *
@@ -60,10 +63,11 @@ const CLAIM_WINDOW_MS = 60 * 60_000;
 export type TatClass = "stat" | "er" | "ipd" | "opd";
 export const TAT_MINUTES: Record<TatClass, number> = { stat: 30, er: 60, ipd: 360, opd: 1440 };
 
-export function tatClassOf(priority: string, bedsideLocation: string | null): TatClass {
+/** The reading clock's class: the priority first, then where the study came from (`studySource`). */
+export function tatClassOf(priority: string, source: StudySource): TatClass {
   if (priority === "stat") return "stat";
   if (priority === "urgent") return "er";
-  if (bedsideLocation !== null && bedsideLocation.trim() !== "") return "ipd";
+  if (source === "ipd" || source === "daycare") return "ipd";
   return "opd";
 }
 
@@ -114,12 +118,13 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
   const clearance = await clearanceOf(db, actor);
   const rows = await db
     .select({
-      study: imagingStudies, restricted: orderItems.restricted,
+      study: imagingStudies, restricted: orderItems.restricted, authority: orders.authority,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
       sex: patients.sex, dob: patients.dob, uhid: patients.uhid,
     })
     .from(imagingStudies)
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
+    .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
     .where(inArray(imagingStudies.status, [...READING_STATUSES]))
     /** STAT first IN SQL, so the cap can only drop routine work (F43). */
@@ -165,7 +170,7 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
   const consultant = await actorHoldsAnyRole(db as unknown as Tx, actor.id, ["radiologist"]);
   const out: ReadingRow[] = rows.map((r) => {
     const type = types.get(r.study.studyTypeCode);
-    const tatClass = tatClassOf(r.study.priority, r.study.bedsideLocation);
+    const tatClass = tatClassOf(r.study.priority, studySource(r.study, { authority: r.authority }));
     const targetMinutes = TAT_MINUTES[tatClass];
     const reportState = stateOf.get(r.study.id) ?? "none";
     return {
@@ -287,7 +292,7 @@ export async function readingContext(db: Db, actor: Actor, studyId: string, now:
   const [row] = await db
     .select({
       study: imagingStudies, restricted: orderItems.restricted, indication: orders.indication,
-      orderingClinicianId: orders.orderingClinicianId,
+      orderingClinicianId: orders.orderingClinicianId, authority: orders.authority,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
       sex: patients.sex, dob: patients.dob, uhid: patients.uhid,
     })
@@ -306,7 +311,7 @@ export async function readingContext(db: Db, actor: Actor, studyId: string, now:
 
   const type = (await activeStudyTypes(db)).find((t) => t.code === study.studyTypeCode);
   const modality = type?.modality ?? "";
-  const tatClass = tatClassOf(study.priority, study.bedsideLocation);
+  const tatClass = tatClassOf(study.priority, studySource(study, { authority: row.authority }));
   const targetMinutes = TAT_MINUTES[tatClass];
 
   const referrer = await referrerOf(db, row.orderingClinicianId);

@@ -6,7 +6,8 @@ import {
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { notificationTemplates } from "../../kernel/notify/templates";
-import { amendReport, draftReport, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { amendReport, publishReport, signReport } from "./report-signature";
 import { handOverReport, markMediaPrinted, releaseRegister, requestMedia } from "./release";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { HandoverInput } from "./release";

@@ -4,12 +4,13 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { istDayString } from "../../kernel/approvals/cumulative";
-import { IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_ID_TYPES, IMAGING_COLLECTOR_KINDS, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
+import { IMAGING_ACTED_OUTCOMES, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
 import { doctorReadBack, doctorResultsInbox, markActedUpon } from "./closed-loop";
 import { northStar } from "./north-star";
 import { handOverReport, handoverPrintView, markMediaPrinted, releaseRegister, requestMedia } from "./release";
 import { requestUnpaidRelease } from "./held";
 import { idSchema, parsed, toHttp } from "./radiology-http";
+import { imagingHandoverBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -41,15 +42,8 @@ const actedBody = z.object({
 }).strict();
 const readBackBody = z.object({ readBack: z.string().max(1000).nullable().optional() }).strict();
 const mediaBody = z.object({ kind: z.enum(IMAGING_MEDIA_KINDS), quantity: z.number().int().min(1).max(20).optional() }).strict();
-const handoverBody = z.object({
-  collectorKind: z.enum(IMAGING_COLLECTOR_KINDS),
-  collectorName: z.string().max(120).nullable().optional(),
-  collectorRelation: z.string().max(60).nullable().optional(),
-  collectorIdType: z.enum(IMAGING_COLLECTOR_ID_TYPES).nullable().optional(),
-  collectorIdLast4: z.string().max(4).nullable().optional(),
-  mediaRequestIds: z.array(idSchema).max(20).optional(),
-  note: z.string().max(300).nullable().optional(),
-}).strict();
+/** #1077 — the hand-over is `@hmis/contracts`'s act body (its vocabularies held equal to the schema's by `act-bodies.test.ts`). */
+const handoverBody = imagingHandoverBody;
 const releaseUnpaidBody = z.object({ reason: z.string().max(500) }).strict();
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /** #1076 — the hand-over desk's search: a name, a UHID or an accession. */
