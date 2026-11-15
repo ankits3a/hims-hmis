@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
@@ -22,6 +22,11 @@ import { PatientFacts, istSlot } from "../components/radiology/patient-facts";
  *
  * #1076 — the row says words, not wire values: the status in words, the slot in IST, the study's name,
  * and the patient's UHID, age and sex under the name. The list refreshes every 30 s like the stations.
+ *
+ * #1087 (IM8) — NO ROUTE MOUNTS THIS SCREEN NOW. It duplicated the desk queue, the room list and the
+ * reading list; `/radiology/worklist` is `RadiologyWorklistDoor` below, and the override asks it carried
+ * under "Clocks running" are decided in the reading room (`?view=asks`). The component stays because the
+ * approved #1076 D6 check renders it.
  */
 const VIEWS = ["floor", "unread", "all"] as const;
 
@@ -156,4 +161,33 @@ export function RadiologyWorklist(): React.ReactElement {
     </div>
     </RadiologyStation>
   );
+}
+
+/**
+ * #1087 (IM8) — **THE WORKLIST'S ADDRESS SENDS EACH PERSON TO THEIR OWN LIST.**
+ *
+ * Decided by the grants the person already holds, in this order: a reporter (`radiology.reports.write`)
+ * to Reading — a radiologist also acquires, and their list is the unread one; a radiographer
+ * (`radiology.acquire`) to Rooms; a nurse (`radiology.gates.satisfy`) to the prep bay; the desk
+ * (`radiology.schedule`) to the Desk. Anybody else lands on their home. Nothing here grants anything:
+ * each target keeps its own server guards.
+ */
+export function worklistDoor(can: (permission: string) => boolean):
+  "/radiology/read" | "/radiology/room" | "/radiology/prep" | "/radiology/reception" | "/" {
+  if (can("radiology.reports.write")) return "/radiology/read";
+  if (can("radiology.acquire")) return "/radiology/room";
+  if (can("radiology.gates.satisfy")) return "/radiology/prep";
+  if (can("radiology.schedule")) return "/radiology/reception";
+  return "/";
+}
+
+/** The route's component: waits for the grants, then replaces the address (Back does not bounce here). */
+export function RadiologyWorklistDoor(): React.ReactElement {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { can, ready } = useAuth();
+  useEffect(() => {
+    if (ready) void navigate({ to: worklistDoor(can), replace: true });
+  }, [ready, can, navigate]);
+  return <p className="p-4 text-sm text-muted-foreground" data-testid="worklist-door">{t("common.loading")}</p>;
 }

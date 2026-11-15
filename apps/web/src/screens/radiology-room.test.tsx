@@ -177,6 +177,18 @@ it("Acquire: a refused start is the server's words with the seat that fixes it",
   expect(within(box as HTMLElement).getByRole("link")).toHaveAttribute("href", "/radiology/reception");
 });
 
+it("#1087: a Form F refusal at the machine names the ultrasound station, not the retired worklist", async () => {
+  mockRoutes(base({
+    "POST /api/radiology/studies/S1/acquisition/start": { status: 422, body: { statusCode: 422, code: "form_f_missing", message: "this scan needs a Form F before it starts" } },
+  }));
+  renderWithProviders(<RadiologyRoom search={{ machine: "CT-1", study: "S1" }} />);
+  await userEvent.click(await screen.findByTestId("step-acquire"));
+  await userEvent.click(screen.getByTestId("dock-act"));
+  const box = (await screen.findByText(/needs a Form F/)).closest("[data-refusal]")!;
+  expect(box).toHaveAttribute("data-refusal", "form_f_missing");
+  expect(within(box as HTMLElement).getByRole("link")).toHaveAttribute("href", "/radiology/usg");
+});
+
 it("Acquire → Send: CT dose above the DRL asks why (never blocks); repeat and contrast-not-given carry their reasons", async () => {
   mockRoutes(base({
     "GET /api/radiology/studies/S1/room": { status: 200, body: { study: room({ status: "in_acquisition" }) } },

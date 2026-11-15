@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
-import { draftReport, openImages, proposeDraft, publishReport, radiologyErrorCode, radiologyErrorText } from "../lib/radiology-api";
+import {
+  decideOverrideRequest, draftReport, fetchOverrideRequests, openImages, proposeDraft, publishReport, radiologyErrorCode, radiologyErrorText,
+} from "../lib/radiology-api";
+import type { WireOverrideRequest } from "../lib/radiology-api";
 import {
   AMEND_REASONS, amendReading, assignReader, autosaveDraft, claimReading, cosignReading, dryRunChecks, fetchCriticalCalls,
   fetchReadingStudy, fetchReadingWorklist, fetchReportPrint, needsSecondFactor, savePrelim, signReading, verifySecondFactor,
@@ -19,7 +22,8 @@ import {
   TIRADS_MARGIN, TIRADS_SHAPE, aspectsScore, fleischnerRecommendation, tiradsScore,
 } from "../lib/imaging-coded";
 import type { CodedSystem, FleischnerInputs, TiradsInputs } from "../lib/imaging-coded";
-import { SeatLink } from "../components/radiology/imaging-counter";
+import { Refusal, SeatLink } from "../components/radiology/imaging-counter";
+import { fmtIst } from "../lib/format";
 import { ImagingReportPrint } from "../components/radiology/imaging-report-print";
 import { RadiologyStation } from "./radiology-station";
 import { ImagingCopilot } from "../components/radiology/imaging-copilot";
@@ -81,11 +85,21 @@ import { IMAGING_READ_TOPIC, useImagingLive } from "../lib/radiology-live";
  *   facts and a comparison line from the latest signed prior. Each drafted section carries a chip
  *   naming its sources until the reader edits that section. Findings and impression are never drafted.
  * · The list is "My list" (my pools, assigned to me, unpooled) by default; "All" is one header view away.
+ *
+ * ═══ #1087 (IM8) — THE OVERRIDE ASKS, AND NO SECOND REPORT SCREEN ═══
+ *
+ * · The prep bay's "please override" requests used to sit under the worklist's Clocks and opened the 18a
+ *   study page to be decided. They are a header view here (`?view=asks`, for `radiology.gates.override`):
+ *   the ask in hand with what the bay wrote, the radiologist's reason, Refuse, and Grant in the dock —
+ *   the existing decide route (`POST /radiology/gate-override-requests/:id/decide`), nothing new on the
+ *   server. While any ask waits, the list's Clocks says so and opens the view.
+ * · The classic report screen's address (`/radiology/studies/$id/report`) opens the same study here, so
+ *   the workspace no longer links to it.
  */
 
-export type ReadView = "list" | "criticals" | "followups" | "peer" | "tele";
-/** 18-S RS8c — the header's views after the critical calls: follow-ups, peer review, night & outside. */
-export const READ_VIEWS: readonly ReadView[] = ["list", "criticals", "followups", "peer", "tele"];
+export type ReadView = "list" | "criticals" | "asks" | "followups" | "peer" | "tele";
+/** 18-S RS8c — the header's views after the critical calls (#1087: the override asks), follow-ups, peer review, night & outside. */
+export const READ_VIEWS: readonly ReadView[] = ["list", "criticals", "asks", "followups", "peer", "tele"];
 
 type SortKey = "priority" | "due" | "modality";
 type CodedEntry = { value: string | number; inputs?: unknown };
@@ -179,25 +193,34 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
     queryKey: ["radiology", "reading", "criticals"], queryFn: fetchCriticalCalls, enabled: canCalls, refetchInterval: 30_000,
   });
   const openCalls = callsQ.data?.open ?? [];
+  /** #1087 — the prep bay's override asks, for the radiologist who decides them. */
+  const canOverride = can("radiology.gates.override");
+  const asksQ = useQuery({
+    queryKey: ["radiology", "override-requests", "all"], queryFn: () => fetchOverrideRequests(),
+    enabled: canOverride, retry: false, refetchInterval: 30_000,
+  });
+  const asks = asksQ.data?.requests ?? [];
   useImagingLive(IMAGING_READ_TOPIC, [["radiology", "reading", "worklist"], ["radiology", "reading", "criticals"]]); // #1083
 
   const open = (id: string | null): void => {
     setStudyId(id);
     setView("list");
-    if (router !== undefined) void router.navigate({ to: "/radiology/read", search: id === null ? {} : { study: id } } as never);
+    // No router (a screen's own suite) is `null` from `useRouter`, not `undefined`: the state above is the whole act.
+    if (router) void router.navigate({ to: "/radiology/read", search: id === null ? {} : { study: id } } as never);
   };
   const goView = (v: ReadView): void => {
     setView(v);
-    if (router !== undefined) void router.navigate({ to: "/radiology/read", search: v === "list" ? {} : { view: v } } as never);
+    if (router) void router.navigate({ to: "/radiology/read", search: v === "list" ? {} : { view: v } } as never);
   };
   /**
    * 18-S RS8c — Follow-ups is the whole reading room's (`radiology.reports.write`, the route's own
    * grant); peer review and the night over-read are a consultant's (`radiology.reports.amend`).
    */
   const allowed = (v: ReadView): boolean =>
-    v === "list" || v === "followups" || (v === "criticals" ? canCalls : consultant);
+    v === "list" || v === "followups" || (v === "criticals" ? canCalls : v === "asks" ? canOverride : consultant);
   const viewLabel = (v: ReadView): string =>
     v === "criticals" ? t("radiology.calls.view", { count: openCalls.length })
+      : v === "asks" ? t("radiology.asks.view", { count: asks.length })
       : v === "list" ? t("radiology.read.viewList") : t(`radiology.read.view.${v}`);
   const views = READ_VIEWS.filter(allowed).flatMap((v) => {
     const link = (
@@ -308,7 +331,14 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
       {[...overdue, ...soon].map((r) => (
         <li key={r.studyId}>{t("radiology.read.clockLine", { name: r.patientName, study: r.studyTypeName, target: t(`radiology.read.tat.${r.tatClass}`), clock: clockText(t, r.dueAt, now).text })}</li>
       ))}
-      {overdue.length + soon.length === 0 && <li className="text-muted-foreground">{t("radiology.read.clocksQuiet")}</li>}
+      {asks.length > 0 && (
+        <li data-testid="reading-clock-asks">
+          <button type="button" className="text-left font-medium underline" onClick={() => goView("asks")}>
+            {t("radiology.asks.clockLine", { count: asks.length })}
+          </button>
+        </li>
+      )}
+      {overdue.length + soon.length + asks.length === 0 && <li className="text-muted-foreground">{t("radiology.read.clocksQuiet")}</li>}
     </ul>
   );
 
@@ -319,6 +349,10 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
     ...(canCalls ? [{ label: t("radiology.calls.stat"), value: openCalls.length, tone: "danger" as const }] : []),
   ];
 
+  if (view === "asks" && canOverride) {
+    return <OverrideAsksView views={views} asks={asks} loading={asksQ.isPending}
+      error={asksQ.isError ? radiologyErrorText(asksQ.error) : null} />;
+  }
   if (view === "followups") return <FollowupsView views={views} />;
   if (view === "peer" && consultant) return <PeerView views={views} />;
   if (view === "tele" && consultant) return <TeleView views={views} />;
@@ -341,8 +375,9 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
       closeListOn={studyId}
       copilot={<ImagingCopilot subject={ctx?.accessionNo ?? null} patientName={ctx?.patient.name ?? null} />}
       clocks={clocks}
-      clocksAlert={overdue.length > 0}
-      clocksSummary={overdue.length > 0 ? t("radiology.read.clocksSummary", { count: overdue.length }) : t("radiology.read.clocksNone")}
+      clocksAlert={overdue.length + asks.length > 0}
+      clocksSummary={overdue.length > 0 ? t("radiology.read.clocksSummary", { count: overdue.length })
+        : asks.length > 0 ? t("radiology.asks.clockLine", { count: asks.length }) : t("radiology.read.clocksNone")}
     >
       {studyId === null
         ? (
@@ -451,6 +486,140 @@ function CriticalCallsView({ views, calls, log, now, loading, error }: {
           ? <CallCard key={`${call.criticalId}:${String(call.ladderRung)}`} call={call} now={now} onDone={() => setInHand(null)} />
           : !loading && <p className="text-sm text-muted-foreground">{t("radiology.calls.none")}</p>}
         <AcknowledgedLog calls={log} />
+      </div>
+    </RadiologyStation>
+  );
+}
+
+/* ═══════════════════════════════ #1087 — the Override asks view ═══════════════════════════════ */
+
+/**
+ * The prep bay asked the radiologist to override a gate. One ask in hand (the oldest by default): what the
+ * bay wrote, the reason the radiologist types, Refuse beside it and Grant in the dock (Enter). Both call the
+ * existing decide route with that reason; the server refuses an empty one either way.
+ */
+function OverrideAsksView({ views, asks, loading, error }: {
+  views: React.ReactNode; asks: WireOverrideRequest[]; loading: boolean; error: string | null;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [sel, setSel] = useState<string | null>(null);
+  const ask = asks.find((a) => a.approvalId === sel) ?? asks[0] ?? null;
+  const [reason, setReason] = useState("");
+  const [refused, setRefused] = useState<{ code: string | null; message: string } | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const gateWord = (a: WireOverrideRequest): string => t(`radiology.gate.${a.kind}`, { defaultValue: a.kind });
+  const pick = (id: string): void => { setSel(id); setReason(""); setRefused(null); setDone(null); };
+
+  const decide = useMutation({
+    mutationFn: ({ approvalId, verdict }: { approvalId: string; verdict: "grant" | "refuse" }) =>
+      decideOverrideRequest(approvalId, verdict, reason.trim()),
+    onSuccess: (r) => {
+      setDone(r.verdict === "granted" ? t("radiology.asks.granted") : t("radiology.asks.refused"));
+      setRefused(null); setSel(null); setReason("");
+      void qc.invalidateQueries({ queryKey: ["radiology", "override-requests"] });
+      void qc.invalidateQueries({ queryKey: ["radiology", "reading"] });
+    },
+    onError: (e) => setRefused({ code: radiologyErrorCode(e), message: radiologyErrorText(e) }),
+  });
+  const ready = ask !== null && reason.trim() !== "" && !decide.isPending;
+  const dockRun = useRef<(() => void) | null>(null);
+  dockRun.current = ready && ask !== null ? () => decide.mutate({ approvalId: ask.approvalId, verdict: "grant" }) : null;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const tag = (e.target as HTMLElement | null)?.tagName ?? "";
+      if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(tag)) return;
+      if (e.key === "Enter" && dockRun.current !== null) { e.preventDefault(); dockRun.current(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const list = (
+    <section aria-label={t("radiology.asks.listTitle")}>
+      <h2 className="tag m-0 mb-2">{t("radiology.asks.listTitle")} · {asks.length}</h2>
+      <ul className="m-0 list-none space-y-1 p-0" data-testid="asks-list">
+        {asks.map((a) => (
+          <li key={a.approvalId} data-approval={a.approvalId}>
+            <button
+              type="button" data-testid={`override-ask-${a.approvalId}`}
+              aria-current={a.approvalId === ask?.approvalId ? "true" : undefined} onClick={() => pick(a.approvalId)}
+              className={`w-full rounded border bg-card p-2 text-left text-sm ${a.approvalId === ask?.approvalId ? "border-green-700" : ""}`}
+            >
+              <span className="flex justify-between gap-2">
+                <b className="min-w-0 truncate">{a.patientName}</b>
+                <span className="mo shrink-0 text-xs">{fmtIst(a.requestedAt)}</span>
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {t("radiology.asks.row", { gate: gateWord(a), who: a.requesterName ?? "—" })}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {asks.length === 0 && !loading && <p className="text-sm text-muted-foreground">{t("radiology.asks.none")}</p>}
+    </section>
+  );
+
+  return (
+    <RadiologyStation
+      station="read" views={views}
+      title={ask === null ? t("radiology.asks.title") : `${ask.patientName} · ${gateWord(ask)}`}
+      place={t("radiology.asks.place")}
+      stats={[{ label: t("radiology.asks.stat"), value: asks.length, tone: asks.length > 0 ? "waiting" : "plain" }]}
+      lane={ask === null
+        ? <p className="mt-4 text-sm text-muted-foreground">{t("radiology.asks.none")}</p>
+        : (
+          <div className="mt-4 space-y-2 text-sm" data-testid="ask-lane">
+            <span className="tag">{t("radiology.asks.inHand")}</span>
+            <p className="m-0 text-base font-semibold">{ask.patientName}</p>
+            <p className="m-0 mo text-xs">{ask.accessionNo} · {ask.studyTypeCode}</p>
+            <p className="m-0 text-xs">{gateWord(ask)}</p>
+            <p className="m-0 text-xs">{t("radiology.asks.askedBy", { who: ask.requesterName ?? "—", at: fmtIst(ask.requestedAt) })}</p>
+          </div>
+        )}
+      list={list}
+      listSummary={t("radiology.asks.listSummary", { count: asks.length })}
+      inHand={ask !== null}
+      closeListOn={sel}
+    >
+      <div className="flex min-h-full flex-col gap-3" data-testid="override-asks">
+        {error !== null && <p role="alert" className="text-sm text-red-700">{error}</p>}
+        {loading && <p>{t("common.loading")}</p>}
+        {done !== null && <p role="status" className="m-0 rounded border border-green-300 bg-green-50 p-2 text-sm">{done}</p>}
+        {ask === null
+          ? !loading && <p className="text-sm text-muted-foreground">{t("radiology.asks.none")}</p>
+          : (
+            <section className="flex flex-1 flex-col gap-2 rounded border bg-card p-3 text-sm" data-testid="ask-in-hand" data-approval={ask.approvalId}>
+              <h2 className="m-0 text-base font-semibold">{ask.patientName} · {gateWord(ask)}</h2>
+              <p className="m-0">{t("radiology.asks.theyWrote")} <q>{ask.note ?? "—"}</q></p>
+              <label className="block text-xs" htmlFor="ask-reason">{t("radiology.asks.reason")}</label>
+              <textarea
+                id="ask-reason" data-testid="ask-reason" className="w-full rounded border p-2" rows={2} maxLength={400}
+                value={reason} onChange={(e) => setReason(e.target.value)}
+              />
+              <div>
+                <button
+                  type="button" data-testid="ask-refuse" className="rounded border px-3 py-1 disabled:opacity-50"
+                  disabled={!ready} onClick={() => decide.mutate({ approvalId: ask.approvalId, verdict: "refuse" })}
+                >
+                  {t("radiology.asks.refuse")}
+                </button>
+              </div>
+              {refused !== null && <Refusal code={refused.code} message={refused.message} />}
+              <div className="flex-1" />
+              <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center gap-3 rounded border bg-card p-3 shadow-sm" data-testid="ask-dock">
+                <span className="min-w-0 basis-full text-xs text-muted-foreground sm:flex-1 sm:basis-auto">{t("radiology.asks.grantHint")}</span>
+                <button
+                  type="button" data-testid="ask-grant"
+                  className="rounded bg-green-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  disabled={!ready} onClick={() => dockRun.current?.()}
+                >
+                  {t("radiology.asks.grant")} <span className="kb">Enter</span>
+                </button>
+              </div>
+            </section>
+          )}
       </div>
     </RadiologyStation>
   );
@@ -1007,7 +1176,6 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
         >
           {t("radiology.read.openImages")}
         </button>
-        <SeatLink to={`/radiology/studies/${ctx.studyId}/report`}>{t("radiology.read.classic")}</SeatLink>
       </div>
       {(heldBy ?? ctx.readingBy) !== null && !takenOver && !locked && (
         <p className="m-0 flex flex-wrap items-center gap-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950" data-testid="reading-lock">

@@ -54,7 +54,8 @@ const ROOM_REMEDY: Record<string, { to: string; key: string } | undefined> = {
   not_ready: { to: "/radiology/prep", key: "radiology.room.fix.prep" },
   gate_open: { to: "/radiology/prep", key: "radiology.room.fix.prep" },
   machine_not_registered: { to: "/radiology/radiation-safety", key: "radiology.room.fix.pcpndt" },
-  form_f_missing: { to: "/radiology/worklist", key: "radiology.room.fix.formF" },
+  /** #1087 — the sonologist writes Form F at the ultrasound station (the worklist this pointed at is gone). */
+  form_f_missing: { to: "/radiology/usg", key: "radiology.room.fix.formF" },
   /** 18-S RS12b — an image-guided procedure is worked in the IR suite (its checklist, labs and skin dose). */
   ir_checklist_incomplete: { to: "/radiology/room?view=ir", key: "radiology.room.fix.irSuite" },
   coagulation_out_of_range: { to: "/radiology/room?view=ir", key: "radiology.room.fix.irSuite" },

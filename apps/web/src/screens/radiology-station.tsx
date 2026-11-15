@@ -13,30 +13,35 @@ import type { StationLink, StationStat } from "../components/station/station-she
  * **No behaviour changed**: every section, control and refusal of 18a / 18c is the one it shipped,
  * moved into a column, not rewritten.
  *
+ * #1087 (IM8) — FEWER STATIONS PER SEAT. Thirteen became nine: the worklist duplicated the desk queue, the
+ * room list and the reading list, so it left (its address sends each person to their own list); the diary
+ * is a header view of the Desk and the portable round one of Rooms; the hall display is a television, so it
+ * keeps its menu entry for the kiosk and the Desk links to it. Reception works Desk and Hand-over; a
+ * radiographer or nurse Prep and Rooms; a radiologist Reading.
+ *
  * The shell wears `data-seat="radiology"`; `styles.css` scopes the paper / pine tokens to it the same
  * way it scopes the lab's, so the shadcn controls inside keep the board's values and nothing outside
  * the department turns green.
  */
 
-export type RadiologyStationKey = "desk" | "diary" | "reports" | "display" | "worklist" | "room" | "read" | "portable" | "usg" | "safety" | "setup" | "prep" | "hod";
+/**
+ * `worklist` is no longer in the switch (#1087). The key stays for the three 18a screens that still render
+ * on it when mounted directly (the worklist, study and report components); no route mounts them now.
+ */
+export type RadiologyStationKey = "desk" | "reports" | "worklist" | "room" | "read" | "usg" | "safety" | "setup" | "prep" | "hod";
 
 /** The browsable stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
 export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: RadiologyStationKey; labelKey: string })[] = [
+  /** The counter and (#1087) the diary as header views, with a link that opens the hall display. */
   { key: "desk", to: "/radiology/reception", labelKey: "nav.radiologyReception", permission: "radiology.schedule" },
-  /** 18-S RS3 — the desk's diary (machines × time) and the waiting-hall TV. */
-  { key: "diary", to: "/radiology/diary", labelKey: "nav.radiologyDiary", permission: "radiology.schedule" },
   /** 18-S RS9 — report hand-over: the release register, film/CD, the named collector. */
   { key: "reports", to: "/radiology/reports", labelKey: "nav.radiologyReports", permission: "radiology.schedule" },
-  { key: "display", to: "/radiology/display", labelKey: "nav.radiologyDisplay", permission: "radiology.display.read" },
   /** 18-S RS5 — the prep & safety bay: the gates the check-in opened, contrast and the reaction. */
   { key: "prep", to: "/radiology/prep", labelKey: "nav.radiologyPrep", permission: "radiology.gates.satisfy" },
-  { key: "worklist", to: "/radiology/worklist", labelKey: "nav.radiologyWorklist", permission: "radiology.worklist.read" },
-  /** 18-S RS6 — the modality rooms: console, dose log, rejects & repeats, downtime (header views). */
+  /** 18-S RS6 — the modality rooms: console, (#1087) portable round, dose log, rejects & repeats, downtime (header views). */
   { key: "room", to: "/radiology/room", labelKey: "nav.radiologyRoom", permission: "radiology.acquire" },
-  /** 18-S RS8a — the reading room: the radiologist's urgency-sorted list and the report workspace. */
+  /** 18-S RS8a — the reading room: the radiologist's urgency-sorted list, the report workspace, (#1087) the override asks. */
   { key: "read", to: "/radiology/read", labelKey: "nav.radiologyReading", permission: "radiology.reports.write" },
-  /** 18-S RS2b — the technologist's round of the beds the trolley goes to. */
-  { key: "portable", to: "/radiology/portable", labelKey: "nav.radiologyPortable", permission: "radiology.acquire" },
   /** 18-S RS7 — the sonologist's room, the Form F register, the §19 registration, the monthly return. */
   { key: "usg", to: "/radiology/usg", labelKey: "nav.radiologyUsg", permission: "pcpndt.form_f.write" },
   { key: "safety", to: "/radiology/radiation-safety", labelKey: "nav.radiationSafety", permission: "aerb.registers.read" },

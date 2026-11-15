@@ -80,16 +80,17 @@ export const radiologyManifest: ModuleManifest = {
   key: "radiology",
   title: "Radiology & Imaging",
   menu: [
+    /**
+     * #1087 (IM8) — the worklist, the diary and the portable round are no longer menu entries. The
+     * worklist's address sends each person to their own list (desk, rooms or reading); the diary is a
+     * header view of the desk and the portable round one of the rooms. All three addresses still answer.
+     */
     { label: "Imaging reception", path: "/radiology/reception", permission: "radiology.schedule" },
-    { label: "Imaging worklist", path: "/radiology/worklist", permission: "radiology.worklist.read" },
-    // 18-S RS6 — the modality rooms: the technologist's console, dose log, rejects and downtime.
+    // 18-S RS6 — the modality rooms: the technologist's console, portable round, dose log, rejects and downtime.
     { label: "Modality rooms", path: "/radiology/room", permission: "radiology.acquire" },
     // 18-S RS8a — the reading room: the radiologist's urgency-sorted list and the report workspace.
     { label: "Reading room", path: "/radiology/read", permission: "radiology.reports.write" },
-    // 18-S RS2b — the technologist's portable round (the beds the trolley goes to).
-    { label: "Portable round", path: "/radiology/portable", permission: "radiology.acquire" },
-    // 18-S RS3 — the desk's diary (machines × time) and the waiting-hall display.
-    { label: "Imaging diary", path: "/radiology/diary", permission: "radiology.schedule" },
+    // 18-S RS3 — the waiting-hall display. #1087: out of the station switch, kept here — the kiosk role needs a door.
     { label: "Imaging hall display", path: "/radiology/display", permission: "radiology.display.read" },
     // 18-S RS9 — report hand-over: the release register, film and CD, the named collector.
     { label: "Report hand-over", path: "/radiology/reports", permission: "radiology.schedule" },
