@@ -2,14 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
-import { draftReport, openImages, publishReport, radiologyErrorCode, radiologyErrorText } from "../lib/radiology-api";
+import { draftReport, openImages, proposeDraft, publishReport, radiologyErrorCode, radiologyErrorText } from "../lib/radiology-api";
 import {
-  AMEND_REASONS, amendReading, cosignReading, dryRunChecks, fetchCriticalCalls, fetchReadingStudy, fetchReadingWorklist,
-  fetchReportPrint, needsSecondFactor, savePrelim, signReading, verifySecondFactor,
+  AMEND_REASONS, amendReading, assignReader, autosaveDraft, claimReading, cosignReading, dryRunChecks, fetchCriticalCalls,
+  fetchReadingStudy, fetchReadingWorklist, fetchReportPrint, needsSecondFactor, savePrelim, signReading, verifySecondFactor,
 } from "../lib/radiology-reading-api";
 import type { ImagingAmendBody } from "@hmis/contracts";
 import type {
-  AmendReason, WireCriticalCall, WirePreSignFinding, WireReadingContext, WireReadingRow, WireReadingTemplate,
+  AmendReason, ReadingScope, WireCriticalCall, WireDraftSection, WirePreSignFinding, WireReadingContext, WireReadingRow,
+  WireReadingTemplate,
 } from "../lib/radiology-reading-api";
 import { useAuth } from "../lib/auth";
 import { AcknowledgedLog, CallCard } from "../components/radiology/critical-calls";
@@ -67,6 +68,18 @@ import { IMAGING_READ_TOPIC, useImagingLive } from "../lib/radiology-live";
  *   and the second factor; the server re-publishes it and tells the original recipients.
  * · The header's second view is Critical calls (`?view=criticals`): the open calls with the ladder,
  *   one call in hand with its one next act in the dock, and the last 48 hours' acknowledged log.
+ *
+ * ═══ #1081 — THE READING ROOM SAVES BY ITSELF, AND SAYS WHERE A DRAFTED LINE CAME FROM ═══
+ *
+ * · Autosave: 5 s after typing stops, and when the reader leaves the study (another study, Esc, the
+ *   tab hidden). The server keeps the reader's working draft and cuts a version every ten minutes;
+ *   Save still cuts one at once. Reopening the study restores the working draft.
+ * · Opening a study claims it ("Dr X is reading", no PACS needed). Somebody else's live claim is shown
+ *   with one Take over tap; it is a label, nothing is locked.
+ * · An unreported study opens with the drafter's proposal already in: the technique from the recorded
+ *   facts and a comparison line from the latest signed prior. Each drafted section carries a chip
+ *   naming its sources until the reader edits that section. Findings and impression are never drafted.
+ * · The list is "My list" (my pools, assigned to me, unpooled) by default; "All" is one header view away.
  */
 
 export type ReadView = "list" | "criticals" | "followups" | "peer" | "tele";
@@ -151,13 +164,15 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
   const consultant = can("radiology.reports.amend");
   const [view, setView] = useState<ReadView>(initialView);
   useEffect(() => { setView(initialView); }, [initialView]);
+  /** #1081 — my list or all; one header tap, not a URL of its own. */
+  const [scope, setScope] = useState<ReadingScope>("mine");
   const [studyId, setStudyId] = useState<string | null>(initialStudy);
   useEffect(() => { setStudyId(initialStudy); }, [initialStudy]);
   const [sort, setSort] = useState<SortKey>("priority");
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(id); }, []);
 
-  const listQ = useQuery({ queryKey: ["radiology", "reading", "worklist"], queryFn: fetchReadingWorklist, refetchInterval: 60_000 });
+  const listQ = useQuery({ queryKey: ["radiology", "reading", "worklist", scope], queryFn: () => fetchReadingWorklist(scope), refetchInterval: 60_000 });
   const rows = useMemo(() => sortRows(listQ.data?.rows ?? [], sort, consultant), [listQ.data, sort, consultant]);
   const callsQ = useQuery({
     queryKey: ["radiology", "reading", "criticals"], queryFn: fetchCriticalCalls, enabled: canCalls, refetchInterval: 30_000,
@@ -183,15 +198,28 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
   const viewLabel = (v: ReadView): string =>
     v === "criticals" ? t("radiology.calls.view", { count: openCalls.length })
       : v === "list" ? t("radiology.read.viewList") : t(`radiology.read.view.${v}`);
-  const views = READ_VIEWS.filter(allowed).map((v) => (
-    <a
-      key={v} href={v === "list" ? "/radiology/read" : `/radiology/read?view=${v}`} className="st-nv"
-      data-testid={`read-view-${v}`} aria-current={v === view ? "page" : undefined}
-      onClick={(e) => { e.preventDefault(); goView(v); }}
-    >
-      {viewLabel(v)}
-    </a>
-  ));
+  const views = READ_VIEWS.filter(allowed).flatMap((v) => {
+    const link = (
+      <a
+        key={v} href={v === "list" ? "/radiology/read" : `/radiology/read?view=${v}`} className="st-nv"
+        data-testid={`read-view-${v}`} aria-current={v === view && (v !== "list" || scope === "mine") ? "page" : undefined}
+        onClick={(e) => { e.preventDefault(); if (v === "list") setScope("mine"); goView(v); }}
+      >
+        {viewLabel(v)}
+      </a>
+    );
+    if (v !== "list") return [link];
+    /** #1081 — "All" sits beside "My list": the same sorted list, every pool. */
+    return [link, (
+      <a
+        key="all" href="/radiology/read" className="st-nv" data-testid="read-view-all"
+        aria-current={view === "list" && scope === "all" ? "page" : undefined}
+        onClick={(e) => { e.preventDefault(); setScope("all"); goView("list"); }}
+      >
+        {t("radiology.read.viewAll")}
+      </a>
+    )];
+  });
 
   const ctxQ = useQuery({
     queryKey: ["radiology", "reading", "study", studyId],
@@ -261,6 +289,9 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
                 </span>
                 {r.readingBy !== null && (
                   <span className="block text-xs text-amber-800" data-testid={`reading-by-${r.studyId}`}>● {t("radiology.read.readingBy", { name: r.readingBy.name })}</span>
+                )}
+                {r.assignedTo != null && (
+                  <span className="block text-xs text-muted-foreground" data-testid={`assigned-${r.studyId}`}>{t("radiology.read.assignedTo", { name: r.assignedTo.name })}</span>
                 )}
               </button>
             </li>
@@ -559,15 +590,36 @@ function StudyLane({ ctx, now }: { ctx: WireReadingContext; now: number }): Reac
 
 /* ═══════════════════════════════ the report workspace ═══════════════════════════════ */
 
+/** #1081 — the drafter's proposal the editor may show chips for: its drafted text and each section's sources. */
+type Drafted = { body: Record<string, string>; sections: Record<string, WireDraftSection> };
+
+function draftedOf(body: Record<string, unknown>, sections: Record<string, WireDraftSection> | undefined): Drafted {
+  const text: Record<string, string> = {};
+  for (const [k, v] of Object.entries(body)) if (typeof v === "string") text[k] = v;
+  return { body: text, sections: sections ?? {} };
+}
+
+/** #1081 — a proposal's text goes only into EMPTY sections: whatever the reader already has stays. */
+function withDrafted(sections: Record<string, string>, d: Drafted): Record<string, string> {
+  const out = { ...sections };
+  for (const [k, v] of Object.entries(d.body)) if (k !== "impression" && v.trim() !== "" && (out[k] ?? "").trim() === "") out[k] = v;
+  return out;
+}
+
+/** Autosave runs this long after the last keystroke (#1081). */
+const AUTOSAVE_IDLE_MS = 5_000;
+
 function seedEditor(ctx: WireReadingContext): Editor {
   const tpl = ctx.templates.find((x) => x.key === ctx.defaultTemplateKey) ?? ctx.templates[0]!;
-  const sections: Record<string, string> = {};
+  let sections: Record<string, string> = {};
   const w = ctx.working;
   for (const s of tpl.sections) if (s.key !== "impression") sections[s.key] = "";
   let coded: Editor["coded"] = {};
   if (w !== null) {
     for (const [k, v] of Object.entries(w.body)) if (typeof v === "string") sections[k] = v;
     if (typeof w.body.coded === "object" && w.body.coded !== null) coded = w.body.coded as Editor["coded"];
+  } else if (ctx.proposal != null && ctx.signed === null) {
+    sections = withDrafted(sections, draftedOf(ctx.proposal.body, ctx.proposal.sections));
   }
   const crit = w?.criticalCategory;
   return {
@@ -598,11 +650,22 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
   const [note, setNote] = useState<string | null>(null);
   const [totp, setTotp] = useState<{ asked: boolean; code: string }>({ asked: false, code: "" });
   /** The working draft the server already holds — signing it unchanged appends no new version. */
-  const [saved, setSaved] = useState<{ key: string; reportId: string } | null>(() => {
+  const [saved, setSaved] = useState<{ key: string; reportId: string; autosaved: boolean } | null>(() => {
     if (ctx.working === null) return null;
     const seed = seedEditor(ctx);
-    return { key: JSON.stringify({ templateKey: seed.templateKey, body: bodyOf(seed), impression: seed.impression, laterality: ctx.laterality }), reportId: ctx.working.reportId };
+    return {
+      key: JSON.stringify({ templateKey: seed.templateKey, body: bodyOf(seed), impression: seed.impression, laterality: ctx.laterality }),
+      reportId: ctx.working.reportId, autosaved: ctx.working.autosavedAt != null,
+    };
   });
+  /** #1081 — the proposal behind the chips, and the sections the reader has touched since opening. */
+  const [drafted, setDrafted] = useState<Drafted | null>(() =>
+    ctx.proposal != null && ctx.signed === null ? draftedOf(ctx.proposal.body, ctx.proposal.sections) : null);
+  const [edited, setEdited] = useState<Set<string>>(new Set());
+  const [autosavedAt, setAutosavedAt] = useState<string | null>(ctx.working?.autosavedAt ?? null);
+  const [takenOver, setTakenOver] = useState(false);
+  const [heldBy, setHeldBy] = useState<{ name: string } | null>(null);
+  const [assigned, setAssigned] = useState<{ userId: string; name: string } | null>(ctx.assignedTo ?? null);
   const [signedId, setSignedId] = useState<string | null>(ctx.signed?.reportId ?? null);
   const [published, setPublished] = useState<boolean>(ctx.signed?.publishedAt != null);
   const [printing, setPrinting] = useState(false);
@@ -654,15 +717,85 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
   const warnings = findings.filter((f) => f.level === "warn");
   const unacked = warnings.filter((w) => !acked.has(w.code));
 
-  const saveDraft = async (): Promise<string> => {
-    if (saved !== null && saved.key === contentKey) return saved.reportId;
+  /**
+   * The text the server holds: unchanged since the last write, the sign signs that version. `cut` is
+   * Save's — a Save is always its own version, even over text an autosave already kept (#1081).
+   */
+  const saveDraft = async (cut = false): Promise<string> => {
+    if (saved !== null && saved.key === contentKey && !(cut && saved.autosaved)) return saved.reportId;
     const r = await draftReport(ctx.studyId, { ...content, impression: content.impression, laterality: ctx.laterality });
-    setSaved({ key: contentKey, reportId: r.reportId });
+    setSaved({ key: contentKey, reportId: r.reportId, autosaved: false });
+    persistedKey.current = contentKey;
     return r.reportId;
   };
 
+  /* ── #1081 — autosave: 5 s after the last keystroke, and when the reader leaves the study ── */
+  const persistedKey = useRef<string>(contentKey);
+  const typed = useRef(false);
+  const latest = useRef({ contentKey, content, allowed: false });
+  const autosaveAllowed = signedId === null && awaitingId === null && !amend.open
+    && ctx.status !== "in_acquisition" && ctx.signed === null;
+  latest.current = { contentKey, content, allowed: autosaveAllowed };
+  const flush = useRef<() => void>(() => undefined);
+  flush.current = () => {
+    const { contentKey: key, content: c, allowed } = latest.current;
+    if (!allowed || !typed.current || key === persistedKey.current) return;
+    const before = persistedKey.current;
+    persistedKey.current = key;
+    autosaveDraft(ctx.studyId, { ...c, impression: c.impression, laterality: c.laterality as ImagingAmendBody["laterality"] })
+      .then((r) => { setSaved({ key, reportId: r.reportId, autosaved: true }); setAutosavedAt(r.autosavedAt); })
+      .catch(() => { if (persistedKey.current === key) persistedKey.current = before; });
+  };
+  useEffect(() => {
+    if (!autosaveAllowed || !typed.current || contentKey === persistedKey.current) return;
+    const id = window.setTimeout(() => flush.current(), AUTOSAVE_IDLE_MS);
+    return () => window.clearTimeout(id);
+  }, [contentKey, autosaveAllowed]);
+  useEffect(() => {
+    const onHide = (): void => { if (document.visibilityState === "hidden") flush.current(); };
+    document.addEventListener("visibilitychange", onHide);
+    return () => { document.removeEventListener("visibilitychange", onHide); flush.current(); };
+  }, []);
+
+  /* ── #1081 — opening the study claims it, and prepares a draft when nothing is written yet ── */
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    if (ctx.signed === null && (ctx.status === "acquired" || ctx.status === "reported")) {
+      claimReading(ctx.studyId).then((r) => { if (r.heldBy !== null) setHeldBy({ name: r.heldBy.name }); }).catch(() => undefined);
+    }
+    const unreported = ctx.working === null && ctx.signed === null && (ctx.awaitingCosign ?? null) === null && ctx.status === "acquired";
+    if (unreported && ctx.proposal == null) {
+      proposeDraft(ctx.studyId).then((p) => {
+        const d = draftedOf(p.body, p.provenance.sections);
+        setDrafted(d);
+        setEd((prev) => {
+          const next = { ...prev, sections: withDrafted(prev.sections, d) };
+          /** Programme text, not the reader's: the next keystroke is what autosave waits for. */
+          if (!typed.current) persistedKey.current = JSON.stringify({ templateKey: next.templateKey, body: bodyOf(next), impression: next.impression, laterality: ctx.laterality });
+          return next;
+        });
+      }).catch(() => undefined);
+    }
+  }, [ctx]);
+
+  const takeOver = useMutation({
+    mutationFn: () => claimReading(ctx.studyId, true),
+    onSuccess: () => { setTakenOver(true); setHeldBy(null); onChanged(); },
+    onError: (e) => setError({ code: radiologyErrorCode(e), text: radiologyErrorText(e) }),
+  });
+  const assign = useMutation({
+    mutationFn: (readerId: string | null) => assignReader(ctx.studyId, readerId),
+    onSuccess: (r) => {
+      setAssigned(r.assignedReaderId === null ? null : ctx.readers?.find((x) => x.userId === r.assignedReaderId) ?? { userId: r.assignedReaderId, name: r.assignedReaderId });
+      onChanged();
+    },
+    onError: (e) => setError({ code: radiologyErrorCode(e), text: radiologyErrorText(e) }),
+  });
+
   const save = useMutation({
-    mutationFn: saveDraft,
+    mutationFn: () => saveDraft(true),
     onSuccess: () => { setError(null); setNote(t("radiology.read.saved")); onChanged(); },
     onError: (e) => setError({ code: radiologyErrorCode(e), text: radiologyErrorText(e) }),
   });
@@ -810,9 +943,28 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
   dockRef.current = dock.run;
   signRef.current = signedId === null && awaitingId === null && dock.run !== null && refusals.length === 0 && unacked.length === 0 ? () => signAndPublish.mutate() : null;
 
-  const set = (patch: Partial<Editor>): void => { setEd((p) => ({ ...p, ...patch })); setNote(null); };
-  const setSection = (key: string, text: string): void => setEd((p) => (key === "impression" ? { ...p, impression: text } : { ...p, sections: { ...p.sections, [key]: text } }));
+  const set = (patch: Partial<Editor>): void => { typed.current = true; setEd((p) => ({ ...p, ...patch })); setNote(null); };
+  const setSection = (key: string, text: string): void => {
+    typed.current = true;
+    setEdited((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+    setEd((p) => (key === "impression" ? { ...p, impression: text } : { ...p, sections: { ...p.sections, [key]: text } }));
+  };
   const valueOf = (key: string): string => (key === "impression" ? ed.impression : ed.sections[key] ?? "");
+  /** #1081 — a drafted section keeps its chip until the reader edits it. */
+  const chipOf = (key: string): WireDraftSection | null => {
+    const sec = drafted?.sections[key];
+    const text = drafted?.body[key] ?? "";
+    return sec !== undefined && !edited.has(key) && text.trim() !== "" && valueOf(key) === text ? sec : null;
+  };
+  /** The template's sections, and a drafted one it lacks (the comparison line) after the technique. */
+  const shownSections = useMemo(() => {
+    const list = tpl.sections.map((x) => ({ key: x.key, label: x.label }));
+    const extra = Object.keys(drafted?.sections ?? {}).filter((k) => k !== "impression" && !list.some((x) => x.key === k))
+      .map((k) => ({ key: k, label: k }));
+    const at = list.findIndex((x) => x.key === "technique");
+    list.splice(at < 0 ? 0 : at + 1, 0, ...extra);
+    return list;
+  }, [tpl, drafted]);
   const locked = signedId !== null;
   const waiting = awaitingId !== null && signedId === null;
 
@@ -855,9 +1007,34 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
         </button>
         <SeatLink to={`/radiology/studies/${ctx.studyId}/report`}>{t("radiology.read.classic")}</SeatLink>
       </div>
-      {ctx.readingBy !== null && (
-        <p className="m-0 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950" data-testid="reading-lock">
-          {t("radiology.read.lockLine", { name: ctx.readingBy.name })}
+      {(heldBy ?? ctx.readingBy) !== null && !takenOver && !locked && (
+        <p className="m-0 flex flex-wrap items-center gap-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950" data-testid="reading-lock">
+          <span>{t("radiology.read.lockLine", { name: (heldBy ?? ctx.readingBy)!.name })}</span>
+          <button
+            type="button" className="rounded border border-amber-600 px-2 py-0.5 text-xs" data-testid="take-over"
+            disabled={takeOver.isPending} onClick={() => takeOver.mutate()}
+          >
+            {t("radiology.read.takeOver")}
+          </button>
+        </p>
+      )}
+      {(assigned !== null || (canAmend && (ctx.readers?.length ?? 0) > 0 && !locked)) && (
+        <p className="m-0 flex flex-wrap items-center gap-2 text-xs" data-testid="reading-assign">
+          {canAmend && (ctx.readers?.length ?? 0) > 0 && !locked
+            ? (
+              <label className="flex items-center gap-1">
+                {t("radiology.read.assignLabel")}
+                <select
+                  className="rounded border bg-card px-1 text-xs" value={assigned?.userId ?? ""} data-testid="assign-reader"
+                  disabled={assign.isPending} onChange={(e) => assign.mutate(e.target.value === "" ? null : e.target.value)}
+                >
+                  <option value="">{t("radiology.read.assignNobody")}</option>
+                  {(ctx.readers ?? []).map((r) => <option key={r.userId} value={r.userId}>{r.name}</option>)}
+                </select>
+              </label>
+            )
+            : <span>{t("radiology.read.assignedTo", { name: assigned!.name })}</span>}
+          {ctx.readingPool != null && <span className="text-muted-foreground">{t("radiology.read.pool", { name: ctx.readingPool })}</span>}
         </p>
       )}
       {error !== null && (
@@ -868,6 +1045,11 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
         </div>
       )}
       {note !== null && <p role="status" className="m-0 text-sm text-green-800">{note}</p>}
+      {autosavedAt !== null && !locked && (
+        <p className="m-0 text-xs text-muted-foreground" data-testid="autosaved">
+          {t("radiology.read.autosaved", { time: new Date(autosavedAt).toLocaleTimeString(dateLocale(), { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }) })}
+        </p>
+      )}
       {prelim && !locked && !waiting && (
         <p className="m-0 rounded border-2 border-amber-500 bg-amber-50 p-2 text-center text-sm font-bold tracking-wide text-amber-950" data-testid="prelim-banner">
           {t("radiology.read.prelimBanner")}
@@ -993,10 +1175,20 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
               </button>
             </details>
 
-            {tpl.sections.map((s) => (
+            {shownSections.map((s) => (
               <label key={s.key} className="flex flex-col gap-1 text-sm">
                 <span className="flex items-center justify-between gap-2">
-                  <b>{t(`radiology.read.section.${s.key}`, { defaultValue: s.label })}</b>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <b>{t(`radiology.read.section.${s.key}`, { defaultValue: s.label })}</b>
+                    {chipOf(s.key) !== null && (
+                      <span className="rounded bg-sky-100 px-1 text-xs font-normal text-sky-900" data-testid={`drafted-chip-${s.key}`}>
+                        {t("radiology.read.drafted.chip", {
+                          sources: [...new Set(chipOf(s.key)!.sources.map((x) => x.kind))]
+                            .map((k) => t(`radiology.read.drafted.source.${k}`)).join(" · "),
+                        })}
+                      </span>
+                    )}
+                  </span>
                   {tpl.macros.filter((m) => m.section === s.key).length > 0 && (
                     <select
                       className="rounded border bg-card px-1 text-xs" value="" aria-label={t("radiology.read.macro")}

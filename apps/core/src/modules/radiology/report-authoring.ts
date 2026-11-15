@@ -1,14 +1,18 @@
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
 import { patients } from "../../kernel/db/schema/patients";
+import { istDayString } from "../../kernel/approvals/cumulative";
+import { listMergedLoserIds, resolvePatientId } from "../patients";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { findLockoutHits } from "../pcpndt";
 import type { LockoutTier } from "../pcpndt";
 import { RadiologyError } from "./errors";
 import { outsideStudyFor } from "./outside";
-import { requireStudyType } from "./study-types";
-import { activeDrafter, proposalLockoutHits } from "./drafter";
+import { activeStudyTypes, requireStudyType } from "./study-types";
+import { contrastAdministrationsFor } from "./contrast";
+import { activeDrafter, proposalLockoutHits, proposalNumberHits } from "./drafter";
+import type { DrafterFacts } from "./drafter";
 import { PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn } from "./applicability";
 import { templateKeyFor } from "./templates";
 import {
@@ -106,6 +110,11 @@ export async function insertVersion(
   criticalCategory?: ImagingCriticalCategory | null,
   /** 18b T4 / §6.8 — set ONLY by `proposeDraft`. Never copied forward: the signed document is a human's. */
   provenance?: Record<string, unknown> | null,
+  /**
+   * #1081 — who wrote a human draft or prelim, and, for an AUTOSAVE, its instant (which is also the
+   * version's `created_at`, the start of its ten minutes). Never copied forward to a signature.
+   */
+  authoring?: { draftedBy: string | null; autosavedAt?: Date | null; createdAt?: Date },
 ): Promise<{ reportId: string; version: number }> {
   const version = await nextVersion(tx, study.id);
   const templateKey = content.templateKey ?? await defaultTemplateKey(tx, study.studyTypeCode);
@@ -131,6 +140,9 @@ export async function insertVersion(
       externalReporterId: status === "prelim" ? content.externalReporterId ?? null : null,
       signer: signer?.block ?? null,
       signChecks: signer?.checks ?? null,
+      draftedBy: authoring?.draftedBy ?? null,
+      autosavedAt: authoring?.autosavedAt ?? null,
+      ...(authoring?.createdAt === undefined ? {} : { createdAt: authoring.createdAt }),
     });
   } catch (e) {
     /**
@@ -167,7 +179,86 @@ export async function draftReport(
   /** 18-S RS7 T2 — biometry recomputed by the server, the declaration key the server's alone. */
   const obstetric = await isObstetricReport(tx, study, input.templateKey);
   const body = normaliseReportBody(input.body, obstetric, scanDayOf(study, new Date()));
-  return await insertVersion(tx, study, "draft", { ...input, body });
+  /** #1081 — a Save cuts a version and names its author; it is never overwritten (only an autosave is). */
+  return await insertVersion(tx, study, "draft", { ...input, body }, undefined, null, null, { draftedBy: actor.id });
+}
+
+/**
+ * #1081 — **AUTOSAVE: THE READER'S OWN WORKING DRAFT, OVERWRITTEN FOR TEN MINUTES, THEN A NEW VERSION.**
+ *
+ * The reading room calls this 5 s after typing stops and when the reader leaves the study. It
+ * OVERWRITES the newest version when that version is this reader's own autosaved draft and is younger
+ * than ten minutes; otherwise it CUTS a new version (`drafted_by` the reader, `autosaved_at` and
+ * `created_at` this instant). So the history holds what was on the screen at least every ten minutes,
+ * every Save and every prelim as its own version, and no row is ever deleted (ruling 0098 §5: every
+ * draft version is kept for the record's retention period; nothing is purged at signature).
+ *
+ * What it never does: write over a signature (a signed, superseded or co-sign-waiting version anywhere
+ * in the chain is `already_signed`, and nothing is written — the screen amends instead), write over a
+ * Save, a prelim or a machine's proposal (those are frozen versions; the next autosave follows them),
+ * or write over ANOTHER reader's draft (DECIDED: their row is left alone and this reader's text becomes
+ * a new version of its own — two readers typing at once is visible in the history, never lost).
+ *
+ * The database holds the same line: the append-only trigger (migration 0234) lets exactly this row's
+ * text and `autosaved_at` change, only for its own author's autosave, only inside its ten minutes.
+ * Saves are not checked against the lockout, exactly like a draft (F68's argument): it is the reader's
+ * own scratch text and nobody outside the department can read it.
+ */
+export const AUTOSAVE_VERSION_MINUTES = 10;
+const SIGNED_CHAIN_STATUSES = ["signed", "awaiting_cosign", "superseded", "amended"];
+
+export async function autosaveDraft(
+  tx: Tx, actor: Actor, input: { studyId: string; now?: Date } & ReportContent,
+): Promise<{ reportId: string; version: number; autosavedAt: Date; cut: boolean }> {
+  if (actor.type !== "user") throw new RadiologyError("forbidden", `a ${actor.type} actor does not write drafts`);
+  if (!(await hasPermission(tx, actor.id, "radiology.reports.write", "hospital"))) {
+    throw new RadiologyError("forbidden", `${actor.id} does not hold radiology.reports.write`);
+  }
+  const now = input.now ?? new Date();
+  /** The study row lock orders two autosaves of one study: one overwrites, the next sees its write. */
+  await (tx as unknown as Db).select({ id: imagingStudies.id }).from(imagingStudies)
+    .where(eq(imagingStudies.id, input.studyId)).for("update");
+  const study = await loadStudy(tx, input.studyId);
+  assertReportable(study.status, input.studyId);
+
+  const versions = await (tx as unknown as Db).select().from(imagingReports)
+    .where(eq(imagingReports.studyId, study.id)).orderBy(desc(imagingReports.version));
+  const signed = versions.find((v) => SIGNED_CHAIN_STATUSES.includes(v.status));
+  if (signed !== undefined) {
+    throw new RadiologyError(
+      "already_signed",
+      `study ${study.accessionNo} has a ${signed.status} report (v${String(signed.version)}) — an autosave never `
+      + "writes over a signature; amend the report instead",
+      { studyId: study.id, reportId: signed.id, status: signed.status },
+    );
+  }
+
+  const obstetric = await isObstetricReport(tx, study, input.templateKey);
+  const body = normaliseReportBody(input.body, obstetric, scanDayOf(study, now));
+  const newest = versions[0];
+  const own = newest !== undefined && newest.status === "draft" && newest.provenance === null
+    && newest.draftedBy === actor.id && newest.autosavedAt !== null
+    && now.getTime() > newest.autosavedAt.getTime()
+    && now.getTime() - newest.createdAt.getTime() < AUTOSAVE_VERSION_MINUTES * 60_000;
+
+  let out: { reportId: string; version: number; cut: boolean };
+  if (own) {
+    await tx.update(imagingReports).set({
+      templateKey: input.templateKey ?? newest.templateKey, body,
+      impression: input.impression ?? null, laterality: input.laterality ?? null, autosavedAt: now,
+    }).where(eq(imagingReports.id, newest.id));
+    out = { reportId: newest.id, version: newest.version, cut: false };
+  } else {
+    const created = await insertVersion(
+      tx, study, "draft", { ...input, body, externalReporterId: null }, undefined, null, null,
+      { draftedBy: actor.id, autosavedAt: now, createdAt: now },
+    );
+    out = { ...created, cut: true };
+  }
+  /** The reader's own claim lives as long as they keep typing (#1081 — it lapses an hour after the last write). */
+  await tx.update(imagingStudies).set({ readingClaimedAt: now })
+    .where(and(eq(imagingStudies.id, study.id), eq(imagingStudies.readingClaimedBy, actor.id)));
+  return { ...out, autosavedAt: now };
 }
 
 /**
@@ -202,7 +293,10 @@ export async function proposeDraft(
   const outsideRow = await outsideStudyFor(tx, study.id);
   const outsideFacts = outsideRow === null
     ? null
-    : { centreName: outsideRow.centreName, studyDate: outsideRow.studyDate, arrival: outsideRow.arrival };
+    : { id: outsideRow.id, centreName: outsideRow.centreName, studyDate: outsideRow.studyDate, arrival: outsideRow.arrival };
+  /** #1081 — the rows the chips name: the contrast register behind the summary, the prior for the comparison. */
+  const contrastAdministrationIds = (await contrastAdministrationsFor(tx, study.id)).map((a) => a.id);
+  const prior = await comparablePrior(tx, study, type);
   const proposal = await activeDrafter().draft({
     studyId: study.id, accessionNo: study.accessionNo,
     studyType: {
@@ -212,7 +306,7 @@ export async function proposeDraft(
     laterality: study.laterality, lockoutTier: tier, contrastGiven: study.contrastGiven,
     contrastAgent: study.contrastAgent, contrastVolumeMl: study.contrastVolumeMl,
     dose: { ctdivol: study.doseCtdivol, dlp: study.doseDlp, dap: study.doseDap, fluoroSeconds: study.fluoroSeconds },
-    outside: outsideFacts,
+    outside: outsideFacts, prior, contrastAdministrationIds,
   }, now);
   // Close review B1 — the SAME tier a human's text gets (F66: the demographic terms only in an
   // obstetric context), so "USG female pelvis" on a man's scan is not refused on the type's name.
@@ -225,6 +319,19 @@ export async function proposeDraft(
       { terms, drafter: proposal.provenance.drafter },
     );
   }
+  /**
+   * #1081 — "AI never writes numbers": every number in a drafted section must be in a row its chip
+   * names. Refused like the lockout — no override lane, nothing written.
+   */
+  const unsourced = proposalNumberHits(proposal);
+  if (unsourced.length > 0) {
+    throw new RadiologyError(
+      "drafted_number_unsourced",
+      `the drafter "${proposal.provenance.drafter}" wrote ${unsourced.map((u) => `${u.number} in ${u.section}`).join(", ")} — `
+      + "every number in a drafted section must appear in a source row its chip names, and nobody may override it",
+      { unsourced, drafter: proposal.provenance.drafter },
+    );
+  }
   const provenance = { ...proposal.provenance, inputs: { ...proposal.provenance.inputs, requestedBy: actor.id } };
   const created = await insertVersion(tx, study, "draft", {
     templateKey: proposal.templateKey, body: proposal.body,
@@ -234,6 +341,45 @@ export async function proposeDraft(
   return {
     ...created, templateKey: proposal.templateKey, body: proposal.body,
     impression: proposal.impression, laterality: proposal.laterality, provenance,
+  };
+}
+
+/**
+ * #1081 — **THE PRIOR A COMPARISON LINE NAMES**: this patient's (and a merged record's) latest study of
+ * the same modality AND body part (by the active study-type book) that carries a current signed
+ * report, acquired before this one. "Latest" is by the prior's study date (`acquired_at`), DECIDED: the
+ * comparison a radiologist makes is with the most recent examination, not the most recently signed
+ * report. Its IST day is the date printed.
+ */
+async function comparablePrior(
+  tx: Tx, study: typeof imagingStudies.$inferSelect, type: { modality: string; body_part: string },
+): Promise<NonNullable<DrafterFacts["prior"]> | null> {
+  const types = await activeStudyTypes(tx);
+  const same = types.filter((t) => t.modality === type.modality && t.body_part === type.body_part);
+  if (same.length === 0) return null;
+  const canonical = (await resolvePatientId(tx, study.patientId)) ?? study.patientId;
+  const chain = [canonical, ...(await listMergedLoserIds(tx, canonical))];
+  const [row] = await (tx as unknown as Db)
+    .select({
+      reportId: imagingReports.id, studyId: imagingStudies.id, accessionNo: imagingStudies.accessionNo,
+      studyTypeCode: imagingStudies.studyTypeCode, acquiredAt: imagingStudies.acquiredAt, signedAt: imagingReports.signedAt,
+    })
+    .from(imagingReports)
+    .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
+    .where(and(
+      inArray(imagingStudies.patientId, chain), ne(imagingStudies.id, study.id),
+      eq(imagingReports.status, "signed"),
+      inArray(imagingStudies.studyTypeCode, same.map((t) => t.code)),
+      study.acquiredAt === null ? undefined : or(isNull(imagingStudies.acquiredAt), lt(imagingStudies.acquiredAt, study.acquiredAt)),
+    ))
+    .orderBy(sql`${imagingStudies.acquiredAt} desc nulls last`, desc(imagingReports.signedAt))
+    .limit(1);
+  if (!row) return null;
+  const day = row.acquiredAt ?? row.signedAt;
+  return {
+    reportId: row.reportId, studyId: row.studyId, accessionNo: row.accessionNo,
+    studyDate: day === null ? "" : istDayString(day),
+    studyTypeName: same.find((t) => t.code === row.studyTypeCode)?.name ?? row.studyTypeCode,
   };
 }
 
@@ -282,7 +428,10 @@ export async function savePrelim(
   }
   /** 18-S RS8c T3 — a night-read partner's prelim carries the provider and opens the over-read row. */
   const tele = await teleReaderOf(tx, actor.id);
-  const created = await insertVersion(tx, study, "prelim", { ...input, body, externalReporterId: tele?.provider.key ?? null });
+  const created = await insertVersion(
+    tx, study, "prelim", { ...input, body, externalReporterId: tele?.provider.key ?? null }, undefined, null, null,
+    { draftedBy: actor.id },
+  );
   if (tele !== null) await openTeleRead(tx, tele, study, created.reportId, new Date());
   return created;
 }

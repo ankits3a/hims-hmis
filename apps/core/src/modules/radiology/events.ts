@@ -337,6 +337,16 @@ export const imagingOverreadRecorded = defineEvent("imaging.overread_recorded", 
   providerKey: z.string().min(1),
 }));
 
+/**
+ * #1081 — a reader opened a study in the reading room and it is now theirs to read: "Dr X is reading",
+ * with no PACS. `previousReaderId` names who held it before (a lapsed claim, or a live one this reader
+ * took over — `tookOver`), so a hand-over is on the record. Appended for a new claim and a take-over,
+ * never for a reader refreshing their own live claim. Ids only, as this file's rule says.
+ */
+export const imagingReadingClaimed = defineEvent("imaging.reading_claimed", MODULE, z.object({
+  studyId: id, readerId: id, previousReaderId: id.nullable(), tookOver: z.boolean(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -367,4 +377,5 @@ export const RADIOLOGY_EVENTS = [
   imagingFollowupBooked,
   imagingOverreadRecorded,
   imagingReportPrinted,
+  imagingReadingClaimed,
 ] as const;

@@ -277,6 +277,15 @@ export const RADIOLOGY_ERROR_CODES = [
   "unknown_tele_read",
   "overread_not_consultant",
   /**
+   * ── #1081 — the reading room ──
+   *
+   * `drafted_number_unsourced`: a drafter's proposal carries a number that appears in none of the
+   * source rows its section names ("AI never writes numbers"); refused like the lockout, no override.
+   * `not_a_reader`: a study was assigned to somebody who does not write imaging reports.
+   */
+  "drafted_number_unsourced",
+  "not_a_reader",
+  /**
    * ── #1078 — the desk's collect act (`desk.ts`) ──
    *
    * `study_not_on_visit`: a named study is not on the visit being billed, or is another patient's — one
@@ -409,6 +418,9 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   tele_reader_prelim_only: 403,
   unknown_tele_read: 404,
   overread_not_consultant: 403,
+
+  drafted_number_unsourced: 422,
+  not_a_reader: 422,
 
   study_not_on_visit: 422,
   not_collectable: 409,

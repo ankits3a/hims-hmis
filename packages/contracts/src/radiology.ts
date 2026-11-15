@@ -61,6 +61,18 @@ export const imagingAmendBody = imagingReportContentBody.extend({
   acknowledgedWarnings,
 });
 
+/**
+ * #1081 — the reading room's AUTOSAVE: the editor's text as it stands, 5 s after typing stops. No
+ * lockout override: an autosaved draft is never signed as it stands, the signature carries its own.
+ */
+export const imagingAutosaveBody = imagingReportContentBody.omit({ lockoutOverride: true });
+
+/** #1081 — opening a study claims it; `takeOver` takes a live claim from another reader (one tap). */
+export const imagingClaimBody = z.object({ takeOver: z.boolean().optional() }).strict();
+
+/** #1081 — a consultant gives the study to a named reader, or takes it back (`null`). */
+export const imagingAssignBody = z.object({ readerId: id.nullable() }).strict();
+
 /* ── the console ── */
 
 export const imagingAcquiredBody = z.object({
@@ -184,6 +196,9 @@ export const imagingDeskWalkInOrderBody = z.object({
 export type ImagingReportContentBody = z.input<typeof imagingReportContentBody>;
 export type ImagingSignBody = z.input<typeof imagingSignBody>;
 export type ImagingAmendBody = z.input<typeof imagingAmendBody>;
+export type ImagingAutosaveBody = z.input<typeof imagingAutosaveBody>;
+export type ImagingClaimBody = z.input<typeof imagingClaimBody>;
+export type ImagingAssignBody = z.input<typeof imagingAssignBody>;
 export type ImagingAcquiredBody = z.input<typeof imagingAcquiredBody>;
 export type ImagingContrastBody = z.input<typeof imagingContrastBody>;
 export type ImagingHandoverBody = z.input<typeof imagingHandoverBody>;

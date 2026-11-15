@@ -305,6 +305,21 @@ export const imagingStudies = pgTable(
     invoiceLineId: text("invoice_line_id").references(() => invoiceLines.id),
     authorisedBy: text("authorised_by"),
     cancelReason: text("cancel_reason"),
+    /**
+     * ═══ #1081 — THE READING ROOM: THE STUDY'S POOL, ITS NAMED READER, AND WHO IS READING IT ═══
+     *
+     * `reading_pool` is stamped at ACQUISITION (`recordAcquired`) from the published signatories book's
+     * `reading_pools` — the first pool whose modalities and body parts take this study's type — and is
+     * null when no pool is published or none matches; an unpooled study is on every reader's list.
+     * `assigned_reader_id` is a consultant's assignment to a named reader (`radiology.reports.amend`).
+     * `reading_claimed_by`/`_at` is "Dr X is reading": written when a reader opens the study, refreshed
+     * by their autosave, shown for 60 minutes after it was last written and not after signature. A
+     * label, never a lock. All four nullable; no backfill.
+     */
+    readingPool: text("reading_pool"),
+    assignedReaderId: text("assigned_reader_id"),
+    readingClaimedBy: text("reading_claimed_by"),
+    readingClaimedAt: timestamp("reading_claimed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -452,7 +467,8 @@ export const imagingDefinitions = pgTable(
  *     radiologists" is refused by the INDEX**, so the second sign loses whatever the application
  *     believed;
  *   · a trigger forbidding UPDATE of every column but `status` and `published_at`, and forbidding
- *     DELETE outright — because this is the table a courtroom reads.
+ *     DELETE outright — because this is the table a courtroom reads. (#1081: one exception, an
+ *     AUTOSAVED draft's own text for ten minutes — see `autosaved_at`. A signed row never moves.)
  *
  * `amend` therefore INSERTS v(n+1) as `signed` and flips v(n) to `superseded` in one transaction:
  * the partial unique makes those two writes atomic-or-nothing without a lock, since a concurrent
@@ -510,6 +526,20 @@ export const imagingReports = pgTable(
      * a row. NULL on drafts, prelims and on versions signed before RS8a.
      */
     signChecks: jsonb("sign_checks"),
+    /**
+     * #1081 — the human who wrote this draft or prelim (Save, autosave, prelim). Null on a machine's
+     * proposal (its author is `provenance`), on signed versions (their author is `signer_id`) and on
+     * every version written before #1081.
+     */
+    draftedBy: text("drafted_by"),
+    /**
+     * #1081 — set on a version AUTOSAVE wrote, to the instant of its last autosave. Such a version is
+     * the one row whose text may change after insert: migration 0234 widens the append-only trigger so
+     * that its own author's autosave may overwrite `body`, `impression`, `laterality` and `template_key`
+     * (and move this column forward) for ten minutes from `created_at`; after that the next autosave
+     * cuts a new version. DELETE stays refused: every version is kept (ruling 0098 §5).
+     */
+    autosavedAt: timestamp("autosaved_at", { withTimezone: true }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

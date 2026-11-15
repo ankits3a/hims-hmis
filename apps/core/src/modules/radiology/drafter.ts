@@ -39,8 +39,33 @@ export type DrafterFacts = {
    * centre, and the TECHNIQUE sentence has to say so: a signed report that reads like ours, about a
    * film that is not, is the exact confusion the register exists to prevent.
    */
-  outside: { centreName: string; studyDate: string; arrival: string } | null;
+  outside: { id?: string; centreName: string; studyDate: string; arrival: string } | null;
+  /**
+   * #1081 — the latest SIGNED prior of the same modality and body part (`proposeDraft` finds it), for
+   * the comparison line. `studyDate` is the prior's IST day; null or absent means there is none.
+   */
+  prior?: { reportId: string; studyId: string; accessionNo: string; studyDate: string; studyTypeName: string } | null;
+  /** #1081 — the contrast register's rows behind `contrastAgent`/`contrastVolumeMl`, named on the chip. */
+  contrastAdministrationIds?: readonly string[];
 };
+
+/**
+ * #1081 — **ONE SOURCE PER ROW A DRAFTED SECTION WAS BUILT FROM.** `ref` is the row (a study type's
+ * code, the study whose dose and contrast columns were read, the outside register's row, the prior
+ * report's id); `values` are the facts read from it, exactly as the sentence uses them, so the numbers
+ * check can compare a sentence with its sources without reading anything again. Ids never go in
+ * `values` (a ULID is full of digits and would make every number look sourced).
+ */
+export const DRAFT_SOURCE_KINDS = ["study_type", "dose_record", "contrast_register", "outside_register", "prior_report"] as const;
+export type DraftSourceKind = (typeof DRAFT_SOURCE_KINDS)[number];
+export type DraftSource = {
+  kind: DraftSourceKind;
+  ref: string;
+  values: Record<string, string | number | null>;
+  /** The register rows behind a summary (the contrast administrations), when there are any. */
+  rows?: string[];
+};
+export type DraftSection = { sources: DraftSource[] };
 
 export type DraftProposal = {
   templateKey: string;
@@ -53,6 +78,8 @@ export type DraftProposal = {
     version: string;
     inputs: Record<string, unknown>;
     at: string;
+    /** #1081 — per drafted section, the rows it came from: the screen's chip. Absent on a section nobody drafted. */
+    sections?: Record<string, DraftSection>;
   };
 };
 
@@ -76,6 +103,53 @@ const MODALITY_WORDS: Readonly<Record<string, string>> = {
 const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
   film: "film", cd: "CD", link: "an external link", none: "no images",
 };
+
+/**
+ * #1081 — the rows `techniqueOf` read for THESE facts, in the order the sentence uses them. Kept beside
+ * it so a clause added there is a source added here; the numbers check refuses the proposal otherwise.
+ */
+function techniqueSources(f: DrafterFacts, named: boolean): DraftSource[] {
+  const out: DraftSource[] = [{
+    kind: "study_type", ref: f.studyType.code,
+    values: { code: f.studyType.code, name: named ? f.studyType.name : null, modality: f.studyType.modality },
+  }];
+  if (f.outside !== null) {
+    out.push({
+      kind: "outside_register", ref: f.outside.id ?? f.studyId,
+      values: { centreName: f.outside.centreName, studyDate: f.outside.studyDate, arrival: f.outside.arrival },
+    });
+    return out;
+  }
+  if (f.contrastGiven) {
+    out.push({
+      kind: "contrast_register", ref: f.studyId,
+      values: { agent: f.contrastAgent, volumeMl: f.contrastVolumeMl },
+      ...(f.contrastAdministrationIds !== undefined && f.contrastAdministrationIds.length > 0 ? { rows: [...f.contrastAdministrationIds] } : {}),
+    });
+  }
+  if (f.dose.ctdivol !== null || f.dose.dlp !== null || f.dose.fluoroSeconds !== null) {
+    out.push({
+      kind: "dose_record", ref: f.studyId,
+      values: { ctdivol: f.dose.ctdivol, dlp: f.dose.dlp, fluoroSeconds: f.dose.fluoroSeconds },
+    });
+  }
+  return out;
+}
+
+/**
+ * #1081 — **THE COMPARISON LINE**: the latest signed prior of the same modality and body part, by its
+ * study type, its IST day and its accession — the three things a reader needs to pull it up. Never a
+ * word of the prior's findings: a comparison of FINDINGS is the radiologist's to write.
+ */
+function comparisonOf(prior: NonNullable<DrafterFacts["prior"]>): { text: string; source: DraftSource } {
+  return {
+    text: `Compared with ${prior.studyTypeName} of ${prior.studyDate}, accession ${prior.accessionNo}.`,
+    source: {
+      kind: "prior_report", ref: prior.reportId,
+      values: { studyTypeName: prior.studyTypeName, studyDate: prior.studyDate, accessionNo: prior.accessionNo },
+    },
+  };
+}
 
 function techniqueOf(f: DrafterFacts): string {
   const word = MODALITY_WORDS[f.studyType.modality] ?? f.studyType.modality;
@@ -148,9 +222,15 @@ export const offlineTemplateDrafter: ReportDrafter = {
      * puts such a word in a FINDING.
      */
     const named = techniqueOf(facts);
-    body.technique = findLockoutHits(named, facts.lockoutTier).length === 0
-      ? named
-      : techniqueOf({ ...facts, studyType: { ...facts.studyType, name: "" } });
+    const nameKept = findLockoutHits(named, facts.lockoutTier).length === 0;
+    body.technique = nameKept ? named : techniqueOf({ ...facts, studyType: { ...facts.studyType, name: "" } });
+    const sections: Record<string, DraftSection> = { technique: { sources: techniqueSources(facts, nameKept) } };
+    /** #1081 — the comparison line only when there is a prior; with none the section is not drafted at all. */
+    if (facts.prior !== undefined && facts.prior !== null) {
+      const c = comparisonOf(facts.prior);
+      body.comparison = c.text;
+      sections.comparison = { sources: [c.source] };
+    }
     return {
       templateKey,
       body,
@@ -163,6 +243,7 @@ export const offlineTemplateDrafter: ReportDrafter = {
           contrastGiven: facts.contrastGiven, laterality: facts.laterality,
           dose: facts.dose,
         },
+        sections,
       },
     };
   },
@@ -183,4 +264,29 @@ export function setActiveDrafter(drafter: ReportDrafter | null): void { active =
 export function proposalLockoutHits(p: DraftProposal, tier: LockoutTier): string[] {
   const text = `${Object.values(p.body).join(" ")} ${p.impression ?? ""}`;
   return findLockoutHits(text, tier).map((h) => h.term);
+}
+
+/** A number as a sentence writes one: digits, with one decimal part. "2026-02-14" is three numbers. */
+const NUMBER_RE = /\d+(?:\.\d+)?/g;
+function numbersIn(text: string): string[] { return text.match(NUMBER_RE) ?? []; }
+
+/**
+ * #1081 — **"AI NEVER WRITES NUMBERS": EVERY NUMBER IN A DRAFTED SECTION APPEARS IN A ROW ITS CHIP NAMES.**
+ *
+ * Deterministic and textual: each number in each non-empty section (and the impression) must appear,
+ * character for character, among the numbers of that section's own source values. A section with no
+ * sources has none to cite, so any number in it fails. The offline drafter passes by construction (it
+ * prints the columns it names); a drafter that rounds a dose, invents a size or mistypes a date is
+ * refused, as the lockout refuses a §5(2) term — and, like the lockout, nobody may override it.
+ */
+export function proposalNumberHits(p: DraftProposal): { section: string; number: string }[] {
+  const hits: { section: string; number: string }[] = [];
+  const texts: [string, string][] = [...Object.entries(p.body), ["impression", p.impression ?? ""]];
+  for (const [section, text] of texts) {
+    if (typeof text !== "string" || text.trim() === "") continue;
+    const known = new Set((p.provenance.sections?.[section]?.sources ?? [])
+      .flatMap((s) => Object.values(s.values).flatMap((v) => (v === null ? [] : numbersIn(String(v))))));
+    for (const n of numbersIn(text)) if (!known.has(n)) hits.push({ section, number: n });
+  }
+  return hits;
 }

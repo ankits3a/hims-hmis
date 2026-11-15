@@ -4,7 +4,7 @@ import { CONFIG, DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
-import { draftReport, proposeDraft, savePrelim } from "./report-authoring";
+import { autosaveDraft, draftReport, proposeDraft, savePrelim } from "./report-authoring";
 import { amendReport, cosignReport, dryRunPreSign, publishReport, signReport } from "./report-signature";
 import { acknowledgeCritical, flagCritical } from "./criticals";
 import { recordCallAttempt } from "./critical-ladder";
@@ -12,7 +12,7 @@ import { reportView, studyView, worklist } from "./read";
 import { patientReportsForDoctor } from "./patient-reports";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { AuthedRequest } from "../../kernel/auth/decorators";
-import { imagingAmendBody, imagingReportContentBody, imagingSignBody } from "@hmis/contracts";
+import { imagingAmendBody, imagingAutosaveBody, imagingReportContentBody, imagingSignBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -167,6 +167,24 @@ export class RadiologyReportsController {
     try {
       return await withTx(this.db, (tx) => savePrelim(tx, actor, {
         studyId, ...input, impression: input.impression ?? null, laterality: input.laterality ?? null,
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * #1081 — AUTOSAVE: the reading room's text 5 s after typing stops and on leaving the study. It
+   * overwrites the reader's own autosaved draft for ten minutes, then cuts a new version; it never
+   * writes over a signature (`already_signed`) or over anybody else's version.
+   */
+  @Post("studies/:studyId/reports/autosave")
+  @RequirePermission("radiology.reports.write", "hospital")
+  async autosave(
+    @CurrentActor() actor: Actor, @Param("studyId") studyId: string, @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(imagingAutosaveBody, body);
+    try {
+      return await withTx(this.db, (tx) => autosaveDraft(tx, actor, {
+        studyId: parsed(idSchema, studyId), ...input, impression: input.impression ?? null, laterality: input.laterality ?? null,
       }));
     } catch (e) { toHttp(e); }
   }

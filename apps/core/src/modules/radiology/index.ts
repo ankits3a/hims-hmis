@@ -122,10 +122,17 @@ export type { AuthorisationEncounterFacts, AuthorisationStudyFacts } from "./mon
 // #1077 — `reports.ts` split by act: authoring (draft, proposal, prelim), the signature (sign, co-sign,
 // amend, publish, the patient's notice, the over-read) and the criticals. Every name it exported is here.
 export { draftReport, latestSigned, proposeDraft, savePrelim } from "./report-authoring";
+// #1081 — the reading room: autosave (the reader's working draft, a version every ten minutes), the
+// claim ("Dr X is reading" without a PACS), assignment to a named reader, and the reading pools.
+export { AUTOSAVE_VERSION_MINUTES, autosaveDraft } from "./report-authoring";
+export { assignReader, claimReading } from "./reading-claim";
+export type { ClaimResult } from "./reading-claim";
+export { activeReadingPools, readingPoolFor } from "./definitions";
+export type { ReadingPool } from "./definitions";
 export { SECOND_FACTOR_WINDOW_MINUTES, amendReport, enqueueReportReady, publishReport, signReport } from "./report-signature";
 export { acknowledgeCritical, flagCritical } from "./criticals";
-export { activeDrafter, offlineTemplateDrafter, proposalLockoutHits } from "./drafter";
-export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
+export { DRAFT_SOURCE_KINDS, activeDrafter, offlineTemplateDrafter, proposalLockoutHits, proposalNumberHits } from "./drafter";
+export type { DraftProposal, DraftSection, DraftSource, DraftSourceKind, DrafterFacts, ReportDrafter } from "./drafter";
 export type { ReportContent, ReportRow } from "./report-authoring";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
@@ -146,8 +153,8 @@ export type { CriticalCallView, LadderRungView } from "./critical-ladder";
 export type { ResidentSignature } from "./signer";
 export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
 export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
-export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
-export type { ReadingContext, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
+export { READING_LIST_VIEWS, TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
+export type { ReadingContext, ReadingListView, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
 export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
 // 18-S RS2b — the machine list, the portable round, and `bedsideStudiesFor`: THE IPD SEAM. The ward
 // screen the IPD plan builds imports it from here; it has no route of its own until then.

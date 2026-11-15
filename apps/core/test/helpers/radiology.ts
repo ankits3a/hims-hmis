@@ -364,6 +364,8 @@ export async function startStudyOnMachine(
     pregnancy_screen: { declared: true, lmpDate: new Date(opts.now.getTime() - 10 * 86_400_000).toISOString() },
     /** #1080 — the patient points to the ORDERED side; a study ordered with none records `na`. */
     laterality_confirm: { patientStated: opts.laterality ?? "na" },
+    /** #1081 — an MRI study walks the same path: a negative four-question screen. */
+    mri_safety: { pacemaker: false, clips: false, cochlear: false, metalFb: false },
   };
   for (const kind of checked.gates) {
     const gate = await requireStudyGate(db, study.studyId, kind);
@@ -394,6 +396,8 @@ export async function acquireStudy(
     pregnancy_screen: { declared: true, lmpDate: new Date(opts.now.getTime() - 10 * 86_400_000).toISOString() },
     /** #1080 — the patient points to the ORDERED side; a study ordered with none records `na`. */
     laterality_confirm: { patientStated: opts.laterality ?? "na" },
+    /** #1081 — an MRI study walks the same path: a negative four-question screen. */
+    mri_safety: { pacemaker: false, clips: false, cochlear: false, metalFb: false },
   };
   for (const kind of checked.gates) {
     const gate = await requireStudyGate(db, study.studyId, kind);

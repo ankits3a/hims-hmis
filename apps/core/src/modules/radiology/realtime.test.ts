@@ -25,6 +25,10 @@ describe("the imaging lists' live topics (#1083)", () => {
     }
   });
 
+  it("#1081: a reading claim wakes the reading list", () => {
+    expect(radiologyTopicsFor({ name: "imaging.reading_claimed", payload: { studyId: "S1", readerId: "U1" } })).toEqual([IMAGING_READ_TOPIC]);
+  });
+
   it("every topic it returns lies in a space it registers, and each of the three lists is reachable", () => {
     const prefixes = new Set(RADIOLOGY_TOPIC_SPACES.map((s) => s.prefix));
     const seen = new Set<string>();

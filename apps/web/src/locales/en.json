@@ -7200,7 +7200,23 @@
       "clocksSummary": "{{count}} over target",
       "clocksNone": "All inside target",
       "readingBy": "{{name}} is reading",
-      "lockLine": "{{name}} opened these images in the last hour and may be reading this study. You can still read it; they will see your draft.",
+      "lockLine": "{{name}} opened this study in the last hour and may be reading it. You can still read it, or take it over.",
+      "takeOver": "Take over",
+      "assignLabel": "Assign to",
+      "assignNobody": "Nobody",
+      "assignedTo": "Assigned to {{name}}",
+      "pool": "{{name}} pool",
+      "autosaved": "Draft kept {{time}}",
+      "drafted": {
+        "chip": "Drafted from {{sources}}",
+        "source": {
+          "study_type": "study type",
+          "dose_record": "dose record",
+          "contrast_register": "contrast register",
+          "outside_register": "outside register",
+          "prior_report": "prior report"
+        }
+      },
       "inHand": "In hand",
       "question": "Clinical question",
       "noQuestion": "No clinical question was written on the order.",
@@ -7359,7 +7375,8 @@
         "councilReg": "Council registration",
         "esigned": "Electronically signed {{at}} IST with a second factor"
       },
-      "viewList": "Reading list",
+      "viewList": "My list",
+      "viewAll": "All",
       "signedForCosign": "Signed for co-sign — a consultant co-signs it before it leaves the department.",
       "cosigned": "Co-signed and published.",
       "cosignedNotified": "Co-signed and published — the patient has been told the report is ready.",
