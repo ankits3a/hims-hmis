@@ -236,6 +236,11 @@ export const pharmacyDispenseLines = pgTable(
     addedPrescriberRegNo: text("added_prescriber_reg_no"),
     status: text("status").notNull().default("open"),
     declinedReason: text("declined_reason"),
+    /**
+     * Spec #1064 — the decline's reason from the desk's short list: `not_in_stock` (records lost demand and raises the
+     * short book), `patient_declined`, `cost`, `other`. Null for a decline sent as words only (as before the list).
+     */
+    declinedReasonCode: text("declined_reason_code"),
     declinedBy: text("declined_by"),
     declinedAt: timestamp("declined_at", { withTimezone: true }),
   },
@@ -251,6 +256,10 @@ export const pharmacyDispenseLines = pgTable(
     check("pharmacy_dispense_lines_schedule_ck", sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'X', 'OTC')`),
     check("pharmacy_dispense_lines_ndps_ck", sql`${t.ndpsClass} is null or ${t.ndpsClass} in ('narcotic', 'psychotropic')`),
     check("pharmacy_dispense_lines_declined_ck", sql`${t.status} <> 'declined' or ${t.declinedReason} is not null`),
+    check(
+      "pharmacy_dispense_lines_declined_code_ck",
+      sql`${t.declinedReasonCode} is null or (${t.status} = 'declined' and ${t.declinedReasonCode} in ('not_in_stock', 'patient_declined', 'cost', 'other'))`,
+    ),
     check(
       "pharmacy_dispense_lines_added_ck",
       sql`(${t.addedReason} is null and ${t.addedBy} is null and ${t.addedAt} is null and ${t.addedDocumentId} is null and ${t.addedPrescriberName} is null and ${t.addedPrescriberRegNo} is null)
@@ -577,6 +586,12 @@ export const pharmacyShortBook = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedBy: text("resolved_by"),
     resolution: text("resolution"),
+    /**
+     * Spec #1064 — how many times patients asked for it while this row was open, and how much in all (base units),
+     * from `pharmacy_demand`. Zero on a row noted by hand that nobody has asked for since.
+     */
+    askedCount: integer("asked_count").notNull().default(0),
+    askedQtyBase: integer("asked_qty_base").notNull().default(0),
   },
   (t) => [
     index("pharmacy_short_book_open_idx").on(t.storeResourceId, t.resolvedAt),
@@ -584,9 +599,50 @@ export const pharmacyShortBook = pgTable(
     uniqueIndex("pharmacy_short_book_open_name_ux").on(t.storeResourceId, sql`lower(${t.drugName})`).where(sql`${t.resolvedAt} is null and ${t.itemId} is null`),
     check("pharmacy_short_book_name_ck", sql`length(btrim(${t.drugName})) between 2 and 120`),
     check("pharmacy_short_book_qty_ck", sql`${t.qtyWanted} is null or ${t.qtyWanted} > 0`),
-    check("pharmacy_short_book_source_ck", sql`${t.source} in ('desk', 'agent', 'reorder')`),
+    check("pharmacy_short_book_source_ck", sql`${t.source} in ('desk', 'agent', 'reorder', 'counter')`),
+    check("pharmacy_short_book_asked_ck", sql`${t.askedCount} >= 0 and ${t.askedQtyBase} >= 0`),
     check("pharmacy_short_book_resolution_ck", sql`${t.resolution} is null or ${t.resolution} in ('ordered', 'received', 'dismissed')`),
     check("pharmacy_short_book_resolved_ck", sql`(${t.resolvedAt} is null) = (${t.resolvedBy} is null) and (${t.resolvedAt} is null) = (${t.resolution} is null)`),
+  ],
+);
+
+/**
+ * ═══ SPEC #1064 — LOST DEMAND: A MEDICINE ASKED FOR AND NOT SUPPLIED ═══
+ *
+ * One row per event, written by the pharmacy (`modules/pharmacy/short-book.ts` `recordDemand`) at four doors:
+ * `desk_decline` (an OPD desk line declined as not in stock), `counter_search` (the walk-in counter's search found no
+ * stock, or no such medicine), `counter_short` (a walk-in line larger than the stock), `balance_owed` (a line picked
+ * short that leaves a balance). The office's Missed sales report reads it.
+ *
+ * The medicine is the hospital's item when the counter knows it (`item_id`, and its formulary medicine), else only the
+ * name as typed — a new-item request. NO PATIENT is stored here: the ticket (`dispense_id`) may link it for an audit,
+ * nothing names the person. A row for a catalogue item raised the short book entry `short_book_entry_id`.
+ */
+export const pharmacyDemand = pgTable(
+  "pharmacy_demand",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    /** The counter's store where it was asked for. */
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    itemId: text("item_id").references(() => items.id),
+    medicineId: text("medicine_id").references(() => formularyMedicines.id),
+    /** The name as said or typed, when the hospital has no item for it. */
+    typedName: text("typed_name"),
+    /** In the item's BASE unit (tablets, ml); a typed name's is a count as said. */
+    qtyAskedBase: integer("qty_asked_base").notNull(),
+    source: text("source").notNull(),
+    dispenseId: text("dispense_id").references(() => pharmacyDispenses.id),
+    shortBookEntryId: text("short_book_entry_id").references(() => pharmacyShortBook.id),
+    notedBy: text("noted_by").notNull(),
+    notedAt: timestamp("noted_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("pharmacy_demand_noted_idx").on(t.notedAt),
+    index("pharmacy_demand_item_idx").on(t.itemId, t.notedAt),
+    check("pharmacy_demand_source_ck", sql`${t.source} in ('desk_decline', 'counter_search', 'counter_short', 'balance_owed')`),
+    check("pharmacy_demand_qty_ck", sql`${t.qtyAskedBase} > 0`),
+    check("pharmacy_demand_named_ck", sql`${t.itemId} is not null or ${t.typedName} is not null`),
+    check("pharmacy_demand_typed_ck", sql`${t.typedName} is null or length(btrim(${t.typedName})) between 2 and 120`),
   ],
 );
 

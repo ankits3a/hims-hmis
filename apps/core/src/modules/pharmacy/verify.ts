@@ -6,9 +6,9 @@ import { advanceOrderItem } from "../../kernel/orders/advance";
 import { placeOrder } from "../../kernel/orders/place";
 import { transition } from "../../kernel/workflow/instances";
 import { equivalentMedicines, isEquivalentMedicine, medicinesByIds, ndpsClassByMedicine } from "../formulary";
-import { availableQtyByItem, listItems, releaseReservation } from "../materials";
+import { availableQtyByItem, findStoreByCode, listItems, releaseReservation } from "../materials";
 import { getEncounter, getPrescription, runRxChecks } from "../opd";
-import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { OPD_PHARMACY_STORE_CODE, PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { assertStewardApprovals, prescriberUserOf } from "./antimicrobial";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved, substitutionRecorded } from "./events";
@@ -26,8 +26,9 @@ import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { searchShelfAt } from "./retail";
 import { getSaleItem } from "./sale-items";
 import { shelfByMedicine, shelfItemsByMedicine } from "./shelf";
+import { recordDemand } from "./short-book";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { RxLine } from "../opd";
 import type { DispenseRow, DispenseView } from "./queue";
@@ -554,7 +555,18 @@ export function assertNoRefusals(refused: Refusals): void {
  * cancels the ticket exactly as `cancelDispense` does. Once `billed`, the return path is the only one.
  * The dispense row is locked first (a no-op compare-and-set on `picked`), so a bill being taken at the same
  * moment either lands first (this is refused) or sees the line gone (`billDispense` re-reads its lines).
+ *
+ * ═══ SPEC #1064 — THE REASON LIST, AND WHAT "NOT IN STOCK" RECORDS ═══
+ *
+ * The desk's sheet offers a short list (`DECLINE_REASON_CODES`) beside the words; the code is optional, so a
+ * caller that sends only words declines as before, and the words are never read as a code. `not_in_stock` is the
+ * one that records lost demand (`short-book.ts` `recordDemand`, source `desk_decline`, the line's quantity) and
+ * raises the short book, in the decline's own transaction; a ticket cancelled by declining its last line records
+ * it too. The code is kept on the line (`declined_reason_code`) and in `dispense.line_declined`.
  */
+export const DECLINE_REASON_CODES = ["not_in_stock", "patient_declined", "cost", "other"] as const;
+export type DeclineReasonCode = (typeof DECLINE_REASON_CODES)[number];
+
 export async function declineLine(
   db: Db,
   actor: Actor,
@@ -563,6 +575,7 @@ export async function declineLine(
   lineIdx: number,
   reason: string,
   now: Date,
+  opts: { reasonCode?: DeclineReasonCode } = {},
 ): Promise<DispenseView> {
   const d = await getDispenseRow(db, dispenseId);
   if (d.status !== "claimed" && d.status !== "verified" && d.status !== "picked") {
@@ -578,9 +591,30 @@ export async function declineLine(
   if (line.status !== "open") throw new PharmacyError("line_not_open", `line ${String(line.lineIdx + 1)} is already ${line.status}`);
   const trimmed = reason.trim();
   if (trimmed === "") throw new PharmacyError("qty_required", "a declined line needs a reason");
+  const code = opts.reasonCode ?? null;
+  if (code !== null && !(DECLINE_REASON_CODES as readonly string[]).includes(code)) {
+    throw new PharmacyError("qty_required", `"${String(code)}" is not a decline reason (${DECLINE_REASON_CODES.join(", ")})`);
+  }
   const parts = [line, ...lines.filter((l) => l.splitFromLineIdx === line.lineIdx && l.status === "open")];
+  /* Spec #1064 — what the patient asked for and did not get: the line's quantity (every batch of it), its item or its words. */
+  const storeId = code !== "not_in_stock" ? null : d.storeResourceId ?? (await findStoreByCode(db, OPD_PHARMACY_STORE_CODE))?.id ?? null;
+  if (code === "not_in_stock" && storeId === null) throw new PharmacyError("store_missing", "the claim named no store");
+  const written = (line.rxLine as RxLine).drug.trim().replace(/\s+/g, " ").slice(0, 120);
+  const lost = async (tx: Tx): Promise<void> => {
+    if (storeId === null || (line.itemId === null && written.length < 2)) return;
+    await recordDemand(tx, actor, {
+      source: "desk_decline", storeResourceId: storeId, itemId: line.itemId, medicineId: line.dispensedMedicineId ?? line.orderedMedicineId,
+      typedName: line.itemId === null ? written : null, qtyBase: Math.max(1, parts.reduce((n, p) => n + (p.qtyBase ?? 0), 0)), dispenseId: d.id,
+    }, now);
+  };
   if (d.status === "picked" && lines.every((l) => l.status !== "open" || parts.includes(l))) {
-    return cancelDispense(db, actor, decls, d.id, trimmed, now);
+    if (storeId === null) return cancelDispense(db, actor, decls, d.id, trimmed, now);
+    return withTx(db, async (tx) => {
+      // The savepoint cast `bill.ts` uses: the cancel and the demand commit together.
+      const view = await cancelDispense(tx as unknown as Db, actor, decls, d.id, trimmed, now);
+      await lost(tx);
+      return view;
+    });
   }
   await withTx(db, async (tx) => {
     if (d.status === "picked") {
@@ -591,15 +625,16 @@ export async function declineLine(
     }
     for (const part of parts) {
       await tx.update(pharmacyDispenseLines)
-        .set({ status: "declined", declinedReason: trimmed, declinedBy: actor.id, declinedAt: now })
+        .set({ status: "declined", declinedReason: trimmed, declinedReasonCode: code, declinedBy: actor.id, declinedAt: now })
         .where(eq(pharmacyDispenseLines.id, part.id));
       if (part.orderItemId !== null) await advanceOrderItem(tx, actor, decls, part.orderItemId, "cancelled", { reason: trimmed, at: now });
       if (part.reservationId !== null) await releaseReservation(tx, actor, part.reservationId);
     }
     await appendEvent(tx, dispenseLineDeclined.make({
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
-      payload: { dispenseId: d.id, lineIdx: line.lineIdx, patientId: d.patientId, reason: trimmed },
+      payload: { dispenseId: d.id, lineIdx: line.lineIdx, patientId: d.patientId, reason: trimmed, ...(code === null ? {} : { reasonCode: code }) },
     }));
+    await lost(tx);
   });
   return getDispense(db, actor, d.id, now);
 }

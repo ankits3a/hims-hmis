@@ -241,7 +241,7 @@ Source: `apps/core/src/modules/pharmacy/`
 - `verify.ts`
   - `alternativesFor(db: Db, dispenseId: string, lineIdx: number): Promise<Alternative[]>`
   - `cancelDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, reason: string, now: Date): Promise<DispenseView>`
-  - `declineLine(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, lineIdx: number, reason: string, now: Date): Promise…`
+  - `declineLine(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, lineIdx: number, reason: string, now: Date, opts: { …`
   - `verifyDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, input: VerifyInput, now: Date): Promise<DispenseV…`
   - types: `Alternative`, `VerifyInput`, `VerifyLineInput`
 - `workflow-def.ts`
@@ -252,7 +252,7 @@ Source: `apps/core/src/modules/pharmacy/`
 
 ## Tables (`kernel/db/schema/pharmacy.ts`)
 
-`pharmacy_adr_events`, `pharmacy_adr_reports`, `pharmacy_adr_suspects`, `pharmacy_authorisations`, `pharmacy_cold_excursion_batches`, `pharmacy_cold_excursion_closes`, `pharmacy_cold_excursion_decisions`, `pharmacy_cold_excursions`, `pharmacy_cold_readings`, `pharmacy_cold_units`, `pharmacy_controlled_licences`, `pharmacy_credit_moves`, `pharmacy_dispense_lines`, `pharmacy_dispenses`, `pharmacy_end_prescribers`, `pharmacy_medication_incident_events`, `pharmacy_medication_incidents`, `pharmacy_message_settings`, `pharmacy_pharmacist_registrations`, `pharmacy_reg_h1`, `pharmacy_retail_licences`, `pharmacy_retail_sale_lines`, `pharmacy_retail_sales`, `pharmacy_sale_items`, `pharmacy_settings`, `pharmacy_shelf_locations`, `pharmacy_short_book`, `pharmacy_tally_config`, `pharmacy_tally_exports`, `pharmacy_tray_check_lines`, `pharmacy_tray_checks`, `pharmacy_tray_templates`
+`pharmacy_adr_events`, `pharmacy_adr_reports`, `pharmacy_adr_suspects`, `pharmacy_authorisations`, `pharmacy_cold_excursion_batches`, `pharmacy_cold_excursion_closes`, `pharmacy_cold_excursion_decisions`, `pharmacy_cold_excursions`, `pharmacy_cold_readings`, `pharmacy_cold_units`, `pharmacy_controlled_licences`, `pharmacy_credit_moves`, `pharmacy_demand`, `pharmacy_dispense_lines`, `pharmacy_dispenses`, `pharmacy_end_prescribers`, `pharmacy_medication_incident_events`, `pharmacy_medication_incidents`, `pharmacy_message_settings`, `pharmacy_pharmacist_registrations`, `pharmacy_reg_h1`, `pharmacy_retail_licences`, `pharmacy_retail_sale_lines`, `pharmacy_retail_sales`, `pharmacy_sale_items`, `pharmacy_settings`, `pharmacy_shelf_locations`, `pharmacy_short_book`, `pharmacy_tally_config`, `pharmacy_tally_exports`, `pharmacy_tray_check_lines`, `pharmacy_tray_checks`, `pharmacy_tray_templates`
 
 Foreign keys into: `auth`, `billing`, `formulary`, `materials`, `opd`, `orders`, `patients`, `resources`, `tariff`
 

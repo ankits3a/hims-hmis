@@ -13,6 +13,7 @@ import { PharmacyError } from "./errors";
 import { looseTraysOf, stripSizeOf } from "./loose-trays";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { resolveScan } from "./scan";
+import { recordDemand } from "./short-book";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -164,6 +165,13 @@ export async function pickDispense(
       if (p.splitFrom !== null) continue;
       const line = lines.find((l) => l.id === p.lineId)!;
       if (line.orderItemId !== null) await advanceOrderItem(tx, actor, decls, line.orderItemId, "in_progress", { at: now });
+      /* Spec #1064 — a balance owed is a medicine asked for and not supplied today: its demand, at the counter's store. */
+      if (p.owed !== null) {
+        await recordDemand(tx, actor, {
+          source: "balance_owed", storeResourceId: d.storeResourceId!, itemId: p.itemId, medicineId: line.dispensedMedicineId ?? line.orderedMedicineId,
+          qtyBase: p.owed, dispenseId: d.id,
+        }, now);
+      }
     }
     const won = await tx.update(pharmacyDispenses)
       .set({ status: "picked", pickedBy: actor.id, pickedAt: now })

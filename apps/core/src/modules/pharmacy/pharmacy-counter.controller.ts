@@ -36,7 +36,7 @@ import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { addDispenseLine } from "./add-line";
 import { checkPickScan } from "./scan";
-import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
+import { DECLINE_REASON_CODES, cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { authorisationDetail, decideAuthorisation, requestAuthorisation } from "./authorisations";
 import { askSteward, stewardRequestDetail, stewardStates } from "./antimicrobial";
@@ -67,7 +67,7 @@ import type { RetailShelfEntry } from "./retail";
 import type { LabelData } from "./label";
 import { dispensePaper, dispensePrintJobs, sendDispensePaper } from "./print";
 import type { PrintJobView, SendPaperResult } from "./print";
-import { addShortBookEntry, listOpenShortBook, resolveShortBookEntry } from "./short-book";
+import { addShortBookEntry, listCounterShortBook, listOpenShortBook, resolveShortBookEntry } from "./short-book";
 import type { ShortBookEntry, ShortBookView } from "./short-book";
 import { myShift } from "./shift";
 import type { MyShift } from "./shift";
@@ -115,6 +115,8 @@ const verifyBody = z.object({
   })),
 });
 const reasonBody = z.object({ reason: z.string().min(1).max(240) });
+/** Spec #1064 — a decline's words, and (optional) its reason from the desk's short list; `not_in_stock` records lost demand. */
+const declineBody = reasonBody.extend({ reasonCode: z.enum(DECLINE_REASON_CODES).optional() });
 const refundBody = z.object({ reason: z.string().min(3).max(500), reasonClass: z.enum(["mistake", "genuine"]) });
 const returnBody = z.object({
   lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive() })).min(1).max(50),
@@ -679,12 +681,12 @@ export class PharmacyCounterController {
     }
   }
 
-  /** P1 — the short book's open rows for a counter's store (the OPD counter's by default). */
+  /** P1 — the short book's open rows: a counter's store when named, else both counters' (#1064 follow-up), each with its store. */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("short-book")
   async shortBook(@Query("store") store?: string): Promise<{ entries: ShortBookView[] }> {
     try {
-      return { entries: await listOpenShortBook(this.db, store) };
+      return { entries: store === undefined || store === "" ? await listCounterShortBook(this.db) : await listOpenShortBook(this.db, store) };
     } catch (e) {
       return toHttp(e);
     }
@@ -731,9 +733,9 @@ export class PharmacyCounterController {
   @RequirePermission("pharmacy.dispense.place", "hospital")
   @Post("dispenses/:id/lines/:idx/decline")
   async decline(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string, @Body() body: unknown): Promise<DispenseView> {
-    const { reason } = parsed(reasonBody, body);
+    const { reason, reasonCode } = parsed(declineBody, body);
     try {
-      return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date());
+      return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date(), reasonCode === undefined ? {} : { reasonCode });
     } catch (e) {
       return toHttp(e);
     }
