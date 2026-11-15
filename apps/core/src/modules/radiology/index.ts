@@ -115,8 +115,8 @@ export {
 } from "./chasers";
 export type { CriticalChaseResult, UnreadChaseResult, UnreadRung } from "./chasers";
 export {
-  authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, linkInvoiceLine, openBillDecisions,
-  raiseBillDecision, resolveBillDecision,
+  NO_SHOW_REBOOK_DAYS, authorisationOf, carryNoShowInvoice, encounterPayer, hasBillDecision, imagingFreeAt, linkInvoiceLine,
+  openBillDecisions, raiseBillDecision, resolveBillDecision,
 } from "./money";
 export type { AuthorisationEncounterFacts, AuthorisationStudyFacts } from "./money";
 // #1077 — `reports.ts` split by act: authoring (draft, proposal, prelim), the signature (sign, co-sign,
@@ -235,3 +235,20 @@ export type { TeleradiologyBody } from "./definitions";
 // DOCTOR DESK DD-0.2 (#626) — the treating doctor's imaging rows: unread released reports and open criticals.
 export { unreadReportsForClinician } from "./clinician-reads";
 export type { ClinicianImagingRow } from "./clinician-reads";
+// #1085 (IM6c) — the imaging morning sweep: no-shows, reminders behind a switch, the HOD digest, register
+// completeness, the film/CD queue, the switches. `jobs.ts` runs `runMorningSweep` inside the 08:00 IST job.
+export { AUTOMATION_ACTOR, assertNotAutomation, isAutomationActor } from "./automation-actor";
+export type { ClinicalAct } from "./automation-actor";
+export {
+  AUTOMATION_DEFAULTS, NO_SHOW_REASON, REMINDER_MIN_DAYS_AHEAD, automationEnabled, automationSettings, noShowsToRebook,
+  sendPatientReminders, sweepNoShows, switchAutomation,
+} from "./automation";
+export type { AutomationSetting, NoShowSweep, NoShowToRebook, ReminderSweep } from "./automation";
+export { REGISTER_GAPS_ALERT_KIND, registerCompleteness, sweepRegisterCompleteness } from "./completeness";
+export type { CompletenessSweep, RegisterCompleteness, RegisterGap, RegisterGapKind } from "./completeness";
+export { DIGEST_ALERT_KIND, buildHodDigest, digestBell, radiologyHeads, sendHodDigest, storedDigest } from "./digest";
+export type { DigestModalityRow, DigestSweep, HodDigest } from "./digest";
+export { runMorningSweep } from "./morning-sweep";
+export type { MorningSweep } from "./morning-sweep";
+export { MEDIA_QUEUE_LIMIT, mediaQueue } from "./release";
+export type { MediaQueueRow } from "./release";

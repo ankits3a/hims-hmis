@@ -6,6 +6,7 @@ import {
 } from "../../kernel/db/schema/radiology";
 import { users } from "../../kernel/db/schema/auth";
 import { RadiologyError } from "./errors";
+import { assertNotAutomation } from "./automation-actor";
 import { imagingCriticalAcknowledged, imagingCriticalFlagged } from "./events";
 import { findingOf, readBackNamesFinding } from "./critical-ladder";
 import { assertFreeTextSignable } from "./report-authoring";
@@ -98,6 +99,8 @@ export async function acknowledgeCritical(
     now?: Date;
   },
 ): Promise<{ criticalId: string; acknowledgedAt: Date }> {
+  /** #1085 — an acknowledgement is a clinician's; the morning sweep's actor is refused before anything is read. */
+  assertNotAutomation(actor, "critical_acknowledge");
   const rows = await (tx as unknown as Db).select().from(imagingCriticalFindings)
     .where(eq(imagingCriticalFindings.id, input.criticalId));
   const critical = rows[0];

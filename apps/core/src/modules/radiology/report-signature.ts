@@ -15,6 +15,7 @@ import { assertMachineRegistered, assertPersonRegistered, findLockoutHits } from
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { RadiologyError } from "./errors";
+import { assertNotAutomation } from "./automation-actor";
 import { imagingReportPublished } from "./events";
 import { requireStudyType } from "./study-types";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
@@ -99,6 +100,8 @@ export async function signReport(
     now?: Date;
   },
 ): Promise<{ reportId: string; version: number; awaitingCosign?: boolean }> {
+  /** #1085 — a signature is a person's; the morning sweep's actor is refused before anything is read. */
+  assertNotAutomation(actor, "sign");
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
   /** 18-S RS8c — a night-read partner's radiologist issues prelims; the hospital's consultant signs. */
@@ -307,6 +310,7 @@ export async function cosignReport(
     now?: Date;
   },
 ): Promise<{ reportId: string; version: number; cosignedId: string }> {
+  assertNotAutomation(actor, "sign");
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
   await assertNotTeleReader(tx, actor, "co-sign");
@@ -669,6 +673,7 @@ export async function amendReport(
     now?: Date;
   } & ReportContent,
 ): Promise<{ reportId: string; version: number; supersededId: string }> {
+  assertNotAutomation(actor, "sign");
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
   await assertNotTeleReader(tx, actor, "amend");

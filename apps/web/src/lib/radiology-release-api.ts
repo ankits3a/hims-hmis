@@ -107,3 +107,10 @@ export const askUnpaidRelease = (reportId: string, reason: string) =>
   api<{ approvalId: string; status: "pending" | "granted"; outstandingPaise: number }>(
     "POST", `/radiology/reports/${reportId}/release-unpaid`, { reason },
   );
+
+/** #1085 — the film & CD queue: every request not yet printed, oldest first, by accession (no names). */
+export type WireMediaQueueRow = {
+  requestId: string; studyId: string; accessionNo: string; studyTypeCode: string;
+  kind: "film" | "cd"; quantity: number; included: boolean; requestedAt: string;
+};
+export const fetchMediaQueue = () => api<{ rows: WireMediaQueueRow[] }>("GET", "/radiology/media/queue");

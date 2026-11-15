@@ -60,6 +60,12 @@ export type ScheduleInput = {
    * department means.
    */
   bedsideLocation?: string | null;
+  /**
+   * #1085 — the instant the booking is MADE (default: the clock). It dates `imaging.study_scheduled`
+   * and the booking message, and the morning sweep reads it back to tell a slot booked two days ahead
+   * (reminded the day before) from one booked yesterday (the patient holds the slip already).
+   */
+  now?: Date;
 };
 
 export type ScheduleResult = {
@@ -291,8 +297,8 @@ async function queueAppointmentMessage(
   study: typeof imagingStudies.$inferSelect,
   studyType: StudyType,
   scheduledAt: Date,
+  now: Date = new Date(),
 ): Promise<void> {
-  const now = new Date();
   await expireByRef(tx, APPOINTMENT_MESSAGE_REF, study.id, now);
   const slotStart = scheduledAt.toISOString();
   await enqueueNotification(tx, {
@@ -409,6 +415,7 @@ export async function scheduleStudy(
     actor,
     patientId: study.patientId,
     encounterId: study.encounterNo,
+    ...(input.now === undefined ? {} : { occurredAt: input.now }),
     payload: {
       studyId: study.id,
       orderItemId: study.orderItemId,
@@ -419,7 +426,7 @@ export async function scheduleStudy(
     },
   }));
 
-  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt);
+  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt, input.now);
 
   return {
     studyId: study.id,
@@ -548,6 +555,7 @@ export async function rescheduleStudy(
     actor,
     patientId: study.patientId,
     encounterId: study.encounterNo,
+    ...(input.now === undefined ? {} : { occurredAt: input.now }),
     payload: {
       studyId: study.id,
       orderItemId: study.orderItemId,
@@ -558,7 +566,7 @@ export async function rescheduleStudy(
     },
   }));
 
-  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt);
+  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt, input.now);
 
   return {
     studyId: study.id,

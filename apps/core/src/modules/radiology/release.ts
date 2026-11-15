@@ -356,6 +356,32 @@ export async function requestMedia(
   return { requestIds: ids, included: includedLeft > 0 };
 }
 
+/**
+ * #1085 (IM6c) — THE FILM & CD QUEUE: every request not yet printed, OLDEST FIRST, as its own list on the
+ * hand-over station (the register shows the same rows inside each report's row; this is the printer's
+ * order of work). Accession, what and how many, and since when — no name: the desk finds the patient by
+ * the accession, and a print queue is not a patient list. DICOM print and CD burning are not built.
+ */
+export type MediaQueueRow = {
+  requestId: string; studyId: string; accessionNo: string; studyTypeCode: string;
+  kind: string; quantity: number; included: boolean; requestedAt: string;
+};
+export const MEDIA_QUEUE_LIMIT = 200;
+
+export async function mediaQueue(db: Db): Promise<{ rows: MediaQueueRow[] }> {
+  const rows = await db.select({
+    requestId: imagingMediaRequests.id, studyId: imagingMediaRequests.studyId, accessionNo: imagingStudies.accessionNo,
+    studyTypeCode: imagingStudies.studyTypeCode, kind: imagingMediaRequests.kind, quantity: imagingMediaRequests.quantity,
+    included: imagingMediaRequests.included, requestedAt: imagingMediaRequests.requestedAt,
+  })
+    .from(imagingMediaRequests)
+    .innerJoin(imagingStudies, eq(imagingStudies.id, imagingMediaRequests.studyId))
+    .where(isNull(imagingMediaRequests.printedAt))
+    .orderBy(imagingMediaRequests.requestedAt, imagingMediaRequests.id)
+    .limit(MEDIA_QUEUE_LIMIT);
+  return { rows: rows.map((r) => ({ ...r, requestedAt: r.requestedAt.toISOString() })) };
+}
+
 /** The film or CD came off the printer. Once; a second mark is `already_resolved`. */
 export async function markMediaPrinted(
   tx: Tx, actor: Actor, input: { requestId: string; now?: Date },

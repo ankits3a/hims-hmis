@@ -110,7 +110,7 @@ describe("the lab catalogue (17a T3)", () => {
       expect(calc("LDL", { TC: 200, HDL: 50, TG: 450 })).toEqual({ computed: false, reason: "not calculable (TG < 400)" });
       expect(calc("GLOB", { TPROT: 7, ALB: 4.2 }).computed).toBe(true);
       expect(calc("BUN", { UREA: 30 })).toEqual({ computed: true, value: expect.closeTo(14.01, 2) as unknown as number });
-    });
+    }, 60_000); // seeds the whole standard catalogue: 40 s on a busy CI runner (timed out at 15 s on #1092 and #1104)
   });
 
   describe("the golden fixture, seeded", () => {

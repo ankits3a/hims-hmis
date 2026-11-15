@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 import { fmtIst, fmtRupees, useDebounced } from "../lib/format";
 import { radiologyErrorCode, radiologyErrorText } from "../lib/radiology-api";
 import {
-  COLLECTOR_ID_TYPES, COLLECTOR_KINDS, askUnpaidRelease, fetchHandoverPrint, fetchReleaseRegister, handOverReport, markMediaPrinted,
-  requestImagingMedia,
+  COLLECTOR_ID_TYPES, COLLECTOR_KINDS, askUnpaidRelease, fetchHandoverPrint, fetchMediaQueue, fetchReleaseRegister, handOverReport,
+  markMediaPrinted, requestImagingMedia,
 } from "../lib/radiology-release-api";
 import type { WireReportPrint } from "../lib/radiology-reading-api";
 import { ImagingReportPrint } from "../components/radiology/imaging-report-print";
@@ -38,6 +38,10 @@ import { IMAGING_RELEASE_TOPIC, useImagingLive } from "../lib/radiology-live";
  * cannot pay today the desk ASKS the owner with a reason — only the owner releases a report unpaid
  * (credit ruling 28 Sep), in the approvals inbox — and once granted the dock hands it over. The
  * doctor's copy is never held, and the screen says so.
+ *
+ * #1085 — **the film & CD queue**: every film or CD asked for and not yet printed, oldest first, as its own
+ * list under the window's list (`GET /radiology/media/queue`) — accession, what, how many, since when; the
+ * Printed mark is the register's own act. No names: the printer works by accession.
  *
  * #1076 — **find, refresh, print.** One search box (name, UHID or accession) is answered by the SERVER,
  * so it reaches a report past the 30-day register; the register refreshes every 30 s; the report in hand
@@ -151,6 +155,10 @@ export function RadiologyReports(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /** #1085 — under the release key, so every act's refresh re-reads it too. */
+  const queueQ = useQuery({ queryKey: ["radiology", "release", "media-queue"], queryFn: fetchMediaQueue, refetchInterval: 30_000 });
+  const toPrint = queueQ.data?.rows ?? [];
+
   const waiting = rows.filter((r) => r.needs.length > 0);
   const abnormal = rows.filter((r) => r.needs.includes("abnormal_uncollected"));
   const needText = (r: WireReleaseRow): string => {
@@ -175,6 +183,25 @@ export function RadiologyReports(): React.ReactElement {
               <b>{r.patientName}</b>
               <PatientFacts row={r} />
               <span className="block text-xs text-muted-foreground">{r.studyName} · {needText(r)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <h2 className="tag m-0 mb-2 mt-4">{t("radiology.release.toPrint")} · {toPrint.length}</h2>
+      {queueQ.isSuccess && toPrint.length === 0 && <p className="text-sm text-muted-foreground">{t("radiology.release.nothingToPrint")}</p>}
+      <ul className="m-0 list-none space-y-1 p-0" data-testid="media-queue">
+        {toPrint.map((m) => (
+          <li key={m.requestId} data-media={m.requestId} className="flex flex-wrap items-center justify-between gap-2 rounded border bg-card p-2 text-sm">
+            <span className="min-w-0">
+              <span className="mo">{m.accessionNo}</span>{" · "}
+              {m.kind === "film" ? t("radiology.release.queueFilm", { count: m.quantity }) : t("radiology.release.queueCd")}
+              <span className="block text-xs text-muted-foreground">{t("radiology.release.queueSince", { at: `${istDay(m.requestedAt)} ${fmtIst(m.requestedAt)}` })}</span>
+            </span>
+            <button
+              type="button" className="rounded border px-2 py-0.5 text-xs disabled:opacity-50"
+              disabled={printed.isPending} onClick={() => printed.mutate(m.requestId)}
+            >
+              {t("radiology.release.markPrinted")}
             </button>
           </li>
         ))}

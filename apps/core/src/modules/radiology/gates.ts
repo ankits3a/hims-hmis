@@ -15,6 +15,7 @@ import { findLockoutHits } from "../pcpndt";
 import { latestVerifiedCreatinine } from "../lab";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { RadiologyError } from "./errors";
+import { assertNotAutomation } from "./automation-actor";
 import { imagingGateEvaluated } from "./events";
 import { requireStudyType } from "./study-types";
 import { ageInYearsOn } from "./applicability";
@@ -1037,6 +1038,8 @@ async function computeSatisfaction(
 export async function satisfyGate(
   tx: Tx, actor: Actor, gateId: string, evidence: unknown, now: Date = new Date(),
 ): Promise<{ state: string; kind: string }> {
+  /** #1085 — a safety gate is cleared by a person; the morning sweep's actor is refused before anything is read. */
+  assertNotAutomation(actor, "gate_satisfy");
   const { gate, study } = await loadGate(tx, gateId);
   const before = await gateState(tx, gateId);
   if (before !== "open") {
@@ -1088,6 +1091,7 @@ async function assertGateReasonClean(tx: Tx, studyId: string, reason: string): P
 export async function waiveGate(
   tx: Tx, actor: Actor, gateId: string, reason: string,
 ): Promise<{ state: string; kind: string }> {
+  assertNotAutomation(actor, "gate_waive");
   const { gate, study } = await loadGate(tx, gateId);
 
   /**
@@ -1150,6 +1154,7 @@ export async function waiveGate(
 export async function overrideGate(
   tx: Tx, actor: Actor, gateId: string, reason: string,
 ): Promise<{ state: string; kind: string }> {
+  assertNotAutomation(actor, "gate_override");
   const { gate, study } = await loadGate(tx, gateId);
 
   /** F79, second pass — as for a waiver: the override's reason is checked before it is stored. */

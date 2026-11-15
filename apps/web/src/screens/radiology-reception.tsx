@@ -6,8 +6,8 @@ import { useAuth } from "../lib/auth";
 import { fmtIst, fmtRupees } from "../lib/format";
 import { fetchCurrentSession, previewInvoice } from "../lib/billing-api";
 import {
-  deskArrive, deskCollect, deskWalkInNow, fetchCounter, fetchDeskProposal, fetchImagingDevices, fetchWorklist,
-  radiologyErrorCode, radiologyErrorText, scheduleStudy, walkIn,
+  NO_SHOW_REASON, deskArrive, deskCollect, deskWalkInNow, fetchCounter, fetchDeskProposal, fetchImagingDevices, fetchNoShowsToRebook,
+  fetchWorklist, markNoShow, radiologyErrorCode, radiologyErrorText, scheduleStudy, walkIn,
 } from "../lib/radiology-api";
 import type { DeskCollectBody, WireCounterView, WireImagingDevice, WireWorklistRow } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
@@ -42,6 +42,14 @@ import { IMAGING_FLOOR_TOPIC, useImagingLive } from "../lib/radiology-live";
  * arrival. The gate set that opens is SHOWN in the lane — the desk can tell the patient "the prep bay
  * will ask for your creatinine" — and there is no control that clears one (the manifest's first
  * separation). A booked, paid patient who arrives has nothing left at the desk: the dock says Done.
+ *
+ * ═══ #1085 — THE LATE BOOKING AND THE NO-SHOWS TO REBOOK ═══
+ *
+ * A booking 30 minutes past its slot whose patient has not arrived shows in Clocks with a one-tap
+ * No-show — the desk's own act (`POST /radiology/studies/:id/no-show`), with the reason the morning sweep
+ * writes for the same fact ("not arrived"). Whatever the desk does not mark, the 08:00 sweep marks the
+ * next morning. Below them, the last 30 days' no-shows nobody has booked again; a paid one says until when
+ * its invoice holds for a rebooking of the same study (ruling 0098 §3 — no refund here).
  *
  * ═══ MONEY GOES THROUGH BILLING, NOT A SECOND PATH ═══
  *
@@ -241,6 +249,19 @@ export function RadiologyReception(): React.ReactElement {
     onError: (e, studyId) => { setSlotErrors((p) => ({ ...p, [studyId]: { code: radiologyErrorCode(e), message: radiologyErrorText(e) } })); },
   });
 
+  /* ── #1085 — the late booking's one-tap no-show, and the no-shows waiting to be booked again ── */
+  const [noShowError, setNoShowError] = useState<string | null>(null);
+  const noShow = useMutation({
+    mutationFn: (studyId: string) => markNoShow(studyId, NO_SHOW_REASON),
+    onSuccess: () => { setNoShowError(null); void refresh(); },
+    onError: (e) => { setNoShowError(radiologyErrorText(e)); },
+  });
+  const rebookQ = useQuery({
+    queryKey: ["radiology", "desk", "no-shows"], queryFn: fetchNoShowsToRebook,
+    enabled: can("radiology.schedule"), retry: false,
+  });
+  const toRebook = rebookQ.data?.rows ?? [];
+
   /* ── the dock: the ONE next act ── */
   const needMoney = toBill.length > 0 && paid === null;
   const current: Step = step ?? (needMoney ? "bill" : "slot");
@@ -292,7 +313,9 @@ export function RadiologyReception(): React.ReactElement {
   /* ── the right column ── */
   const waitingToBook = rows.filter((r) => r.scheduledAt === null && r.status === "scheduled" && minutesSince(r.createdAt, now) > CLOCK_MINUTES);
   const notReady = rows.filter((r) => r.status === "checked_in" && r.checkedInAt !== null && minutesSince(r.checkedInAt, now) > CLOCK_MINUTES);
-  const clocksAlert = waitingToBook.length + notReady.length > 0;
+  /** #1085 — booked, not arrived, 30 minutes past the slot. */
+  const late = rows.filter((r) => r.status === "scheduled" && r.scheduledAt !== null && minutesSince(r.scheduledAt, now) > CLOCK_MINUTES);
+  const clocksAlert = waitingToBook.length + notReady.length + late.length > 0;
 
   const queue = (
     <section aria-label={t("radiology.counter.listTitle")}>
@@ -333,7 +356,34 @@ export function RadiologyReception(): React.ReactElement {
       {notReady.map((r) => (
         <li key={`r-${r.studyId}`}>{t("radiology.counter.clockNotReady", { name: r.patientName, study: r.studyTypeCode, min: minutesSince(r.checkedInAt ?? r.createdAt, now) })}</li>
       ))}
+      {late.map((r) => (
+        <li key={`l-${r.studyId}`} className="flex flex-wrap items-center justify-between gap-2" data-late={r.studyId}>
+          <span className="min-w-0">{t("radiology.counter.clockLate", { name: r.patientName, study: r.studyTypeCode, min: minutesSince(r.scheduledAt ?? r.createdAt, now) })}</span>
+          <button
+            type="button" data-testid={`clock-noshow-${r.studyId}`}
+            className="rounded border px-2 py-0.5 text-xs disabled:opacity-50"
+            disabled={!can("radiology.schedule") || noShow.isPending}
+            onClick={() => noShow.mutate(r.studyId)}
+          >
+            {t("radiology.counter.noShowAct")}
+          </button>
+        </li>
+      ))}
       {!clocksAlert && <li className="text-muted-foreground">{t("radiology.counter.clocksQuiet")}</li>}
+      {noShowError !== null && <li role="alert" className="text-xs text-red-700">{noShowError}</li>}
+      {toRebook.length > 0 && (
+        <li className="pt-1" data-testid="desk-rebook">
+          <span className="tag">{t("radiology.counter.rebookTitle", { count: toRebook.length })}</span>
+          <ul className="m-0 mt-1 list-none space-y-1 p-0">
+            {toRebook.map((r) => (
+              <li key={`n-${r.studyId}`} data-rebook={r.studyId}>
+                {t("radiology.counter.clockRebook", { name: r.patientName, study: r.studyTypeCode, day: fmtIst(r.missedAt) })}
+                {r.paid && <span className="ml-1 text-xs text-green-800">{t("radiology.counter.rebookPaid", { until: fmtIst(r.goodUntil) })}</span>}
+              </li>
+            ))}
+          </ul>
+        </li>
+      )}
     </ul>
   );
 
@@ -384,7 +434,7 @@ export function RadiologyReception(): React.ReactElement {
       closeListOn={hand === null ? null : `${hand.patientId}:${hand.encounterNo}`}
       clocks={clocks}
       clocksAlert={clocksAlert}
-      clocksSummary={clocksAlert ? t("radiology.counter.clocksSummary", { count: waitingToBook.length + notReady.length }) : t("radiology.counter.clocksNone")}
+      clocksSummary={clocksAlert ? t("radiology.counter.clocksSummary", { count: waitingToBook.length + notReady.length + late.length }) : t("radiology.counter.clocksNone")}
     >
       {hand === null
         ? (

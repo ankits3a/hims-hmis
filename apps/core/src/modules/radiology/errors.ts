@@ -297,6 +297,11 @@ export const RADIOLOGY_ERROR_CODES = [
   "study_not_on_visit",
   "not_collectable",
   "price_changed",
+  /**
+   * #1085 — the morning sweep's actor (`radiology-automation`) asked for a clinical act: a gate, a
+   * signature, a critical acknowledgement or an order. Those are a person's; 403, a refusal about WHO.
+   */
+  "automation_refused",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -425,6 +430,8 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   study_not_on_visit: 422,
   not_collectable: 409,
   price_changed: 409,
+
+  automation_refused: 403,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {
