@@ -217,7 +217,7 @@ describe("spec #1085 — the imaging morning sweep", () => {
         indicationCode: "ii", applicability: "pregnant", now: when,
       }));
       const evidence: Record<string, unknown> = {
-        identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+        identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
         pregnancy_screen: { declared: true, lmpDate: new Date(when.getTime() - 10 * 86_400_000).toISOString() },
         laterality_confirm: { patientStated: "na" },
         chaperone_present: { chaperoneUserId: fx.doctor.id },
