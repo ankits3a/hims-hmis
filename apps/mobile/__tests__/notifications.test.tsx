@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { Linking } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
-import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_CARD, PUSH_LINK_ROUTE, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
+import { NotificationsProvider, PHARMACY_EXCEPTIONS_PAGE, PUSH_CATEGORIES, PUSH_LINK_CARD, PUSH_LINK_ROUTE, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
 import { noteOf, permissionOf, type PushNote, type PushPermission, type PushPhone } from "../src/push-phone";
 import { AccountScreen } from "../src/screens/account";
 import { NotificationsScreen } from "../src/screens/notifications";
@@ -475,6 +475,12 @@ describe("never stuck, and never deaf to the phone's settings (owner's phone, 20
 describe("the phone and the server use the same words (M6b)", () => {
   const core = readFileSync(join(__dirname, "../../core/src/kernel/push/phone-push.ts"), "utf8");
   const list = (name: string): string[] => JSON.parse((new RegExp(`export const ${name} = (\\[[^\\]]*\\]) as const;`).exec(core)?.[1] ?? "[]")) as string[];
+
+  /** #1065 (ruling 0097) — the owner's pharmacy digest opens the web's Exceptions page, on the API's own origin. */
+  it("opens the pharmacy digest on the web's Exceptions page, at the API's origin", () => {
+    expect(PUSH_LINK_ROUTE.pharmacyExceptions).toBe("pharmacyExceptions");
+    expect(PHARMACY_EXCEPTIONS_PAGE).toMatch(/^https:\/\/[^/]+\/pharmacy\/office\?view=reports&page=exceptions$/);
+  });
 
   it("categories and links are the server's own lists, and every one has its words in both languages", () => {
     expect([...PUSH_CATEGORIES]).toEqual(list("PUSH_CATEGORIES"));

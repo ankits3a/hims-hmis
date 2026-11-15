@@ -56,6 +56,8 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   lab_critical_call: () => ({ to: "/my-day", search: {} }),
   // Rungs 1–3 (unit head, duty RMO, HOD) are not the ordering doctor: the Doctor Desk shows the unit's criticals.
   lab_critical_call_unit: () => ({ to: "/doctor-desk", search: {} }),
+  // #1065 (ruling 0097) — the owner's 08:00 pharmacy digest opens that day's Exceptions page.
+  pharmacy_exceptions_day: (refId) => ({ to: "/pharmacy/office", search: { view: "reports", page: "exceptions", day: refId } }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {

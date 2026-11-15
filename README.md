@@ -1443,6 +1443,9 @@ summary, GSTR-2B against the books and the activity view, all read-only.
 defaults the owner may change.
 `pharmacy.tally.export` (the TallyPrime export of the pharmacy's vouchers, and the ledger names it
 uses) goes to `owner` and `billing_manager`, the accountant's desk; a default the owner may change.
+**#1065 tells the owner the pharmacy's exceptions every morning (ruling 0097).** `pharmacy.exceptions.view`
+(the office's Exceptions page of a day, and the 08:00 IST phone notification of yesterday's) goes to `owner`
+alone; giving it to anybody else is a new ruling.
 **Pharmacy P6 keeps narcotic, psychotropic and Schedule X drugs under the law, in a cabinet with two
 keys.** `pharmacy.ndps.custody` (holding a key of the controlled-drug cabinet) goes to `pharmacy` and
 `pharmacy_incharge`. `pharmacy.ndps.witness` (the second person at every movement into or out of it)
