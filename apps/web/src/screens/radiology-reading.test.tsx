@@ -93,7 +93,8 @@ it("the study in hand: the lane shows the clinical question, the referrer as Doc
   expect(await screen.findByTestId("clinical-question")).toHaveTextContent("Neck swelling, left");
   expect(screen.getByText(/Referred by DR-0114 · General Surgery/)).toBeInTheDocument();
   expect(within(screen.getByTestId("priors")).getByText("Normal thyroid.")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /Classic report screen/ })).toHaveAttribute("href", "/radiology/studies/S1/report");
+  // #1087 — the classic report screen's address opens this same workspace, so the workspace no longer links to it.
+  expect(screen.queryByRole("link", { name: /Classic report screen/ })).toBeNull();
 });
 
 it("the checks are the server's dry run: a refusal leaves the dock dead, and the text sent is what is on screen", async () => {

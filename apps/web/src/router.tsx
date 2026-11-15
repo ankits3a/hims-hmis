@@ -86,15 +86,12 @@ import { PharmacyOffice, PharmacyOfficeReports } from "./screens/pharmacy-office
 import { OFFICE_GRANTS, OFFICE_REDIRECTS } from "./screens/pharmacy-office/pages";
 import { PharmacyLeakage } from "./screens/pharmacy-leakage";
 import { PharmacyRetail } from "./screens/pharmacy-retail";
-import { RadiologyReception } from "./screens/radiology-reception";
-import { RadiologyWorklist } from "./screens/radiology-worklist";
-import { RadiologyStudy } from "./screens/radiology-study";
-import { RadiologyReport } from "./screens/radiology-report";
+import { DESK_VIEWS, RadiologyReception } from "./screens/radiology-reception";
+import type { DeskView } from "./screens/radiology-reception";
+import { RadiologyWorklistDoor } from "./screens/radiology-worklist";
 import { RadiologyReading } from "./screens/radiology-reading";
-import { RadiologyPortable } from "./screens/radiology-portable";
 import { RadiologyRoom, ROOM_VIEWS } from "./screens/radiology-room";
 import type { RoomViewKey } from "./screens/radiology-room";
-import { RadiologyDiary } from "./screens/radiology-diary";
 import { RadiologyReports } from "./screens/radiology-reports";
 import { RadiologyDisplay } from "./screens/radiology-display";
 import { RadiologySetup, SETUP_VIEWS } from "./screens/radiology-setup";
@@ -273,16 +270,15 @@ const NAV: readonly NavEntry[] = [
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
   // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
+  // #1087 (IM8) — no worklist, diary or portable row: the worklist's address sends each person to their own
+  // list, the diary is a header view of the desk and the portable round one of the rooms (routes below).
   { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "imaging" },
-  { to: "/radiology/worklist", label: "nav.radiologyWorklist", permission: "radiology.worklist.read", group: "imaging" },
-  // 18-S RS6 — the modality rooms (console, dose log, rejects, downtime); `radiologyManifest.menu` carries the same pair.
+  // 18-S RS6 — the modality rooms (console, portable round, dose log, rejects, downtime); `radiologyManifest.menu` carries the same pair.
   { to: "/radiology/room", label: "nav.radiologyRoom", permission: "radiology.acquire", group: "imaging" },
   // 18-S RS8a — the reading room; `radiologyManifest.menu` carries the same pair.
   { to: "/radiology/read", label: "nav.radiologyReading", permission: "radiology.reports.write", group: "imaging" },
-  // 18-S RS2b — the portable round; `radiologyManifest.menu` carries the same pair.
-  { to: "/radiology/portable", label: "nav.radiologyPortable", permission: "radiology.acquire", group: "imaging" },
-  // 18-S RS3 — the desk's diary and the waiting-hall display; `radiologyManifest.menu` carries the same pairs.
-  { to: "/radiology/diary", label: "nav.radiologyDiary", permission: "radiology.schedule", group: "imaging" },
+  // 18-S RS3 — the waiting-hall display: out of the station switch (#1087), kept here for the kiosk role;
+  // `radiologyManifest.menu` carries the same pair.
   { to: "/radiology/display", label: "nav.radiologyDisplay", permission: "radiology.display.read", group: "imaging" },
   // 18-S RS9 — the report hand-over desk (release register, film/CD, collector); `radiologyManifest.menu` carries the same pair.
   { to: "/radiology/reports", label: "nav.radiologyReports", permission: "radiology.schedule", group: "imaging" },
@@ -1401,43 +1397,65 @@ const labCollectionRoute = createRoute({
 });
 
 /**
- * PLAN 18a T9 — the imaging department's routes. THREE carry a NAV entry, matching
- * `radiologyManifest.menu` exactly (`nav-parity.test.ts` enforces that rather than trusting it) —
- * reception, the worklist and (18-S RS2b) the portable round; the study and report routes are
- * reached FROM a study and never browsed.
+ * PLAN 18a T9 — the imaging department's routes. The ones with a NAV entry match
+ * `radiologyManifest.menu` exactly (`nav-parity.test.ts` enforces that rather than trusting it).
+ *
+ * ═══ #1087 (IM8) — FIVE FORWARDING ADDRESSES ═══
+ *
+ * The worklist, the diary, the portable round and the two 18a study addresses are no longer screens of
+ * their own. Each path is kept — printed slips, bookmarks and alert links carry them (DECIDED: forward,
+ * never delete) — and lands where that work is done now:
+ *
+ *   · `/radiology/diary`                    → the desk, diary view (`?view=diary`);
+ *   · `/radiology/portable`                 → the rooms, portable view (`?view=portable`);
+ *   · `/radiology/studies/$id`              → the rooms with that study on the table (`?study=`);
+ *   · `/radiology/studies/$id/report`       → the reading room with that study in hand (`?study=`);
+ *   · `/radiology/worklist`                 → the person's OWN list, decided by the grants they hold
+ *     (`worklistDoor`): a reporter to Reading, a radiographer to Rooms, a nurse to Prep, the desk to
+ *     the Desk. Grants live in the auth context, not in `beforeLoad`, so this one is a component.
+ *
+ * None carries a NAV row, a manifest entry or a permission of its own; each target's own route and
+ * server guards are what they always were.
  *
  * **`/pcpndt/form-f/$studyId` is deliberately unlisted.** `pcpndtManifest` declares no menu at all,
  * because a list of Form F rows is a list of pregnant women by name and the one thing the statutory
  * register must not become is a searchable surface.
  */
+/** #1087 — the desk's header views: the counter (no `?view=`) and the diary (`?view=diary`). */
 const radiologyReceptionRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/reception",
-  component: RadiologyReception,
+  validateSearch: (search: Record<string, unknown>): { view?: DeskView } => ({
+    view: search.view !== "counter" && (DESK_VIEWS as readonly unknown[]).includes(search.view) ? (search.view as DeskView) : undefined,
+  }),
+  component: function RadiologyReceptionScreen() {
+    const { view } = radiologyReceptionRoute.useSearch();
+    return <RadiologyReception view={view ?? "counter"} />;
+  },
   /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
   staticData: { fullViewport: true },
 });
 
+/** #1087 — a forwarding address: each person to their own list (see the block above). */
 const radiologyWorklistRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/worklist",
-  component: RadiologyWorklist,
-  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  component: RadiologyWorklistDoor,
   staticData: { fullViewport: true },
 });
 
 /**
  * PLAN 18-S RS8a — the reading room: one route, `?study=` names the study in hand (none = the
- * worklist). Behind `radiology.reports.write` on the server. The classic report screen
- * (`/radiology/studies/$studyId/report`) stays reachable, and each links to the other.
+ * worklist). Behind `radiology.reports.write` on the server. The classic report screen's address
+ * (`/radiology/studies/$studyId/report`) forwards here with `?study=` (#1087).
  */
 const radiologyReadingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/read",
-  validateSearch: (search: Record<string, unknown>): { study?: string; view?: "criticals" | "followups" | "peer" | "tele" } => ({
+  validateSearch: (search: Record<string, unknown>): { study?: string; view?: "criticals" | "followups" | "peer" | "tele" | "asks" } => ({
     study: typeof search.study === "string" && /^[0-9A-Z]{26}$/.test(search.study) ? search.study : undefined,
-    /** 18-S RS8b — the critical calls; 18-S RS8c — follow-ups, peer review, night & outside reads. */
-    view: search.view === "criticals" || search.view === "followups" || search.view === "peer" || search.view === "tele" ? search.view : undefined,
+    /** 18-S RS8b — the critical calls; 18-S RS8c — follow-ups, peer review, night & outside reads; #1087 — override asks. */
+    view: search.view === "criticals" || search.view === "followups" || search.view === "peer" || search.view === "tele" || search.view === "asks" ? search.view : undefined,
   }),
   component: function RadiologyReadingScreen() {
     const { study, view } = radiologyReadingRoute.useSearch();
@@ -1446,17 +1464,17 @@ const radiologyReadingRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
-/** PLAN 18-S RS2b — the portable round: bedside studies on the trolley, grouped by ward. */
+/** PLAN 18-S RS2b — the portable round. #1087: a header view of the rooms; this address forwards there. */
 const radiologyPortableRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/portable",
-  component: RadiologyPortable,
-  staticData: { fullViewport: true },
+  beforeLoad: () => { throw redirect({ to: "/radiology/room", search: { view: "portable" } }); },
 });
 
 /**
- * PLAN 18-S RS6 — the modality rooms: one route, four header views (`?view=`), the machine and the
- * patient on the table in the search (`?machine=CT-1&study=…`), so a reload keeps both.
+ * PLAN 18-S RS6 — the modality rooms: one route, its header views (`?view=`; #1087 adds the portable
+ * round), the machine and the patient on the table in the search (`?machine=CT-1&study=…`), so a
+ * reload keeps both.
  */
 const radiologyRoomRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1473,7 +1491,6 @@ const radiologyRoomRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
-/** PLAN 18-S RS3 — the desk's diary: machines × time, with move / no-show / cancel (each with a reason). */
 /** PLAN 18-S RS9 — report hand-over: the release register, film and CD on request, the named collector. */
 const radiologyReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1482,11 +1499,11 @@ const radiologyReportsRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
+/** PLAN 18-S RS3 — the desk's diary. #1087: a header view of the desk; this address forwards there. */
 const radiologyDiaryRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/diary",
-  component: RadiologyDiary,
-  staticData: { fullViewport: true },
+  beforeLoad: () => { throw redirect({ to: "/radiology/reception", search: { view: "diary" } }); },
 });
 
 /**
@@ -1566,20 +1583,18 @@ const radiologyUsgRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
+/** PLAN 18a T9 — the study console's address. #1087: it opens the same study in the rooms. */
 const radiologyStudyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/studies/$studyId",
-  component: RadiologyStudy,
-  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
-  staticData: { fullViewport: true },
+  beforeLoad: ({ params }) => { throw redirect({ to: "/radiology/room", search: { study: params.studyId } }); },
 });
 
+/** PLAN 18a T9 — the classic report screen's address. #1087: it opens the same study in the reading room. */
 const radiologyReportRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/studies/$studyId/report",
-  component: RadiologyReport,
-  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
-  staticData: { fullViewport: true },
+  beforeLoad: ({ params }) => { throw redirect({ to: "/radiology/read", search: { study: params.studyId } }); },
 });
 
 const pcpndtFormFRoute = createRoute({

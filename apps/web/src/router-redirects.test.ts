@@ -125,3 +125,47 @@ describe("the Lab numbers address forwards into Hospital numbers (#777)", () => 
     expect(router.state.location.search).toEqual({ tab: "pharmacy" });
   });
 });
+
+/**
+ * #1087 (IM8) — fewer imaging stations. The diary, the portable round and the two 18a study addresses
+ * forward into the stations that now do that work; printed slips, bookmarks and alert links carry them.
+ * (`/radiology/worklist` is decided by the person's grants, so it is a component, not a `beforeLoad`:
+ * the acceptance check `spec #1087 D4` mounts it.)
+ */
+describe("the retired imaging addresses forward into their stations (#1087)", () => {
+  afterAll(() => { setToken(null); });
+
+  it("forwards /radiology/diary to the desk's diary view", async () => {
+    await loadAt("/radiology/diary");
+    expect(router.state.location.pathname).toBe("/radiology/reception");
+    expect(router.state.location.search).toEqual({ view: "diary" });
+  });
+
+  it("forwards /radiology/portable to the rooms' portable view", async () => {
+    await loadAt("/radiology/portable");
+    expect(router.state.location.pathname).toBe("/radiology/room");
+    expect(router.state.location.search).toEqual({ view: "portable" });
+  });
+
+  it("forwards the study console's address to the rooms with that study on the table", async () => {
+    await loadAt("/radiology/studies/01J9Z8X7W6V5T4S3R2Q1P0N9M8");
+    expect(router.state.location.pathname).toBe("/radiology/room");
+    expect(router.state.location.search).toEqual({ study: "01J9Z8X7W6V5T4S3R2Q1P0N9M8" });
+  });
+
+  it("forwards the classic report address to the reading room with that study in hand", async () => {
+    await loadAt("/radiology/studies/01J9Z8X7W6V5T4S3R2Q1P0N9M8/report");
+    expect(router.state.location.pathname).toBe("/radiology/read");
+    expect(router.state.location.search).toEqual({ study: "01J9Z8X7W6V5T4S3R2Q1P0N9M8" });
+  });
+
+  it("leaves the stations themselves alone", async () => {
+    // Non-vacuity: a router that forwarded every /radiology path would pass the four above.
+    await loadAt("/radiology/room?view=dose");
+    expect(router.state.location.pathname).toBe("/radiology/room");
+    expect(router.state.location.search).toEqual({ view: "dose" });
+    await loadAt("/radiology/reception");
+    expect(router.state.location.pathname).toBe("/radiology/reception");
+  });
+});
+
