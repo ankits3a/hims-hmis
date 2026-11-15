@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
 - **Used by modules:** `abdm`, `doctor-desk`, `ordering`
-- **Kernel used:** `approvals`, `auth`, `config`, `consent`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `config`, `consent`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `realtime`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
 ## Public API (`index.ts`), by declaring file
@@ -103,24 +103,31 @@ Source: `apps/core/src/modules/radiology/`
   - `activateSeededDefinition(db: Db, actor: Actor, definitionId: string): Promise<{ kind: ImagingDefinitionKind; version: number; supersededVer…`
   - `activeDefinition(exec: Db | Tx, kind: K): Promise<z.infer<(typeof SCHEMA_BY_KIND)[K]>>`
   - `activeDefinitionRow(exec: Db | Tx, kind: ImagingDefinitionKind): Promise<ImagingDefinitionRow | undefined>`
-  - `activeReadingPools(exec: Db | Tx): Promise<ReadingPool[]>`
   - `draftDefinition(tx: Tx, actor: Actor, input: { kind: ImagingDefinitionKind; body: unknown }): Promise<{ definitionId: string; version: numb…`
   - `parseDefinitionBody(kind: K, body: unknown): z.infer<(typeof SCHEMA_BY_KIND)[K]>`
   - `publishDefinition(db: Db, actor: Actor, input: { definitionId: string; approvalId: string }): Promise<{ kind: ImagingDefinitionKind; versio…`
-  - `readingPoolFor(pools: readonly ReadingPool[], type: Pick<StudyType, "modality" | "body_part">): string | null`
   - `requestDefinitionPublish(tx: Tx, actor: Actor, definitionId: string): Promise<{ approvalId: string }>`
   - `templatesFor(body: ReportTemplatesBody, studyTypeCode: string, modality: string): GovernedReportTemplate[]`
-  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReadingPool`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
+  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
+- `desk.ts`
+  - `DESK_COLLECT_ROUTE`
+  - `DESK_WALK_IN_ROUTE`
+  - `arriveAtDesk(db: Db, actor: Actor, input: { encounterNo: string; now?: Date }): Promise<DeskArrival>`
+  - `collectAtDesk(db: Db, actor: Actor, input: DeskCollectInput, idempotencyKey: string, now: Date = new Date()): Promise<DeskCollectResult>`
+  - `deskVisitsToday(db: Db, actor: Actor, input: { patientId: string; now?: Date }): Promise<DeskVisit[]>`
+  - `deskWalkInView(db: Db, actor: Actor, input: { now?: Date } = {}): Promise<DeskWalkInView>`
+  - `placeWalkInOrder(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: DeskWalkInOrderInput, idemKey?: string, now: Date = new Date…`
+  - `proposeSlot(db: Db, actor: Actor, input: { studyId: string; now?: Date }): Promise<SlotProposal | null>`
+  - `walkInNow(db: Db, actor: Actor, input: { studyId: string; now?: Date }): Promise<DeskWalkIn>`
+  - types: `DeskArrival`, `DeskCollectInput`, `DeskCollectResult`, `DeskTender`, `DeskVisit`, `DeskWalkIn`, `DeskWalkInOrderInput`, `DeskWalkInOrderResult`, `DeskWalkInView`
 - `devices.ts`
   - `imagingDevices(db: Db, onDate: string, opts: { includeRetired?: boolean } = {}): Promise<ImagingDeviceRow[]>`
   - types: `ImagingDeviceRow`
 - `drafter.ts`
-  - `DRAFT_SOURCE_KINDS`
   - `activeDrafter(): ReportDrafter`
   - `offlineTemplateDrafter: ReportDrafter`
   - `proposalLockoutHits(p: DraftProposal, tier: LockoutTier): string[]`
-  - `proposalNumberHits(p: DraftProposal): { section: string; number: string }[]`
-  - types: `DraftProposal`, `DraftSection`, `DraftSource`, `DraftSourceKind`, `DrafterFacts`, `ReportDrafter`
+  - types: `DraftProposal`, `DrafterFacts`, `ReportDrafter`
 - `egfr.ts`
   - `CREATININE_UMOL_PER_MG_DL`
   - `EGFR_HOLD_BELOW`
@@ -170,7 +177,6 @@ Source: `apps/core/src/modules/radiology/`
   - `imagingMediaRequested`
   - `imagingOutsideStudyRegistered`
   - `imagingOverreadRecorded`
-  - `imagingReadingClaimed`
   - `imagingReportActedUpon`
   - `imagingReportHandedOver`
   - `imagingReportPrinted`
@@ -335,26 +341,19 @@ Source: `apps/core/src/modules/radiology/`
   - `studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null>`
   - `worklist(db: Db, actor: Actor, opts: { view?: WorklistView; deviceResourceId?: string; limit?: number; now?: Date } = {}): Promise<Worklist…`
   - types: `ReportView`, `StudyView`, `WorklistRow`, `WorklistView`
-- `reading-claim.ts`
-  - `assignReader(tx: Tx, actor: Actor, input: { studyId: string; readerId: string | null; now?: Date }): Promise<{ studyId: string; assignedRea…`
-  - `claimReading(tx: Tx, actor: Actor, input: { studyId: string; now?: Date; takeOver?: boolean }): Promise<ClaimResult>`
-  - types: `ClaimResult`
 - `reading.ts`
-  - `READING_LIST_VIEWS`
   - `TAT_MINUTES: Record<TatClass, number>`
   - `readingContext(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<ReadingContext | null>`
-  - `readingWorklist(db: Db, actor: Actor, now: Date = new Date(), opts: { view?: ReadingListView } = {}): Promise<ReadingRow[]>`
+  - `readingWorklist(db: Db, actor: Actor, now: Date = new Date()): Promise<ReadingRow[]>`
   - `reportPrintView(db: Db, actor: Actor, reportId: string, now: Date = new Date()): Promise<ReportPrintView | null>`
   - `tatClassOf(priority: string, source: StudySource): TatClass`
-  - types: `ReadingContext`, `ReadingListView`, `ReadingRow`, `ReadingTemplate`, `ReportPrintView`, `TatClass`
+  - types: `ReadingContext`, `ReadingRow`, `ReadingTemplate`, `ReportPrintView`, `TatClass`
 - `ready-on-payment.ts`
   - `RADIOLOGY_READY_ON_PAYMENT_CONSUMER`
   - `READY_ON_PAYMENT_EVENTS`
   - `handleSettlementEvent(tx: Tx, e: Pick<DispatchedEvent, "name" | "payload" | "occurredAt">): Promise<{ queued: string[] }>`
   - `readyOnPaymentConsumer(db: Db): Handler`
 - `report-authoring.ts`
-  - `AUTOSAVE_VERSION_MINUTES`
-  - `autosaveDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date } & ReportContent): Promise<{ reportId: string; version: number; a…`
   - `draftReport(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
   - `latestSigned(exec: Db | Tx, studyId: string): Promise<ReportRow | undefined>`
   - `proposeDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<{ reportId: string; version: number; templateKey: strin…`
@@ -374,13 +373,16 @@ Source: `apps/core/src/modules/radiology/`
   - `signsAsResident(tx: Tx, actor: Actor): Promise<boolean>`
   - types: `SignChecksRecord`
 - `schedule.ts`
+  - `PROPOSAL_HORIZON_DAYS`
+  - `SLOT_STEP_MINUTES`
   - `autoSlotWalkIn(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<ScheduleResult>`
   - `cancelStudy(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; reason?: string | null }): Promise<{ studyId: …`
   - `deviceDiary(exec: Db, actor: Actor, deviceResourceId: string): Promise<DiaryEntry[]>`
   - `markNoShow(tx: Tx, actor: Actor, studyId: string, reason?: string | null): Promise<{ studyId: string; status: string }>`
+  - `proposeFreeSlot(exec: Db | Tx, input: { studyId: string; from: Date }): Promise<SlotProposal | null>`
   - `rescheduleStudy(tx: Tx, actor: Actor, input: ScheduleInput & { reason?: string | null }): Promise<ScheduleResult>`
   - `scheduleStudy(tx: Tx, actor: Actor, input: ScheduleInput): Promise<ScheduleResult>`
-  - types: `ScheduleInput`, `ScheduleResult`
+  - types: `ScheduleInput`, `ScheduleResult`, `SlotProposal`
 - `setup.ts`
   - `INVESTIGATION_GST_CATEGORY`
   - `RADIOLOGY_RULED_SERVICES`
@@ -451,6 +453,7 @@ Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 - `radiology-acquisition.controller.ts` — `/radiology/studies`
 - `radiology-bill-decisions.controller.ts` — `/radiology/bill-decisions`
 - `radiology-definitions.controller.ts` — `/radiology/definitions`
+- `radiology-desk.controller.ts` — `/radiology/desk`
 - `radiology-floor.controller.ts` — `/radiology/devices`, `/radiology/display`, `/radiology/portable`
 - `radiology-images.controller.ts` — `/radiology/studies`
 - `radiology-ir.controller.ts` — `/radiology/ir`, `/radiology/studies`

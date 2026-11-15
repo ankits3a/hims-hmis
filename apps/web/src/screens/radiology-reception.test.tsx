@@ -5,12 +5,12 @@ import { renderWithProviders } from "../test-utils";
 import { RadiologyReception } from "./radiology-reception";
 
 /**
- * PLAN 18-S RS3 — THE IMAGING COUNTER: Studies → Checks → Bill → Slot & slip.
+ * PLAN 18-S RS3, #1078 — THE IMAGING COUNTER: Bill → Slot & slip, the studies and checks in the lane.
  *
  * **The assertion that matters most is still what this desk CANNOT do.** The counter shows the gate
  * set check-in opens and has no control that clears one (the manifest's first separation), no
  * discount control (ruling 8) and no credit. Presence is derived: there is no "Check in" button —
- * opening the patient on the day of the slot IS the check-in.
+ * opening the patient on the day of the slot IS the check-in, one desk act for the whole visit.
  *
  * Every date here is RELATIVE to the real clock (a fixed-date fixture against a real clock is a
  * time bomb — the house's own lesson).
@@ -100,6 +100,11 @@ function me(perms: string[]): Reply {
 }
 const DESK = ["radiology.schedule", "radiology.checkin", "radiology.worklist.read", "billing.invoice.issue", "radiology.bill_decisions.manage"];
 
+const ARRIVED = {
+  status: 201,
+  body: { encounterNo: "V2609290001", checkedIn: [{ studyId: "S1", accessionNo: "X2609290001", gates: ["identity_two_factor", "pregnancy_screen"], pregnancyReason: "opened" }], refused: [] },
+};
+
 /** The numbered steps, not the dock (which also names the next step). */
 async function stepTo(name: RegExp): Promise<void> {
   const steps = await screen.findByRole("list", { name: "Counter steps" });
@@ -114,20 +119,20 @@ it("opening the patient on the day of the slot IS the check-in, and the gate set
     "GET /api/auth/me": me(DESK),
     "GET /api/radiology/worklist": { status: 200, body: { rows: [ROW] } },
     "GET /api/radiology/studies/S1/counter": { status: 200, body: { study: VIEW } },
-    "POST /api/radiology/studies/S1/check-in": {
-      status: 201, body: { studyId: "S1", status: "checked_in", policySource: "default", pregnancyReason: "opened", gates: ["identity_two_factor", "pregnancy_screen"] },
-    },
+    "POST /api/radiology/desk/arrive": ARRIVED,
   });
   renderWithProviders(<RadiologyReception />);
   /** No presence-only button anywhere. */
   expect(screen.queryByRole("button", { name: "Check in" })).not.toBeInTheDocument();
   await waitFor(() => { expect(calls).toContain("GET /api/auth/me"); });
   await userEvent.click(await screen.findByTestId("row-S1"));
-  await waitFor(() => { expect(calls).toContain("POST /api/radiology/studies/S1/check-in"); });
+  await waitFor(() => { expect(bodiesOf("POST /api/radiology/desk/arrive")).toEqual([{ encounterNo: "V2609290001" }]); });
+  /** One act for the visit, never a check-in per study from the browser. */
+  expect(calls.filter((c) => c.endsWith("/check-in"))).toEqual([]);
 
-  await stepTo(/Checks/);
-  const checks = await screen.findByTestId("counter-checks");
-  expect(checks).toHaveTextContent("Checks opened at arrival");
+  /** The checks are in the lane, beside the patient — not a step. */
+  const checks = await within(screen.getByTestId("patient-in-hand")).findByTestId("counter-checks");
+  await waitFor(() => { expect(checks).toHaveTextContent("Checks opened at arrival"); });
   expect(checks).toHaveTextContent("Pregnancy screen");
   expect(screen.getByTestId("pregnancy-question")).toHaveTextContent(/any chance you are pregnant/);
   expect(screen.getByTestId("pregnancy-question")).toHaveTextContent(/गर्भवती/);
@@ -147,7 +152,7 @@ it("a study booked for another day is not checked in by opening it, and a desk w
   await waitFor(() => { expect(calls).toContain("GET /api/auth/me"); });
   await userEvent.click(await screen.findByTestId("row-S1"));
   await screen.findByTestId("patient-in-hand");
-  expect(calls).not.toContain("POST /api/radiology/studies/S1/check-in");
+  expect(calls).not.toContain("POST /api/radiology/desk/arrive");
   first.unmount();
 
   vi.unstubAllGlobals();
@@ -161,10 +166,10 @@ it("a study booked for another day is not checked in by opening it, and a desk w
   await waitFor(() => { expect(calls).toContain("GET /api/auth/me"); });
   await userEvent.click(await screen.findByTestId("row-S1"));
   await screen.findByTestId("patient-in-hand");
-  expect(calls).not.toContain("POST /api/radiology/studies/S1/check-in");
+  expect(calls).not.toContain("POST /api/radiology/desk/arrive");
 });
 
-it("the Checks step tells the patient the prep in English AND Hindi, from the server's prep keys", async () => {
+it("the lane tells the patient the prep in English AND Hindi, from the server's prep keys", async () => {
   mockRoutes({
     "GET /api/auth/me": me(DESK),
     "GET /api/radiology/worklist": { status: 200, body: { rows: [UNBOOKED] } },
@@ -172,30 +177,27 @@ it("the Checks step tells the patient the prep in English AND Hindi, from the se
   });
   renderWithProviders(<RadiologyReception />);
   await userEvent.click(await screen.findByTestId("row-S2"));
-  await stepTo(/Checks/);
-  const checks = await screen.findByTestId("counter-checks");
+  const checks = await within(screen.getByTestId("patient-in-hand")).findByTestId("counter-checks");
   await waitFor(() => { expect(checks).toHaveTextContent("Nothing to eat for 6 hours before."); });
   expect(checks).toHaveTextContent("जांच से 6 घंटे पहले कुछ न खाएँ।");
   expect(checks).toHaveTextContent("Checks the prep bay will open");
 });
 
-it("self-pay: Enter on the dock collects through the house invoice, then LINKS the raised line to the study", async () => {
+it("self-pay: the counter opens on Bill, and Enter collects AND links in one desk act", async () => {
   mockRoutes({
     "GET /api/auth/me": me(DESK),
     "GET /api/radiology/worklist": { status: 200, body: { rows: [UNBOOKED] } },
     "GET /api/radiology/studies/S2/counter": { status: 200, body: { study: VIEW2 } },
     "POST /api/billing/invoices/preview": { status: 200, body: PREVIEW },
     "GET /api/billing/sessions/current": { status: 200, body: { session: { id: "CS1", status: "open" } } },
-    "POST /api/billing/invoices": {
+    "POST /api/radiology/desk/collect": {
       status: 201,
-      body: { invoiceId: "INV1", invoiceNo: "INV-0001", totals: PREVIEW.totals, receiptId: "R1", receiptNo: "RC-0001", allocatedPaise: 120000, unallocatedPaise: 0, creditExtended: false, settlement: { state: "settled", outstandingPaise: 0 }, warnings: [] },
+      body: { invoiceId: "INV1", invoiceNo: "INV-0001", receiptNo: "RC-0001", totalPaise: 120000, adopted: false, linked: [{ studyId: "S2", invoiceLineId: "IL1" }] },
     },
-    "GET /api/billing/invoices/INV1": { status: 200, body: { invoice: { id: "INV1", invoiceNo: "INV-0001" }, lines: [{ id: "IL1", serviceId: "SVC-USG", lineNo: 1 }], settlement: {} } },
-    "POST /api/radiology/studies/S2/invoice-line": { status: 201, body: { studyId: "S2", invoiceLineId: "IL1" } },
   });
   renderWithProviders(<RadiologyReception />);
   await userEvent.click(await screen.findByTestId("row-S2"));
-  await stepTo(/Bill/);
+  /** Something is owed, so the counter opens on Bill by itself. */
   expect(await screen.findByTestId("bill-total")).toHaveTextContent("₹1,200");
   /** No discount control at the counter (ruling 8) — the note, not a field. */
   expect(screen.getByTestId("discount-note")).toHaveTextContent(/No discount at the counter/);
@@ -207,13 +209,52 @@ it("self-pay: Enter on the dock collects through the house invoice, then LINKS t
   expect(screen.getByTestId("dock-act")).toHaveTextContent("Collect ₹1,200 by Cash");
   fireEvent.keyDown(document.body, { key: "Enter" });
 
-  await waitFor(() => { expect(bodiesOf("POST /api/radiology/studies/S2/invoice-line")).toEqual([{ invoiceLineId: "IL1" }]); });
-  expect(bodiesOf("POST /api/billing/invoices")[0]).toMatchObject({
-    patientId: "P1", encounterId: "V2609290001",
-    lines: [{ lineId: "study-S2", serviceId: "SVC-USG", qty: 1 }],
-    receipt: { tenders: [{ mode: "cash", amountPaise: 120000 }] },
+  await waitFor(() => {
+    expect(bodiesOf("POST /api/radiology/desk/collect")).toEqual([{
+      encounterNo: "V2609290001", studyIds: ["S2"], addOns: [], tender: { mode: "cash", amountPaise: 120000 },
+    }]);
   });
   expect(await screen.findByTestId("bill-paid")).toHaveTextContent("INV-0001");
+  expect(calls).not.toContain("POST /api/billing/invoices");
+  expect(calls.some((c) => c.endsWith("/invoice-line"))).toBe(false);
+});
+
+it("a refused collect shows the server's words, offers no relink, and the same bill retries on the SAME key", async () => {
+  const keys: (string | null)[] = [];
+  let n = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const key = `${init?.method ?? "GET"} ${raw.split("?")[0]!}`;
+    calls.push(key);
+    const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    if (key === "POST /api/radiology/desk/collect") {
+      keys.push(((init?.headers ?? {}) as Record<string, string>)["Idempotency-Key"] ?? null);
+      n += 1;
+      return n === 1
+        ? json(500, { statusCode: 500, message: "Internal server error" })
+        : json(201, { invoiceId: "INV1", invoiceNo: "INV-0001", receiptNo: "RC-0001", totalPaise: 120000, adopted: false, linked: [] });
+    }
+    const routes: Record<string, unknown> = {
+      "GET /api/auth/me": me(DESK).body,
+      "GET /api/radiology/worklist": { rows: [UNBOOKED] },
+      "GET /api/radiology/studies/S2/counter": { study: VIEW2 },
+      "POST /api/billing/invoices/preview": PREVIEW,
+      "GET /api/billing/sessions/current": { session: { id: "CS1", status: "open" } },
+    };
+    return key in routes ? json(200, routes[key]) : new Response("{}", { status: 404 });
+  }));
+  renderWithProviders(<RadiologyReception />);
+  await userEvent.click(await screen.findByTestId("row-S2"));
+  await waitFor(() => { expect(screen.getByTestId("dock-act")).toBeEnabled(); });
+  await userEvent.click(screen.getByTestId("dock-act"));
+  expect(await within(screen.getByTestId("counter-bill")).findByRole("alert")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Link the paid line/ })).not.toBeInTheDocument();
+  await waitFor(() => { expect(screen.getByTestId("dock-act")).toBeEnabled(); });
+  await userEvent.click(screen.getByTestId("dock-act"));
+  expect(await screen.findByTestId("bill-paid")).toHaveTextContent("INV-0001");
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).not.toBeNull();
+  expect(keys[1]).toBe(keys[0]);
 });
 
 it("no open drawer: no tender is offered and the dock cannot collect", async () => {
@@ -252,29 +293,25 @@ it("UPI waits for its reference before the dock will collect", async () => {
   expect(screen.getByTestId("dock-act")).toHaveTextContent("Collect ₹1,200 by UPI");
 });
 
-it("an earlier bill already charges the service: the desk links THAT line instead of billing twice", async () => {
+it("an earlier bill already charges the service: the server links THAT line and the desk says nothing was collected", async () => {
   mockRoutes({
     "GET /api/auth/me": me(DESK),
     "GET /api/radiology/worklist": { status: 200, body: { rows: [UNBOOKED] } },
     "GET /api/radiology/studies/S2/counter": { status: 200, body: { study: VIEW2 } },
     "POST /api/billing/invoices/preview": { status: 200, body: PREVIEW },
     "GET /api/billing/sessions/current": { status: 200, body: { session: { id: "CS1", status: "open" } } },
-    "POST /api/billing/invoices": {
-      status: 409,
-      body: { statusCode: 409, code: "duplicate_invoice_refused", message: "invoice INV-0009 already charges this service on this visit", detail: { invoiceId: "INV9" } },
+    "POST /api/radiology/desk/collect": {
+      status: 201,
+      body: { invoiceId: "INV9", invoiceNo: "INV-0009", receiptNo: null, totalPaise: 0, adopted: true, linked: [{ studyId: "S2", invoiceLineId: "IL9" }] },
     },
-    "GET /api/billing/invoices/INV9": { status: 200, body: { invoice: { id: "INV9", invoiceNo: "INV-0009" }, lines: [{ id: "IL9", serviceId: "SVC-USG", lineNo: 1 }] } },
-    "POST /api/radiology/studies/S2/invoice-line": { status: 201, body: { studyId: "S2", invoiceLineId: "IL9" } },
   });
   renderWithProviders(<RadiologyReception />);
   await userEvent.click(await screen.findByTestId("row-S2"));
-  await stepTo(/Bill/);
   await waitFor(() => { expect(screen.getByTestId("dock-act")).toBeEnabled(); });
   await userEvent.click(screen.getByTestId("dock-act"));
-  expect(await screen.findByText(/already charges this service/)).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "Link the paid line to the study" }));
-  await waitFor(() => { expect(bodiesOf("POST /api/radiology/studies/S2/invoice-line")).toEqual([{ invoiceLineId: "IL9" }]); });
-  expect(bodiesOf("POST /api/billing/invoices")).toHaveLength(1);
+  expect(await screen.findByTestId("bill-paid")).toHaveTextContent("Already paid on invoice INV-0009");
+  expect(screen.getByTestId("bill-paid")).toHaveTextContent("Nothing collected");
+  expect(bodiesOf("POST /api/radiology/desk/collect")).toHaveLength(1);
 });
 
 it("STAT: nothing is collected at the counter — the bill follows", async () => {
@@ -325,6 +362,9 @@ it("Slot refusals: the server's words, the seat that fixes it, and the payment w
     "GET /api/radiology/worklist": { status: 200, body: { rows: [UNBOOKED] } },
     "GET /api/radiology/studies/S2/counter": { status: 200, body: { study: VIEW2 } },
     "GET /api/radiology/devices": { status: 200, body: DEVICES },
+    "GET /api/radiology/desk/studies/S2/proposal": {
+      status: 200, body: { proposal: { studyId: "S2", deviceResourceId: "D-US", code: "US-1", name: "Ultrasound", scheduledAt: "2026-10-01T04:30:00.000Z" } },
+    },
     "POST /api/radiology/studies/S2/schedule": {
       status: 409, body: { statusCode: 409, code: "slot_taken", message: "US-1 (Ultrasound) is busy with X2609290009 from 04:30" },
     },
@@ -405,25 +445,49 @@ it("the slip shows the token, where and when, the prep in both languages, and ne
   expect(slip).toHaveTextContent("Nothing to eat for 6 hours before.");
   expect(slip).toHaveTextContent("जांच से 6 घंटे पहले कुछ न खाएँ।");
   expect(slip).toHaveTextContent(/queued.*has not been sent/);
-  expect(screen.getByTestId("dock-act")).toHaveTextContent("Clear the desk");
+  expect(screen.getByTestId("dock-act")).toHaveTextContent("Done");
 });
 
-it("walk-in now books AND checks in — the patient is standing at the counter", async () => {
+it("walk-in now books AND checks in, in one desk act — the patient is standing at the counter", async () => {
   mockRoutes({
     "GET /api/auth/me": me(DESK),
     "GET /api/radiology/worklist": { status: 200, body: { rows: [UNBOOKED] } },
     "GET /api/radiology/studies/S2/counter": { status: 200, body: { study: { ...VIEW2, authorisation: "invoice" } } },
     "GET /api/radiology/devices": { status: 200, body: DEVICES },
-    "POST /api/radiology/studies/S2/walk-in": { status: 201, body: {} },
-    "POST /api/radiology/studies/S2/check-in": { status: 201, body: { studyId: "S2", status: "checked_in", gates: ["identity_two_factor"], pregnancyReason: "not_ionising", policySource: "default" } },
+    "POST /api/radiology/desk/studies/S2/walk-in": {
+      status: 201,
+      body: { studyId: "S2", accessionNo: "X2609290002", deviceResourceId: "D-US", scheduledAt: laterToday, gates: ["identity_two_factor"], pregnancyReason: "not_ionising" },
+    },
   });
   renderWithProviders(<RadiologyReception />);
   await waitFor(() => { expect(calls).toContain("GET /api/auth/me"); });
   await userEvent.click(await screen.findByTestId("row-S2"));
-  await stepTo(/Slot & slip/);
   await userEvent.click(await screen.findByRole("button", { name: "Now · walk in" }));
-  await waitFor(() => { expect(calls).toContain("POST /api/radiology/studies/S2/check-in"); });
-  expect(calls.indexOf("POST /api/radiology/studies/S2/walk-in")).toBeLessThan(calls.indexOf("POST /api/radiology/studies/S2/check-in"));
+  await waitFor(() => { expect(calls).toContain("POST /api/radiology/desk/studies/S2/walk-in"); });
+  expect(calls.filter((c) => c.endsWith("/walk-in") || c.endsWith("/check-in"))).toEqual(["POST /api/radiology/desk/studies/S2/walk-in"]);
+  expect(await within(screen.getByTestId("patient-in-hand")).findByText("Checks opened at arrival")).toBeInTheDocument();
+});
+
+it("the Slot step opens with the server's proposal filled, and Enter books exactly that slot", async () => {
+  mockRoutes({
+    "GET /api/auth/me": me(DESK),
+    "GET /api/radiology/worklist": { status: 200, body: { rows: [UNBOOKED] } },
+    "GET /api/radiology/studies/S2/counter": { status: 200, body: { study: { ...VIEW2, authorisation: "invoice" } } },
+    "GET /api/radiology/devices": { status: 200, body: DEVICES },
+    "GET /api/radiology/desk/studies/S2/proposal": {
+      status: 200, body: { proposal: { studyId: "S2", deviceResourceId: "D-US", code: "US-1", name: "Ultrasound", scheduledAt: "2026-10-01T05:15:00.000Z" } },
+    },
+    "POST /api/radiology/studies/S2/schedule": { status: 201, body: {} },
+  });
+  renderWithProviders(<RadiologyReception />);
+  await userEvent.click(await screen.findByTestId("row-S2"));
+  /** Nothing is owed, so the counter opens on Slot & slip, and the proposal is the pick. */
+  await waitFor(() => { expect(screen.getByTestId("dock-act")).toHaveTextContent("Book US-1 at 10:45"); });
+  expect(screen.getByLabelText("Time (IST)")).toHaveValue("2026-10-01T10:45");
+  fireEvent.keyDown(document.body, { key: "Enter" });
+  await waitFor(() => {
+    expect(bodiesOf("POST /api/radiology/studies/S2/schedule")).toEqual([{ deviceResourceId: "D-US", scheduledAt: "2026-10-01T05:15:00.000Z" }]);
+  });
 });
 
 it("Clocks running: an order waiting over 30 minutes to be booked opens the clocks by itself", async () => {
@@ -444,5 +508,5 @@ it("mounts the ordering door in the centre, never in the right-hand queue", asyn
   renderWithProviders(<RadiologyReception />);
   const door = await screen.findByTestId("imaging-desk-door");
   expect(screen.getByTestId("station-right")).not.toContainElement(door);
-  expect(screen.getByLabelText("Visit number")).toBeInTheDocument();
+  expect(screen.getByLabelText("UHID, phone, name or visit number")).toBeInTheDocument();
 });

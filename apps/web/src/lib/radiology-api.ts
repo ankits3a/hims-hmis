@@ -1,6 +1,7 @@
 import { api } from "./api";
 import type {
-  ImagingAcquiredBody, ImagingContrastBody, ImagingRescheduleBody, ImagingScheduleBody, ImagingSignBody,
+  ImagingAcquiredBody, ImagingContrastBody, ImagingDeskCollectBody, ImagingDeskWalkInOrderBody, ImagingRescheduleBody,
+  ImagingScheduleBody, ImagingSignBody,
 } from "@hmis/contracts";
 import { messageText } from "./materials-api";
 import type { WireDraftSection } from "./radiology-reading-api";
@@ -225,15 +226,56 @@ export const markNoShow = (studyId: string, reason: string) =>
 export const cancelImagingStudy = (studyId: string, reason: string) =>
   api<{ studyId: string; billDecisionId: string | null }>("POST", `/radiology/studies/${studyId}/cancel`, { reason });
 
-/** The counter's link from a raised invoice line to the study it pays for (`linkInvoiceLine`). */
-export const linkInvoiceLine = (studyId: string, invoiceLineId: string) =>
-  api<{ studyId: string; invoiceLineId: string }>("POST", `/radiology/studies/${studyId}/invoice-line`, { invoiceLineId });
+/* ── #1078 — the desk's acts, each ONE server call (`radiology-desk.controller.ts`, `desk.ts`) ── */
 
-/** `GET /billing/invoices/:id` — only the fields the desk reads to find the line it just raised. */
-export const fetchInvoiceLines = (invoiceId: string) =>
-  api<{ invoice: { id: string; invoiceNo: string }; lines: { id: string; serviceId: string; lineNo: number }[] }>(
-    "GET", `/billing/invoices/${encodeURIComponent(invoiceId)}`,
+/** `arriveAtDesk`: every study of the visit booked for today, checked in; a refusal does not stop the rest. */
+export type WireDeskArrival = {
+  encounterNo: string;
+  checkedIn: { studyId: string; accessionNo: string; gates: string[]; pregnancyReason: string }[];
+  refused: { studyId: string; accessionNo: string; code: string; message: string }[];
+};
+export const deskArrive = (encounterNo: string) =>
+  api<WireDeskArrival>("POST", "/radiology/desk/arrive", { encounterNo });
+
+/** `@hmis/contracts` `imagingDeskCollectBody`. The route requires an Idempotency-Key. */
+export type DeskCollectBody = ImagingDeskCollectBody;
+export type WireDeskCollect = {
+  invoiceId: string; invoiceNo: string; receiptNo: string | null; totalPaise: number;
+  /** An earlier bill already charged every study: its lines were linked and nothing was collected. */
+  adopted: boolean;
+  linked: { studyId: string; invoiceLineId: string }[];
+};
+export const deskCollect = (body: DeskCollectBody, idempotencyKey: string) =>
+  api<WireDeskCollect>("POST", "/radiology/desk/collect", body, idempotencyKey);
+
+/** `walkInNow`: the first free machine AND the check-in, in one transaction. */
+export const deskWalkInNow = (studyId: string) =>
+  api<{ studyId: string; accessionNo: string; deviceResourceId: string; scheduledAt: string; gates: string[]; pregnancyReason: string }>(
+    "POST", `/radiology/desk/studies/${studyId}/walk-in`, {},
   );
+
+/** `proposeSlot`: the first free quarter hour on a machine that may take the study. It books nothing. */
+export type WireSlotProposal = { studyId: string; deviceResourceId: string; code: string; name: string; scheduledAt: string };
+export const fetchDeskProposal = (studyId: string) =>
+  api<{ proposal: WireSlotProposal | null }>("GET", `/radiology/desk/studies/${studyId}/proposal`);
+
+/** `deskVisitsToday`: the patient's OPD visits of today (IST) and (#1079) their imaging walk-in, for the desk door. */
+export type WireDeskVisit = { encounterNo: string; serviceDate: string; status: string; visitType: string; openedAt: string };
+export const fetchDeskVisits = (patientId: string) =>
+  api<{ visits: WireDeskVisit[] }>("GET", `/radiology/desk/visits?patientId=${encodeURIComponent(patientId)}`);
+
+/* ── #1079 — an outside slip and no visit today: the imaging walk-in (`desk.ts` `placeWalkInOrder`) ── */
+
+/** `deskWalkInView`: the active book with prices, and the RAD department's radiologists (empty: not set up). */
+export type WireDeskRadiologist = { doctorId: string; displayName: string; userId: string };
+export type WireDeskWalkInView = { bookActive: boolean; book: WireImagingBookEntry[]; radiologists: WireDeskRadiologist[] };
+export const fetchDeskWalkIn = () => api<WireDeskWalkInView>("GET", "/radiology/desk/walk-in");
+
+/** `@hmis/contracts` `imagingDeskWalkInOrderBody`. The visit is opened (or today's reused) with the order. */
+export type DeskWalkInOrderBody = ImagingDeskWalkInOrderBody;
+export type WireDeskWalkInOrder = { encounterNo: string; visitOpened: boolean; orderId: string; orderNo: string; itemIds: string[] };
+export const deskWalkInOrder = (body: DeskWalkInOrderBody, idempotencyKey: string) =>
+  api<WireDeskWalkInOrder>("POST", "/radiology/desk/walk-in-order", body, idempotencyKey);
 
 /** `display.ts`'s `HallBoard`. */
 export type WireHallEntry = { token: string; name: string | null };

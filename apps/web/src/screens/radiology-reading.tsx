@@ -25,6 +25,7 @@ import { RadiologyStation } from "./radiology-station";
 import { PatientFacts } from "../components/radiology/patient-facts";
 import { FollowupsView, PeerView, TeleView } from "./radiology-reading-room";
 import { dateLocale } from "../lib/date-locale";
+import { IMAGING_READ_TOPIC, useImagingLive } from "../lib/radiology-live";
 
 /**
  * PLAN 18-S RS8a T4 — **THE READING ROOM: one urgency-sorted list, and the study in hand.**
@@ -177,6 +178,7 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
     queryKey: ["radiology", "reading", "criticals"], queryFn: fetchCriticalCalls, enabled: canCalls, refetchInterval: 30_000,
   });
   const openCalls = callsQ.data?.open ?? [];
+  useImagingLive(IMAGING_READ_TOPIC, [["radiology", "reading", "worklist"], ["radiology", "reading", "criticals"]]); // #1083
 
   const open = (id: string | null): void => {
     setStudyId(id);
