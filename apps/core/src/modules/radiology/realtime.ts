@@ -3,7 +3,8 @@ import type { TailedEvent } from "../../kernel/realtime/tail";
 import type { TopicRouter, TopicSpace } from "../../kernel/realtime/gateway";
 import {
   imagingBookingChanged, imagingCriticalAcknowledged, imagingCriticalFlagged, imagingGateEvaluated,
-  imagingImageViewed, imagingMediaRequested, imagingReportHandedOver, imagingReportPublished,
+  imagingImageViewed,
+  imagingReadingClaimed, imagingMediaRequested, imagingReportHandedOver, imagingReportPublished,
   imagingStudyAcquired, imagingStudyScheduled,
 } from "./events";
 
@@ -41,8 +42,8 @@ import {
  *
  * ═══ THE READING CLAIM IS AN IMAGE VIEW ═══
  *
- * There is no claim button and no claim event: `reading.ts` derives "Dr X is reading" from the image
- * view log, so `imaging.image_viewed` is the claim and routes to `imaging:read`. A view by somebody
+ * #1081 adds an explicit claim (`imaging.reading_claimed`, opening a study in the reading room); it routes to
+ * `imaging:read`. An image view (`imaging.image_viewed`) still routes there too. A view by somebody
  * who writes no reports wakes the list without changing it; that costs one refetch, not a disclosure
  * (`studyId`, `viewerId`, `via`).
  *
@@ -71,6 +72,7 @@ const ROUTES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly 
   [imagingCriticalFlagged.name, [IMAGING_READ_TOPIC]],
   [imagingCriticalAcknowledged.name, [IMAGING_READ_TOPIC]],
   [imagingImageViewed.name, [IMAGING_READ_TOPIC]],
+  [imagingReadingClaimed.name, [IMAGING_READ_TOPIC]],
   [imagingReportHandedOver.name, [IMAGING_RELEASE_TOPIC]],
   [imagingMediaRequested.name, [IMAGING_RELEASE_TOPIC]],
 ]);
