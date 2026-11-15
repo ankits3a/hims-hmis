@@ -106,7 +106,7 @@ describe("imaging quick wins (spec #1076)", () => {
   };
 
   const evidenceFor = (kind: string, code: string): unknown => ({
-    identity_two_factor: { secondIdentifier: "uhid", value: UHID },
+    identity_two_factor: { secondIdentifier: "uhid", value: UHID, nameStated: true },
     pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
     contrast_consent: {
       procedureCode: code, templateVersion: "rad-contrast-v3", language: "hi", signer: "patient",

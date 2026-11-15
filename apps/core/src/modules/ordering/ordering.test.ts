@@ -2,9 +2,9 @@ import { and, eq, inArray } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedLabDeskBase, serviceIdForLabCode } from "../../../test/helpers/lab";
 import { openOpdVisit } from "../../../test/helpers/opd";
-import { setupRadiologyFixture } from "../../../test/helpers/radiology";
+import { setupRadiologyFixture, studyTypeRow } from "../../../test/helpers/radiology";
 import { seedBillingBase } from "../../../test/helpers/billing";
-import { events, invoices, opdEncounters, orderItems, orders, outsideTests, services } from "../../kernel/db/schema";
+import { events, imagingDefinitions, invoices, opdEncounters, orderItems, orders, outsideTests, services } from "../../kernel/db/schema";
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { setFeeSwitch } from "../billing";
 import { getEncounter } from "../opd";
@@ -186,6 +186,31 @@ describe("ordering: the imaging side (decision 0067)", () => {
       expect(rows).toEqual([{ kind: "imaging", indication: "cough for three weeks", by: "system" }]);
       expect(await imagingFreeAt(db, NOW)).toBe(true);
       expect(await imagingFreeAt(db, new Date(NOW.getTime() - 120_000))).toBe(false);
+    } finally {
+      fx.unregister();
+    }
+  });
+
+  /** #1080 — a sided study goes with its side, by service id; without one imaging refuses it under `skipped`. */
+  it("a sided study is ordered with the side the caller names, and refused under skipped without one", async () => {
+    const fx = await setupRadiologyFixture(db, { serviceDate: DAY, now: NOW });
+    try {
+      const knee = fx.services["XR-CHEST"]!;
+      await db.update(imagingDefinitions).set({ body: { types: [
+        studyTypeRow({ code: "XR-KNEE", name: "X-ray knee", service_id: knee, modality: "xray", ionising: true, laterality_applicable: true }),
+      ] } }).where(eq(imagingDefinitions.kind, "study_types"));
+      const input = {
+        patientId: fx.patientId, encounterNo: fx.visitNo, serviceDate: DAY, orderingClinicianId: fx.doctor.id,
+        serviceIds: [knee], indication: "pain after a fall",
+      };
+      const none = await orderTests(db, fx.doctor, fx.decls, input, NOW);
+      expect([none.imaging, none.skipped.map((x) => [x.department, x.code])]).toEqual([null, [["imaging", "laterality_required"]]]);
+
+      const sided = await orderTests(db, fx.doctor, fx.decls, { ...input, laterality: { [knee]: "right" } }, NOW);
+      expect(sided.skipped).toEqual([]);
+      const items = await db.select({ laterality: orderItems.laterality }).from(orderItems)
+        .where(inArray(orderItems.id, sided.imaging!.itemIds));
+      expect(items).toEqual([{ laterality: "right" }]);
     } finally {
       fx.unregister();
     }

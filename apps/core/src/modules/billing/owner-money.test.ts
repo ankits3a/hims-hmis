@@ -15,10 +15,13 @@ import type { Db } from "../../kernel/db/client";
  * THE OWNER'S MONEY PAGE (owner 2026-10-09). The day must reconcile to the day book exactly — one
  * money read that disagrees with another is two truths — and a drawer is said in words.
  * The clock is the real one, injected: every date below is derived from `NOW`, never written down.
+ * `NOW` is read right after the drawers open (they open on the database's clock), not when the file
+ * loads: main went red on 2026-11-15 when a CI run crossed IST midnight between the two, so the drawers
+ * opened on one day and the test asked about the day before.
  */
-const NOW = new Date();
-const TODAY = istDay(NOW);
-const LAST_WEEK = new Date(NOW.getTime() - 7 * 86_400_000);
+let NOW: Date;
+let TODAY: string;
+let LAST_WEEK: Date;
 
 describe("billing — the owner's money page", () => {
   let db: Db;
@@ -38,6 +41,9 @@ describe("billing — the owner's money page", () => {
     bimal = await mkCashier(db, "om_bimal");
     await openSessionFor(db, asha, 200_000);
     await openSessionFor(db, bimal, 200_000);
+    NOW = new Date();
+    TODAY = istDay(NOW);
+    LAST_WEEK = new Date(NOW.getTime() - 7 * 86_400_000);
     patientId = (await mkPatient(db, asha.actor, { name: "Ramesh Kale", phone: "9876540321" })).id;
   });
 
