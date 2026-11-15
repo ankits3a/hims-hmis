@@ -96,10 +96,10 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/pharmacy/reorder` | `(redirect)` |
 | `/pharmacy/retail` | `apps/web/src/screens/pharmacy-retail` |
 | `/pharmacy/retail-licence` | `(redirect)` |
-| `/radiology/diary` | `apps/web/src/screens/radiology-diary` |
+| `/radiology/diary` | `(redirect)` |
 | `/radiology/display` | `apps/web/src/screens/radiology-display` |
 | `/radiology/hod` | `apps/web/src/screens/radiology-hod` |
-| `/radiology/portable` | `apps/web/src/screens/radiology-portable` |
+| `/radiology/portable` | `(redirect)` |
 | `/radiology/prep` | `apps/web/src/screens/radiology-prep` |
 | `/radiology/radiation-safety` | `apps/web/src/screens/radiation-safety` |
 | `/radiology/read` | `apps/web/src/screens/radiology-reading` |
@@ -107,8 +107,8 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/radiology/reports` | `apps/web/src/screens/radiology-reports` |
 | `/radiology/room` | `apps/web/src/screens/radiology-room` |
 | `/radiology/setup` | `apps/web/src/screens/radiology-setup` |
-| `/radiology/studies/$studyId` | `apps/web/src/screens/radiology-study` |
-| `/radiology/studies/$studyId/report` | `apps/web/src/screens/radiology-report` |
+| `/radiology/studies/$studyId` | `(redirect)` |
+| `/radiology/studies/$studyId/report` | `(redirect)` |
 | `/radiology/usg` | `apps/web/src/screens/radiology-usg` |
 | `/radiology/worklist` | `apps/web/src/screens/radiology-worklist` |
 | `/registration` | `apps/web/src/screens/desk-one/desk-one` |
