@@ -12,6 +12,7 @@ import { findRecentItems } from "../../kernel/orders/read";
 import { withTx } from "../../kernel/db/client";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { RadiologyError } from "./errors";
+import { assertNotAutomation } from "./automation-actor";
 import { appendEvent } from "../../kernel/events/append";
 import { BEDSIDE_LOCATION_MAX_LENGTH } from "./kinds";
 import { imagingBedsideRequested } from "./events";
@@ -289,6 +290,8 @@ export async function placeImagingOrder(
   idemKey?: string,
   now: Date = new Date(),
 ): Promise<PlaceImagingOrderResult> {
+  /** #1085 — an order is a person's (or a published protocol's); never the morning sweep's. */
+  assertNotAutomation(actor, "order_place");
   /**
    * ═══ A1 — THE HOUSE IDEMPOTENCY MECHANISM, AND §6A.2 CLOSED ═══
    *

@@ -120,6 +120,32 @@ it("ruling 1: film is asked for, marked printed, and handed with the report; the
   });
 });
 
+/** #1085 — the film & CD queue: unprinted requests, oldest first, by accession; Printed is the register's own act. */
+it("the film & CD queue lists what is still to print, oldest first, and marks one printed", async () => {
+  const at = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  mockRoutes({
+    "GET /api/radiology/release": { status: 200, body: { rows: [XRAY] } },
+    "GET /api/radiology/media/queue": {
+      status: 200,
+      body: {
+        rows: [
+          { requestId: "M1", studyId: "S1", accessionNo: "X2609290001", studyTypeCode: "XR-CHEST", kind: "film", quantity: 2, included: false, requestedAt: at(5) },
+          { requestId: "M2", studyId: "S9", accessionNo: "X2609290007", studyTypeCode: "CT-HEAD", kind: "cd", quantity: 1, included: false, requestedAt: at(2) },
+        ],
+      },
+    },
+    "POST /api/radiology/media/M1/printed": { status: 201, body: { requestId: "M1", printedAt: new Date().toISOString() } },
+  });
+  renderWithProviders(<RadiologyReports />);
+  const queue = await screen.findByTestId("media-queue");
+  await waitFor(() => { expect(queue.querySelectorAll("[data-media]")).toHaveLength(2); });
+  expect([...queue.querySelectorAll("[data-media]")].map((li) => li.getAttribute("data-media"))).toEqual(["M1", "M2"]);
+  expect(queue.querySelector('[data-media="M1"]')).toHaveTextContent("film, 2 sheets");
+  expect(queue.querySelector('[data-media="M2"]')).toHaveTextContent("CD");
+  await userEvent.click(within(queue.querySelector('[data-media="M1"]') as HTMLElement).getByRole("button", { name: "Mark printed" }));
+  await waitFor(() => { expect(bodiesOf("POST /api/radiology/media/M1/printed")).toHaveLength(1); });
+});
+
 it("a refusal names what to do — an amended report is handed over as the new version", async () => {
   mockRoutes({
     "GET /api/radiology/release": { status: 200, body: { rows: [XRAY] } },

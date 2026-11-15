@@ -194,6 +194,63 @@ it("quality shows 'not measured yet' where there is nothing to count, never a ze
   expect(within(q).getByText("Repeat rate").closest("tr")).toHaveTextContent("2 %");
 });
 
+/**
+ * #1085 — the morning sweep on the Quality view: this morning's digest (counts, no names), yesterday's
+ * register gaps by accession, and the four automations, each switched with a reason.
+ */
+it("quality carries the morning digest, the register gaps by accession and the automation switches, each switch with a reason", async () => {
+  const DIGEST = {
+    reportDay: "2026-09-28",
+    modalities: [{ modality: "ct", source: "opd", ordered: 7, orderToSignedMedianMin: 95, orderToSignedP90Min: 240 }],
+    total: { ordered: 7, orderToSignedMedianMin: 95, orderToSignedP90Min: 240 },
+    repeatRate: { value: 1.5, numerator: 1, denominator: 66 }, dosesOverDrlWithoutReason: 1, reportsUnreadOver24h: 3,
+    openCriticals: 0, overdueFollowups: 2, noShows: 4, machinesDown: 1, registerGaps: { pcpndt: 1, aerb: 1 },
+  };
+  const auto = (kind: string, enabled: boolean) => ({
+    kind, enabled, isDefault: true, reason: null, changedBy: null, changedByName: null, changedAt: null, lastRun: null,
+  });
+  mockRoutes({
+    "GET /api/radiology/supervisor/floor": { status: 200, body: FLOOR },
+    "GET /api/radiology/supervisor/quality": { status: 200, body: { from: "2026-09-29", to: "2026-09-29", indicators: [] } },
+    "GET /api/radiology/supervisor/digest": { status: 200, body: { digest: { day: "2026-09-29", ranAt: new Date().toISOString(), digest: DIGEST } } },
+    "GET /api/radiology/supervisor/completeness": {
+      status: 200,
+      body: {
+        day: "2026-09-28", counts: { pcpndt: 1, aerb: 1 },
+        gaps: [
+          { kind: "form_f_incomplete", register: "pcpndt", studyId: "S1", accessionNo: "X2609280004", missing: ["relative_name"] },
+          { kind: "dose_missing", register: "aerb", studyId: "S2", accessionNo: "X2609280009" },
+        ],
+      },
+    },
+    "GET /api/radiology/supervisor/automations": {
+      status: 200,
+      body: { automations: [auto("no_show_sweep", true), auto("patient_reminders", false), auto("hod_digest", true), auto("register_completeness", true)] },
+    },
+    "POST /api/radiology/supervisor/automations/no_show_sweep": { status: 201, body: { kind: "no_show_sweep", enabled: false, changed: true } },
+  });
+  renderWithProviders(<RadiologyHod view="quality" />);
+
+  const digest = await screen.findByTestId("hod-digest");
+  await within(digest).findByText("This morning's digest · 2026-09-28");
+  expect(within(digest).getByText("Reports unread over 24 h").parentElement).toHaveTextContent("3");
+  expect(within(digest).getByText("No-shows").parentElement).toHaveTextContent("4");
+  const gaps = screen.getByTestId("hod-register-gaps");
+  await waitFor(() => { expect(gaps.querySelector('[data-acc="X2609280004"]')).toHaveAttribute("data-gap-kind", "form_f_incomplete"); });
+  expect(gaps.querySelector('[data-acc="X2609280009"]')).toHaveTextContent("No dose row");
+
+  const autos = screen.getByTestId("hod-automations");
+  await waitFor(() => { expect(autos.querySelector('[data-automation="patient_reminders"]')).toHaveAttribute("data-enabled", "off"); });
+  const off = within(autos).getByTestId("switch-no_show_sweep");
+  expect(off).toBeDisabled();
+  const row = autos.querySelector('[data-automation="no_show_sweep"]') as HTMLElement;
+  await userEvent.type(within(row).getByRole("textbox"), "desk marks by hand this week");
+  await userEvent.click(off);
+  await waitFor(() => {
+    expect(bodiesOf("POST /api/radiology/supervisor/automations/no_show_sweep")).toEqual([{ enabled: false, reason: "desk marks by hand this week" }]);
+  });
+});
+
 it("the access log lists who opened whose images and flags break-glass in the right-hand list", async () => {
   const at = new Date().toISOString();
   mockRoutes({

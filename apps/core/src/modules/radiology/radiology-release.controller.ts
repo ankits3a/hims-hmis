@@ -7,7 +7,7 @@ import { istDayString } from "../../kernel/approvals/cumulative";
 import { IMAGING_ACTED_OUTCOMES, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
 import { doctorReadBack, doctorResultsInbox, markActedUpon } from "./closed-loop";
 import { northStar } from "./north-star";
-import { handOverReport, handoverPrintView, markMediaPrinted, releaseRegister, requestMedia } from "./release";
+import { handOverReport, handoverPrintView, markMediaPrinted, mediaQueue, releaseRegister, requestMedia } from "./release";
 import { requestUnpaidRelease } from "./held";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import { imagingHandoverBody } from "@hmis/contracts";
@@ -123,6 +123,13 @@ export class RadiologyReleaseController {
     try {
       return await withTx(this.db, (tx) => requestMedia(tx, actor, { studyId, kind: input.kind, quantity: input.quantity }));
     } catch (e) { toHttp(e); }
+  }
+
+  /** #1085 — the film & CD queue: unprinted requests, oldest first, by accession (no names). */
+  @Get("media/queue")
+  @RequirePermission("radiology.schedule", "hospital")
+  async mediaQueue(): Promise<unknown> {
+    try { return await mediaQueue(this.db); } catch (e) { toHttp(e); }
   }
 
   @Post("media/:requestId/printed")

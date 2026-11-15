@@ -500,6 +500,33 @@ it("Clocks running: an order waiting over 30 minutes to be booked opens the cloc
 });
 
 /**
+ * #1085 — the no-shows of the last 30 days nobody has booked again sit in Clocks; a paid one says until when
+ * its bill holds for a rebooking of the same study (ruling 0098 §3). Late bookings open the clocks.
+ */
+it("Clocks: a late booking opens them, and the no-shows to rebook are listed with a paid one's good-until day", async () => {
+  const missed = new Date(Date.now() - 26 * 3_600_000).toISOString();
+  mockRoutes({
+    "GET /api/auth/me": me(DESK),
+    "GET /api/radiology/worklist": { status: 200, body: { rows: [{ ...ROW, scheduledAt: new Date(Date.now() - 40 * 60_000).toISOString() }] } },
+    "GET /api/radiology/desk/no-shows": {
+      status: 200,
+      body: {
+        rows: [{
+          studyId: "S7", accessionNo: "X2609280007", studyTypeCode: "MRI-BRAIN", patientId: "P7", patientName: "Rekha Oraon",
+          encounterNo: "V2609280007", missedAt: missed, paid: true, goodUntil: new Date(Date.now() + 29 * 86_400_000).toISOString(),
+        }],
+      },
+    },
+  });
+  renderWithProviders(<RadiologyReception />);
+  const clocks = await screen.findByTestId("desk-clocks");
+  expect(clocks).toHaveTextContent(/Asha Devi · CT-HEAD booked and not here, 4\d min past the slot/);
+  const rebook = await within(clocks).findByTestId("desk-rebook");
+  expect(rebook).toHaveTextContent("1 no-show to book again");
+  expect(rebook.querySelector('[data-rebook="S7"]')).toHaveTextContent(/Rekha Oraon · MRI-BRAIN missed .*paid — the bill holds until/);
+});
+
+/**
  * PLAN 18-S RS2 — the ordering door is the seat's CENTRE (18a-iv D1), and the right-hand list stays
  * the queue alone ("nothing duplicates the right list").
  */

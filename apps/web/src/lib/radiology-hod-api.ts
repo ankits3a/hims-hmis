@@ -133,3 +133,39 @@ export const fetchHodAccessLog = (from?: string, to?: string) => {
   const qs = q.toString();
   return api<WireAccessLog>("GET", `/radiology/supervisor/access-log${qs === "" ? "" : `?${qs}`}`);
 };
+
+/* ── #1085 (IM6c) — the morning sweep: the stored digest, yesterday's register gaps, the automations ── */
+
+export const IMAGING_AUTOMATIONS = ["no_show_sweep", "patient_reminders", "hod_digest", "register_completeness"] as const;
+export type ImagingAutomation = (typeof IMAGING_AUTOMATIONS)[number];
+
+export type WireDigest = {
+  reportDay: string;
+  modalities: { modality: string; source: string; ordered: number; orderToSignedMedianMin: number | null; orderToSignedP90Min: number | null }[];
+  total: { ordered: number; orderToSignedMedianMin: number | null; orderToSignedP90Min: number | null } | null;
+  repeatRate: { value: number | null; numerator: number | null; denominator: number | null } | null;
+  dosesOverDrlWithoutReason: number | null;
+  reportsUnreadOver24h: number | null;
+  openCriticals: number | null;
+  overdueFollowups: number | null;
+  noShows: number | null;
+  machinesDown: number | null;
+  registerGaps: { pcpndt: number; aerb: number } | null;
+};
+export type WireRegisterGap = {
+  kind: "form_f_missing" | "form_f_not_recorded" | "form_f_incomplete" | "form_f_unverified" | "dose_missing" | "drl_reason_missing";
+  register: "pcpndt" | "aerb"; studyId: string; accessionNo: string; missing?: string[];
+};
+export type WireAutomation = {
+  kind: ImagingAutomation; enabled: boolean; isDefault: boolean; reason: string | null;
+  changedBy: string | null; changedByName: string | null; changedAt: string | null;
+  lastRun: { day: string; ranAt: string; counts: Record<string, unknown> } | null;
+};
+
+export const fetchHodDigest = () =>
+  api<{ digest: { day: string; ranAt: string; digest: WireDigest } | null }>("GET", "/radiology/supervisor/digest");
+export const fetchRegisterGaps = () =>
+  api<{ day: string; gaps: WireRegisterGap[]; counts: { pcpndt: number; aerb: number } }>("GET", "/radiology/supervisor/completeness");
+export const fetchAutomations = () => api<{ automations: WireAutomation[] }>("GET", "/radiology/supervisor/automations");
+export const switchAutomation = (kind: ImagingAutomation, body: { enabled: boolean; reason: string }) =>
+  api<{ kind: ImagingAutomation; enabled: boolean; changed: boolean }>("POST", `/radiology/supervisor/automations/${kind}`, body);

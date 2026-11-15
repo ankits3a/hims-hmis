@@ -8,10 +8,10 @@ import { fmtIst, fmtRupees } from "../lib/format";
 import { acknowledgeAlert } from "../lib/alerts-api";
 import { decideOverrideRequest, radiologyErrorCode, radiologyErrorText } from "../lib/radiology-api";
 import {
-  FLOOR_STAGES, fetchHodAccessLog, fetchHodApprovals, fetchHodEquipment, fetchHodEscalations, fetchHodFloor,
-  fetchHodMoney, fetchHodQuality, fetchHodRoster,
+  FLOOR_STAGES, fetchAutomations, fetchHodAccessLog, fetchHodApprovals, fetchHodDigest, fetchHodEquipment, fetchHodEscalations,
+  fetchHodFloor, fetchHodMoney, fetchHodQuality, fetchHodRoster, fetchRegisterGaps, switchAutomation,
 } from "../lib/radiology-hod-api";
-import type { WireApproval, WireEscalation, WireFloor, WireQuality } from "../lib/radiology-hod-api";
+import type { ImagingAutomation, WireApproval, WireAutomation, WireEscalation, WireFloor, WireQuality } from "../lib/radiology-hod-api";
 import { Refusal, SeatLink } from "../components/radiology/imaging-counter";
 import { RadiologyStation } from "./radiology-station";
 import { ImagingCopilot } from "../components/radiology/imaging-copilot";
@@ -653,6 +653,7 @@ function QualityView(): React.ReactElement {
             </Table>
           </Card>
         )}
+        <MorningSweepCards />
         <FivePriorities rows={[
           [t("radiology.hod.five.accuracy"), t("radiology.hod.five.quality.accuracy"), t("radiology.hod.five.quality.accuracyFails")],
           [t("radiology.hod.five.speed"), t("radiology.hod.five.quality.speed"), t("radiology.hod.five.quality.speedFails")],
@@ -662,6 +663,120 @@ function QualityView(): React.ReactElement {
         ]} />
       </div>
     </RadiologyStation>
+  );
+}
+
+/* ═══════════════════════ #1085 — the morning sweep ═══════════════════════ */
+
+/**
+ * The 08:00 sweep, read on the Quality view: this morning's digest (counts and minutes, no names), the
+ * register gaps of yesterday by accession (live — nothing is corrected automatically; the in-charge and the
+ * RSO were rung with a count), and the four automations with the HOD's switch. A switch needs a reason;
+ * patient reminders stay off until the WhatsApp and SMS templates are approved (ruling 0098 §2).
+ */
+function MorningSweepCards(): React.ReactElement {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const digestQ = useQuery({ queryKey: ["radiology", "hod", "digest"], queryFn: fetchHodDigest });
+  const gapsQ = useQuery({ queryKey: ["radiology", "hod", "register-gaps"], queryFn: fetchRegisterGaps });
+  const autoQ = useQuery({ queryKey: ["radiology", "hod", "automations"], queryFn: fetchAutomations });
+  const [reasons, setReasons] = useState<Partial<Record<ImagingAutomation, string>>>({});
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const flip = useMutation({
+    mutationFn: (a: WireAutomation) => switchAutomation(a.kind, { enabled: !a.enabled, reason: (reasons[a.kind] ?? "").trim() }),
+    onSuccess: (_r, a) => {
+      setSwitchError(null);
+      setReasons((p) => ({ ...p, [a.kind]: "" }));
+      void qc.invalidateQueries({ queryKey: ["radiology", "hod", "automations"] });
+    },
+    onError: (e) => { setSwitchError(radiologyErrorText(e)); },
+  });
+  const stored = digestQ.data?.digest ?? null;
+  const d = stored?.digest;
+  const gaps = gapsQ.data;
+  const num = (v: number | null | undefined): string => (v === null || v === undefined ? "—" : String(v));
+  return (
+    <>
+      <Card title={stored === null ? t("radiology.hod.sweep.digestNone") : t("radiology.hod.sweep.digestTitle", { day: d?.reportDay ?? "" })} testId="hod-digest">
+        <Loading q={digestQ} />
+        {d !== undefined && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Tile label={t("radiology.hod.sweep.ordered")} value={num(d.total?.ordered)} sub={d.total === null ? undefined : `${mins(d.total.orderToSignedMedianMin)} · p90 ${mins(d.total.orderToSignedP90Min)}`} />
+              <Tile label={t("radiology.hod.sweep.unread")} value={num(d.reportsUnreadOver24h)} tone={(d.reportsUnreadOver24h ?? 0) > 0 ? "warn" : "plain"} />
+              <Tile label={t("radiology.hod.sweep.criticals")} value={num(d.openCriticals)} tone={(d.openCriticals ?? 0) > 0 ? "bad" : "plain"} />
+              <Tile label={t("radiology.hod.sweep.followups")} value={num(d.overdueFollowups)} tone={(d.overdueFollowups ?? 0) > 0 ? "warn" : "plain"} />
+              <Tile label={t("radiology.hod.sweep.noShows")} value={num(d.noShows)} />
+              <Tile label={t("radiology.hod.sweep.machinesDown")} value={num(d.machinesDown)} tone={(d.machinesDown ?? 0) > 0 ? "bad" : "plain"} />
+              <Tile label={t("radiology.hod.sweep.drl")} value={num(d.dosesOverDrlWithoutReason)} tone={(d.dosesOverDrlWithoutReason ?? 0) > 0 ? "warn" : "plain"} />
+              <Tile label={t("radiology.hod.sweep.repeat")} value={d.repeatRate?.value === null || d.repeatRate === null ? "—" : `${String(d.repeatRate.value)} %`} />
+            </div>
+            {d.modalities.length > 0 && (
+              <Table label={t("radiology.hod.sweep.byModality")} head={[t("radiology.hod.col.modality"), t("radiology.hod.col.source"), t("radiology.hod.sweep.ordered"), t("radiology.hod.col.median"), "p90"]}>
+                {d.modalities.map((m) => (
+                  <tr key={`${m.modality}-${m.source}`} className="border-b" data-modality={m.modality}>
+                    <td className="p-1">{m.modality}</td><td className="p-1">{m.source}</td>
+                    <td className="mo p-1">{m.ordered}</td><td className="mo p-1">{mins(m.orderToSignedMedianMin)}</td><td className="mo p-1">{mins(m.orderToSignedP90Min)}</td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </div>
+        )}
+      </Card>
+      <Card title={t("radiology.hod.sweep.gapsTitle", { day: gaps?.day ?? "", count: gaps?.gaps.length ?? 0 })} testId="hod-register-gaps">
+        <Loading q={gapsQ} />
+        {gaps !== undefined && gaps.gaps.length === 0 && <p className="m-0 text-sm text-muted-foreground">{t("radiology.hod.sweep.gapsNone")}</p>}
+        {gaps !== undefined && gaps.gaps.length > 0 && (
+          <Table label={t("radiology.hod.sweep.gapsLabel")} head={[t("radiology.hod.sweep.register"), t("radiology.hod.sweep.gap"), t("radiology.hod.sweep.accession")]}>
+            {gaps.gaps.map((g) => (
+              <tr key={`${g.kind}-${g.studyId}`} className="border-b align-top" data-gap-kind={g.kind} data-acc={g.accessionNo}>
+                <td className="p-1">{t(`radiology.hod.sweep.registerName.${g.register}`)}</td>
+                <td className="p-1">{t(`radiology.hod.sweep.gapKind.${g.kind}`)}{g.missing !== undefined && g.missing.length > 0 ? <span className="block text-xs text-muted-foreground">{g.missing.join(", ")}</span> : null}</td>
+                <td className="mo p-1">{g.accessionNo}</td>
+              </tr>
+            ))}
+          </Table>
+        )}
+        <p className="m-0 mt-1 text-xs text-muted-foreground">{t("radiology.hod.sweep.gapsNote")}</p>
+      </Card>
+      <Card title={t("radiology.hod.sweep.autoTitle")} testId="hod-automations">
+        <Loading q={autoQ} />
+        <ul className="m-0 list-none space-y-2 p-0">
+          {(autoQ.data?.automations ?? []).map((a) => {
+            const reason = reasons[a.kind] ?? "";
+            return (
+              <li key={a.kind} className="rounded border p-2 text-sm" data-automation={a.kind} data-enabled={a.enabled ? "on" : "off"}>
+                <span className="flex flex-wrap items-baseline justify-between gap-2">
+                  <b>{t(`radiology.hod.sweep.auto.${a.kind}`)}</b>
+                  <span className={a.enabled ? "text-green-800" : "text-muted-foreground"}>
+                    {a.enabled ? t("radiology.hod.sweep.on") : t("radiology.hod.sweep.off")}{a.isDefault ? ` · ${t("radiology.hod.sweep.default")}` : ""}
+                  </span>
+                </span>
+                {a.reason !== null && <span className="block text-xs text-muted-foreground">{a.changedByName ?? ""} · {a.changedAt === null ? "" : fmtIst(a.changedAt)} — {a.reason}</span>}
+                {a.lastRun !== null && <span className="block text-xs text-muted-foreground">{t("radiology.hod.sweep.lastRun", { day: a.lastRun.day })}</span>}
+                <span className="mt-1 flex flex-wrap gap-2">
+                  <input
+                    type="text" className="min-w-0 flex-1 rounded border px-2 py-1 text-sm" value={reason} maxLength={400}
+                    aria-label={t("radiology.hod.sweep.reason")} placeholder={t("radiology.hod.sweep.reason")}
+                    onChange={(e) => setReasons((p) => ({ ...p, [a.kind]: e.target.value }))}
+                  />
+                  <button
+                    type="button" className="rounded border px-3 py-1 text-sm disabled:opacity-50" data-testid={`switch-${a.kind}`}
+                    disabled={reason.trim().length < 3 || flip.isPending}
+                    onClick={() => flip.mutate(a)}
+                  >
+                    {a.enabled ? t("radiology.hod.sweep.turnOff") : t("radiology.hod.sweep.turnOn")}
+                  </button>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        {switchError !== null && <p role="alert" className="m-0 mt-1 text-xs text-red-700">{switchError}</p>}
+        <p className="m-0 mt-1 text-xs text-muted-foreground">{t("radiology.hod.sweep.autoNote")}</p>
+      </Card>
+    </>
   );
 }
 

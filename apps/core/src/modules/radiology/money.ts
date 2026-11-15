@@ -1,16 +1,17 @@
-import { and, asc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { imagingBillDecisions, imagingStudies } from "../../kernel/db/schema/radiology";
 import { daycareEncounters } from "../../kernel/db/schema/ot";
 import { opdEncounters } from "../../kernel/db/schema/opd";
-import { invoiceLines, invoices } from "../../kernel/db/schema/billing";
+import { creditNoteLines, enteredInErrorMarks, invoiceLines, invoices } from "../../kernel/db/schema/billing";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { getEncounter } from "../opd";
 import { BillingError, feeOffAt, loadBillingConfig } from "../billing";
 import { RadiologyError } from "./errors";
-import { imagingBillDecisionRaised } from "./events";
+import { imagingBillDecisionRaised, imagingInvoiceCarried } from "./events";
+import { AUTOMATION_ACTOR } from "./automation-actor";
 import type { ImagingAuthorisation, ImagingBillDecisionKind } from "../../kernel/db/schema/radiology";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -249,6 +250,63 @@ export async function linkInvoiceLine(
 
   await tx.update(imagingStudies).set({ invoiceLineId }).where(eq(imagingStudies.id, studyId));
   return { studyId, invoiceLineId };
+}
+
+/**
+ * ═══ #1085 / RULING 0098 §3 — A PAID NO-SHOW: THE INVOICE STAYS GOOD FOR A REBOOKING, 30 DAYS ═══
+ *
+ * No automatic refund (a refund is billing's own path, a deliberate act with its own audit). Instead, when
+ * the SAME study (same patient, same service) is ordered again within 30 days of the slot the patient
+ * missed, the new study is born authorised by the original invoice: its line MOVES from the no-show to the
+ * rebooking, in the study's own creation transaction, and `imaging.invoice_carried` records which line
+ * went where. A no_show is terminal and `order_item_id` is unique, so a rebooking is always a new study
+ * under a new order item — this is the seam that carries the money across.
+ *
+ * **One line still pays for one study** (`linkInvoiceLine`'s F54 rule, unweakened): the no-show gives the
+ * line up in a conditional UPDATE before the rebooking takes it, so the line is never on two rows and two
+ * concurrent rebookings cannot both win it. A line that was refunded or credited (any credit-note line), or
+ * whose invoice was marked entered-in-error, is NOT carried — that money went back, and the desk bills
+ * the rebooking as usual. The no-show keeps its history: the event names both studies.
+ */
+export const NO_SHOW_REBOOK_DAYS = 30;
+
+export async function carryNoShowInvoice(
+  tx: Tx, study: { id: string; patientId: string; serviceId: string }, placedAt: Date,
+): Promise<{ fromStudyId: string; invoiceLineId: string } | null> {
+  const exec = tx as unknown as Db;
+  const since = new Date(placedAt.getTime() - NO_SHOW_REBOOK_DAYS * 86_400_000);
+  const candidates = await exec.select({ id: imagingStudies.id, invoiceLineId: imagingStudies.invoiceLineId }).from(imagingStudies)
+    .where(and(
+      eq(imagingStudies.status, "no_show"), eq(imagingStudies.patientId, study.patientId), eq(imagingStudies.serviceId, study.serviceId),
+      isNotNull(imagingStudies.invoiceLineId), gte(imagingStudies.scheduledAt, since), lte(imagingStudies.scheduledAt, placedAt),
+      ne(imagingStudies.id, study.id),
+    ))
+    .orderBy(desc(imagingStudies.scheduledAt)).limit(5);
+  for (const c of candidates) {
+    const line = c.invoiceLineId!;
+    const refunded = await exec.select({ id: creditNoteLines.id }).from(creditNoteLines).where(eq(creditNoteLines.invoiceLineId, line)).limit(1);
+    const voided = await exec.select({ id: enteredInErrorMarks.id }).from(enteredInErrorMarks)
+      .where(and(eq(enteredInErrorMarks.docType, "invoice"),
+        sql`${enteredInErrorMarks.docId} = (select ${invoiceLines.invoiceId} from ${invoiceLines} where ${invoiceLines.id} = ${line})`)).limit(1);
+    if (refunded.length > 0 || voided.length > 0) continue;
+    const freed = await tx.update(imagingStudies).set({ invoiceLineId: null })
+      .where(and(eq(imagingStudies.id, c.id), eq(imagingStudies.invoiceLineId, line), eq(imagingStudies.status, "no_show")))
+      .returning({ id: imagingStudies.id });
+    if (freed.length === 0) continue;
+    const taken = await tx.update(imagingStudies).set({ invoiceLineId: line })
+      .where(and(eq(imagingStudies.id, study.id), isNull(imagingStudies.invoiceLineId)))
+      .returning({ id: imagingStudies.id });
+    if (taken.length === 0) {
+      await tx.update(imagingStudies).set({ invoiceLineId: line }).where(eq(imagingStudies.id, c.id));
+      return null;
+    }
+    await appendEvent(tx, imagingInvoiceCarried.make({
+      actor: AUTOMATION_ACTOR, patientId: study.patientId, occurredAt: placedAt,
+      payload: { fromStudyId: c.id, toStudyId: study.id, invoiceLineId: line },
+    }));
+    return { fromStudyId: c.id, invoiceLineId: line };
+  }
+  return null;
 }
 
 /**
