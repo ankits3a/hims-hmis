@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
-import { RadiologyWorklist } from "./radiology-worklist";
+import { RadiologyWorklist, worklistDoor } from "./radiology-worklist";
 
 /**
  * `useNavigate` is the one router hook this screen calls, and the harness mounts no
@@ -122,4 +122,18 @@ it("a refusal is shown with the server's own words", async () => {
   });
   renderWithProviders(<RadiologyWorklist />);
   expect(await screen.findByRole("alert")).toHaveTextContent(/does not hold radiology.worklist.read/);
+});
+
+/**
+ * #1087 — the worklist's address sends each person to their own list, by the grants they already hold.
+ * The seed roles' grants, abridged to the imaging strings that decide it.
+ */
+it("#1087: the worklist door picks the person's own list, reporter first", () => {
+  const door = (grants: string[]) => worklistDoor((p) => grants.includes(p));
+  // A radiologist acquires AND reports; their list is the unread one.
+  expect(door(["radiology.worklist.read", "radiology.acquire", "radiology.reports.write", "radiology.gates.override"])).toBe("/radiology/read");
+  expect(door(["radiology.worklist.read", "radiology.checkin", "radiology.gates.satisfy", "radiology.acquire"])).toBe("/radiology/room");
+  expect(door(["radiology.worklist.read", "radiology.gates.satisfy", "radiology.contrast.record"])).toBe("/radiology/prep");
+  expect(door(["radiology.worklist.read", "radiology.schedule", "radiology.checkin", "radiology.display.read"])).toBe("/radiology/reception");
+  expect(door(["radiology.worklist.read"])).toBe("/");
 });

@@ -5,8 +5,7 @@ import { useTranslation } from "react-i18next";
 import type React from "react";
 import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
-import { checkInStudy, fetchImagingDevices, fetchReadiness, radiologyErrorText } from "../lib/radiology-api";
-import { fetchCumulativeDose } from "../lib/aerb-api";
+import { checkInStudy, fetchImagingDevices, radiologyErrorText } from "../lib/radiology-api";
 import {
   fetchDoseLog, fetchMachineWorklist, fetchRejects, fetchRoomView, reportBreakdown, resolveBillDecision,
 } from "../lib/radiology-room-api";
@@ -19,7 +18,8 @@ import { ImagingCopilot } from "../components/radiology/imaging-copilot";
 import { PatientFacts } from "../components/radiology/patient-facts";
 import { PacsInboxView } from "./radiology-pacs-inbox";
 import { IrSuiteView } from "./radiology-ir";
-import { CreditChip } from "../components/patient-credit";
+import { PatientLane } from "../components/radiology/room-patient-lane";
+import { RadiologyPortable } from "./radiology-portable";
 import { IMAGING_FLOOR_TOPIC, useImagingLive } from "../lib/radiology-live";
 
 /**
@@ -39,15 +39,20 @@ import { IMAGING_FLOOR_TOPIC, useImagingLive } from "../lib/radiology-live";
  *   · **Downtime** — machines out of service, "Report breakdown" through Setup's status write, the
  *     studies to move linked to the desk's diary, and the paper-mode note.
  *
- * The study page (`/radiology/studies/$id`) stays: the lane links to it, and it links back here.
+ *   · **Portable round** (`?view=portable`, #1087) — the beds the trolley goes to (`radiology-portable.tsx`):
+ *     the same console in bedside mode. `/radiology/portable` forwards here.
+ *
+ * #1087 — the 18a study page's address (`/radiology/studies/$id`) forwards here with `?study=`; the lane no
+ * longer links to it.
  */
 
 /**
  * 18-S RS12 — `unmatched`: the PACS inbox (archive studies no accession + UHID could claim).
  * 18-S RS12b — `ir`: the IR suite (image-guided procedures: WHO phases, sedation, Ka,r).
+ * #1087 — `portable`: the portable round, beside the console it is the bedside form of.
  */
-export type RoomViewKey = "console" | "ir" | "dose" | "rejects" | "downtime" | "unmatched";
-export const ROOM_VIEWS: readonly RoomViewKey[] = ["console", "ir", "dose", "rejects", "downtime", "unmatched"];
+export type RoomViewKey = "console" | "portable" | "ir" | "dose" | "rejects" | "downtime" | "unmatched";
+export const ROOM_VIEWS: readonly RoomViewKey[] = ["console", "portable", "ir", "dose", "rejects", "downtime", "unmatched"];
 export type RoomSearch = { view?: RoomViewKey; machine?: string; study?: string };
 
 const STAT_CLOCK_MIN = 10;
@@ -119,10 +124,10 @@ export function RadiologyRoom({ search }: { search: RoomSearch }): React.ReactEl
           {OUT_OF_SERVICE.has(d.status) || d.licensedNow === false ? <span aria-label={t("radiology.room.machineAlert")} className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-red-600 align-middle" /> : null}
         </button>
       ))}
-      <SeatLink to="/radiology/portable">{t("radiology.room.toPortable")}</SeatLink>
     </div>
   );
 
+  if (view === "portable") return <RadiologyPortable views={views} />;
   if (view === "dose") return <DoseView views={views} picker={picker} machine={machine} />;
   if (view === "rejects") return <RejectsView views={views} />;
   if (view === "downtime") return <DowntimeView views={views} devices={devices} />;
@@ -272,52 +277,6 @@ function ConsoleView({ views, picker, machine, studyId, devicesError }: {
           : <RoomConsole key={studyId} studyId={studyId} onDone={(acc) => { setSent(acc); clear(); }} />}
       </div>
     </RadiologyStation>
-  );
-}
-
-/** The left lane: the patient on the table. */
-export function PatientLane({ studyId, onClear }: { studyId: string; onClear: () => void }): React.ReactElement {
-  const { t } = useTranslation();
-  const roomQ = useQuery({ queryKey: ["radiology", "room", studyId], queryFn: () => fetchRoomView(studyId) });
-  const gatesQ = useQuery({ queryKey: ["radiology", "gates", studyId], queryFn: () => fetchReadiness(studyId) });
-  const v = roomQ.data?.study;
-  const dose = useQuery({
-    queryKey: ["aerb", "cumulative", v?.patientId],
-    queryFn: () => fetchCumulativeDose(v!.patientId),
-    enabled: v !== undefined && v.ionising,
-    retry: false,
-  });
-  if (v === undefined) return <p className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p>;
-  const preg = gatesQ.data?.gates.find((g) => g.kind === "pregnancy_screen");
-  const kv = (k: string, val: React.ReactNode, testid?: string): React.ReactElement => (
-    <div className="flex justify-between gap-2 border-b py-1 text-sm last:border-b-0" data-testid={testid}>
-      <span className="text-muted-foreground">{k}</span><span className="text-right">{val}</span>
-    </div>
-  );
-  const d = dose.data;
-  return (
-    <div className="mt-4 space-y-3 text-sm" data-testid="patient-on-table">
-      <div>
-        <span className="tag">{t("radiology.room.lane.onTable")}</span>
-        <p className="m-0 mt-1 text-base font-semibold">{v.patient.name}</p>
-        <p className="m-0 mo text-xs">{v.patient.uhid} · {v.accessionNo}</p>
-        <div className="mt-1"><CreditChip patientId={v.patientId} testId="imaging-credit" /></div>
-      </div>
-      <div>
-        {kv(t("radiology.room.lane.ageSex"), `${v.patient.ageYears ?? "—"} · ${t(`radiology.room.sex.${v.patient.sex}`, { defaultValue: v.patient.sex })}`)}
-        {kv(t("radiology.room.lane.allergies"), v.patient.allergies.length === 0 ? t("radiology.room.lane.nka") : <b className="text-red-800">{v.patient.allergies.join(", ")}</b>, "lane-allergies")}
-        {kv(t("radiology.room.lane.weight"), v.patient.weight === null ? t("radiology.room.lane.notCharted") : `${v.patient.weight.kg} kg`)}
-        {v.renal !== null && kv(t("radiology.room.lane.renal"),
-          v.renal.egfr !== null ? `eGFR ${v.renal.egfr}` : v.renal.creatinineUmolL !== null ? `${t("radiology.room.lane.creatinine")} ${v.renal.creatinineUmolL} µmol/L` : t("radiology.room.lane.pending"), "lane-renal")}
-        {preg !== undefined && kv(t("radiology.room.lane.pregnancy"), t(`radiology.room.gateState.${preg.state}`, { defaultValue: preg.state }))}
-        {v.ionising && kv(t("radiology.room.lane.priorDose"),
-          d === undefined ? "—" : d.studyCount === 0 ? t("radiology.room.lane.noPrior") : t("radiology.room.lane.prior", { count: d.studyCount, months: d.months, over: d.overDrlCount }), "lane-prior")}
-      </div>
-      <p className="m-0"><SeatLink to={`/radiology/studies/${v.studyId}`}>{t("radiology.room.lane.studyPage")}</SeatLink></p>
-      <button type="button" className="rounded border px-3 py-1 text-sm" onClick={onClear}>
-        {t("radiology.room.lane.clear")} <span className="kb">Esc</span>
-      </button>
-    </div>
   );
 }
 

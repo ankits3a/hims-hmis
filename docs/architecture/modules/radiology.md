@@ -9,6 +9,7 @@ generated: { by: tools/arch/gen.mjs }
 # module `radiology`
 
 Source: `apps/core/src/modules/radiology/`
+· Notes: [MAP.md](../../../apps/core/src/modules/radiology/MAP.md)
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
 - **Used by modules:** `abdm`, `doctor-desk`, `ordering`

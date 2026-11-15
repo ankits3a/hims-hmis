@@ -25,6 +25,10 @@ import { RadiologyStation } from "./radiology-station";
  *
  * Every refusal is shown with its own code, verbatim. `form_f_missing` tells a technologist to go
  * and open the register; "could not proceed" tells them to try again, which is the wrong action.
+ *
+ * #1087 (IM8) — NO ROUTE MOUNTS THIS SCREEN NOW: `/radiology/studies/$studyId` opens the same study in the
+ * rooms (`/radiology/room?study=`). The override asks it decided are decided in the reading room
+ * (`?view=asks`); the prep bay satisfies and waives; the console acquires and sends.
  */
 export function RadiologyStudy(): React.ReactElement {
   const { t } = useTranslation();
