@@ -15,6 +15,7 @@ import { RoomConsole, RoomRefusal } from "../components/radiology/room-console";
 import { SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingCopilot } from "../components/radiology/imaging-copilot";
 import { PatientFacts } from "../components/radiology/patient-facts";
 import { PacsInboxView } from "./radiology-pacs-inbox";
 import { IrSuiteView } from "./radiology-ir";
@@ -241,6 +242,7 @@ function ConsoleView({ views, picker, machine, studyId, devicesError }: {
       listSummary={inHand === null ? undefined : t("radiology.room.listSummary", { count: rows.length })}
       inHand={studyId !== null}
       closeListOn={studyId}
+      copilot={<ImagingCopilot subject={inHand?.accessionNo ?? null} patientName={inHand?.patientName ?? null} />}
       clocks={clocks}
       clocksAlert={clocksAlert}
       clocksSummary={clocksAlert ? t("radiology.room.clocksSummary", { count: statWaiting.length + readyWaiting.length }) : t("radiology.room.clocksNone")}

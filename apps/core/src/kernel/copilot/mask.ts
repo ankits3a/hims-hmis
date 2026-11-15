@@ -43,6 +43,14 @@ export type MaskedQuestion = {
  */
 const IDENTIFIER_PATTERNS: RegExp[] = [
   /**
+   * #1082 — THE IMAGING ACCESSION, `X` + `YYMMDD` + a four-digit serial (`kernel/episodes/series.ts`,
+   * `imaging_study`), e.g. `X2611140001`. Typed whole the visit-number shape below already takes it; this
+   * is for the way it is read off a label at arm's length — `X-261114-0001`, `x 261114 0001` — where the
+   * catch-all took the day and left the serial standing, so neither the model's copy nor the slot held
+   * the accession. First, so the whole label is one placeholder.
+   */
+  /\b[Xx][\s-]?\d{6}[\s-]?\d{4}\b/g,
+  /**
    * The episode number a patient carries on a printed slip — `V2609150001`, a letter and ten
    * digits (`nextEpisodeNo`, `modules/opd/encounters.ts`). Front-desk questions arrive with these
    * more often than with a UHID, because the clerk is reading the paper in the patient's hand.
