@@ -1,8 +1,9 @@
 import { Test } from "@nestjs/testing";
 import { APP_GUARD } from "@nestjs/core";
 import request from "supertest";
-import { DB } from "../../kernel/tokens";
+import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { RadiologyDeskController } from "./radiology-desk.controller";
+import { ModuleRegistry } from "../../kernel/modules/loader";
 import type { CanActivate, ExecutionContext, INestApplication } from "@nestjs/common";
 
 /**
@@ -31,7 +32,10 @@ describe("the imaging desk controller's own refusals (#1078)", () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [RadiologyDeskController],
-      providers: [{ provide: DB, useValue: UNTOUCHABLE_DB }, { provide: APP_GUARD, useClass: EveryoneIn }],
+      providers: [
+        { provide: DB, useValue: UNTOUCHABLE_DB }, { provide: MODULE_REGISTRY, useValue: new ModuleRegistry() },
+        { provide: APP_GUARD, useClass: EveryoneIn },
+      ],
     }).compile();
     app = moduleRef.createNestApplication({ logger: false });
     await app.init();
@@ -57,5 +61,22 @@ describe("the imaging desk controller's own refusals (#1078)", () => {
     }
     expect((await request(server()).post("/radiology/desk/arrive").send({})).status).toBe(400);
     expect((await request(server()).get("/radiology/desk/visits")).status).toBe(400);
+  });
+
+  it("#1079 — a walk-in order the schema rejects is a 400 and reaches nothing: no referrer, a blank name or registration, no study, no question", async () => {
+    const WALK_IN = {
+      patientId: "P1", indication: "?gall stones", items: [{ serviceId: "SVC-USG" }],
+      referrer: { name: "Dr. Anil Verma", registrationNo: "BMC/44117" },
+    };
+    for (const body of [
+      { ...WALK_IN, referrer: undefined },
+      { ...WALK_IN, referrer: { name: "Dr. Anil Verma", registrationNo: "  " } },
+      { ...WALK_IN, referrer: { name: "", registrationNo: "BMC/44117" } },
+      { ...WALK_IN, items: [] },
+      { ...WALK_IN, indication: " " },
+    ]) {
+      const res = await request(server()).post("/radiology/desk/walk-in-order").send(body);
+      expect({ body, status: res.status }).toEqual({ body, status: 400 });
+    }
   });
 });

@@ -170,6 +170,29 @@ export const imagingDeskCollectBody = z.object({
   }),
 });
 
+/**
+ * #1079 (IM2b) — an outside doctor's slip and NO visit today: the desk opens the imaging walk-in visit
+ * (under the radiologist of record — `doctorId` names one when radiology has several) and places the order
+ * on it, under `external_prescription`. The referrer's name and registration number are typed off the
+ * slip and both are required. The route takes an optional `Idempotency-Key`.
+ */
+export const imagingDeskWalkInOrderBody = z.object({
+  patientId: id,
+  doctorId: id.optional(),
+  priority: z.enum(["routine", "urgent", "stat"]).optional(),
+  indication: z.string().trim().min(1).max(500),
+  items: z.array(z.object({
+    serviceId: id,
+    /** The pair that overrides the 24-hour duplicate window. Both or neither. */
+    duplicateOfItemId: id.nullish(),
+    duplicateReason: z.string().trim().min(1).max(400).nullish(),
+  })).min(1).max(10),
+  referrer: z.object({
+    name: z.string().trim().min(1).max(200),
+    registrationNo: z.string().trim().min(1).max(64),
+  }),
+});
+
 export type ImagingReportContentBody = z.input<typeof imagingReportContentBody>;
 export type ImagingSignBody = z.input<typeof imagingSignBody>;
 export type ImagingAmendBody = z.input<typeof imagingAmendBody>;
@@ -183,3 +206,4 @@ export type ImagingScheduleBody = z.input<typeof imagingScheduleBody>;
 export type ImagingRescheduleBody = z.input<typeof imagingRescheduleBody>;
 export type ImagingDeskArriveBody = z.input<typeof imagingDeskArriveBody>;
 export type ImagingDeskCollectBody = z.input<typeof imagingDeskCollectBody>;
+export type ImagingDeskWalkInOrderBody = z.input<typeof imagingDeskWalkInOrderBody>;
