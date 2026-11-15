@@ -13,7 +13,7 @@ import { istDayString } from "../../kernel/approvals/cumulative";
 import { newId } from "@hmis/contracts";
 import { displayName, guardiansWithAuthority } from "../patients";
 import { latestVerifiedInr, latestVerifiedPlatelets } from "../lab";
-import { ADULT_AGE_YEARS, NPO_CLEAR_FLUIDS_HOURS, NPO_SOLIDS_HOURS, consentSchema } from "../ot";
+import { ADULT_AGE_YEARS, NPO_CLEAR_FLUIDS_HOURS, NPO_SOLIDS_HOURS, consentSchema } from "../../kernel/consent";
 import { RadiologyError } from "./errors";
 import {
   IR_COAGULATION_VERDICTS, imagingIrCoagulationOverridden, imagingIrSkinDoseAlert,
@@ -49,7 +49,7 @@ import type { Actor } from "@hmis/contracts";
  *   · `skin_followup_required` — Send with Ka,r ≥ 3 Gy refuses until the skin follow-up is
  *     documented (patient told, skin check booked 2–4 weeks out — NCRP 168 / SIR).
  *
- * The OT's shapes are REUSED through `ot/index.ts`: the consent (`consentSchema` — procedure code,
+ * The OT's shapes are REUSED from `kernel/consent` (#1086): the consent (`consentSchema` — procedure code,
  * template version, language, interpreter, witness, signer/guardian, laterality), the fasting hours
  * (`NPO_SOLIDS_HOURS` 6 / `NPO_CLEAR_FLUIDS_HOURS` 2) and the adult age. The OT's `completeChecklist`
  * is bound to an OT case and cannot be called for a study; its A13 rule (a time-out needs at least
