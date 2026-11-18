@@ -1653,6 +1653,13 @@
       "when": 1794746720530,
       "tag": "0236_imaging_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1795037139263,
+      "tag": "0237_stores_s1",
+      "breakpoints": true
     }
   ]
 }

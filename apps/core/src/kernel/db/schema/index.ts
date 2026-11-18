@@ -119,3 +119,6 @@ export * from "./copilot";
 // E1.2 — personal reminders (decision 0064): a person's own reminders, raised on their own bell and phone.
 export * from "./reminders";
 export * from "./doctor-desk"; // DOCTOR DESK DD-0 (#626) — briefs, nudges, agent runs, reads; references auth.users only
+// STORES S1 (#1111, decision 0099) — the non-drug Stores module's "Not in the list" requests. Downstream
+// of `materials` (`items`) and `resources` (the shelf), and nothing above reads it.
+export * from "./stores";

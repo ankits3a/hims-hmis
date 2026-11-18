@@ -800,33 +800,47 @@ export async function setStockLevel(
   db: Db, actor: Actor, input: { itemId: string; storeResourceId: string } & StockLevel, now: Date = new Date(),
 ): Promise<StockLevel> {
   await requireRaiser(db, actor, "setting stock levels");
+  const { minBase, reorderBase, maxBase } = await withTx(db, async (tx) => writeStockLevel(tx, actor, input, now));
+  return { minBase, reorderBase, maxBase };
+}
+
+/**
+ * STORES S1 (#1111) — ADDITIVE: the body of `setStockLevel` inside the CALLER's transaction, so a
+ * Stores par edit and its own event commit together. It checks no permission: `setStockLevel` asks
+ * `materials.po.raise`, and the Stores intent asks `stores.masters.manage` before calling this.
+ * Returns the levels written and the levels they replaced.
+ */
+export async function writeStockLevel(
+  tx: Tx, actor: Actor, input: { itemId: string; storeResourceId: string } & StockLevel, now: Date = new Date(),
+): Promise<StockLevel & { previous: StockLevel | null }> {
   const { minBase, reorderBase, maxBase } = input;
   const ok = [minBase, reorderBase, maxBase].every((n) => Number.isSafeInteger(n) && n >= 0 && n <= 10_000_000);
   if (!ok || minBase > reorderBase || reorderBase >= maxBase) {
     throw new MaterialsError("invalid_stock_level", "levels must be whole numbers with 0 ≤ min ≤ reorder < max", { minBase, reorderBase, maxBase });
   }
-  await withTx(db, async (tx) => {
-    const [item] = await tx.select({ id: items.id }).from(items).where(eq(items.id, input.itemId));
-    if (item === undefined) throw new MaterialsError("unknown_item", `item ${input.itemId} not found`, { itemId: input.itemId });
-    await assertNotMerged(tx, [input.itemId], "setting its levels");
-    await requireStore(tx, input.storeResourceId);
-    const [prev] = await tx.select().from(itemStockLevels)
-      .where(and(eq(itemStockLevels.itemId, input.itemId), eq(itemStockLevels.storeResourceId, input.storeResourceId))).for("update");
-    await tx.insert(itemStockLevels).values({
-      id: newId(), itemId: input.itemId, storeResourceId: input.storeResourceId, minBase, reorderBase, maxBase, updatedBy: actor.id, updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [itemStockLevels.itemId, itemStockLevels.storeResourceId],
-      set: { minBase, reorderBase, maxBase, updatedBy: actor.id, updatedAt: now },
-    });
-    await appendEvent(tx, stockLevelSet.make({
-      occurredAt: now, actor, correlationId: input.itemId,
-      payload: {
-        itemId: input.itemId, storeResourceId: input.storeResourceId, minBase, reorderBase, maxBase,
-        previous: prev === undefined ? null : { minBase: prev.minBase, reorderBase: prev.reorderBase, maxBase: prev.maxBase },
-      },
-    }));
+  const [item] = await tx.select({ id: items.id }).from(items).where(eq(items.id, input.itemId));
+  if (item === undefined) throw new MaterialsError("unknown_item", `item ${input.itemId} not found`, { itemId: input.itemId });
+  await assertNotMerged(tx, [input.itemId], "setting its levels");
+  await requireStore(tx, input.storeResourceId);
+  const [prev] = await tx.select().from(itemStockLevels)
+    .where(and(eq(itemStockLevels.itemId, input.itemId), eq(itemStockLevels.storeResourceId, input.storeResourceId))).for("update");
+  await tx.insert(itemStockLevels).values({
+    id: newId(), itemId: input.itemId, storeResourceId: input.storeResourceId, minBase, reorderBase, maxBase, updatedBy: actor.id, updatedAt: now,
+  }).onConflictDoUpdate({
+    target: [itemStockLevels.itemId, itemStockLevels.storeResourceId],
+    set: { minBase, reorderBase, maxBase, updatedBy: actor.id, updatedAt: now },
   });
-  return { minBase, reorderBase, maxBase };
+  await appendEvent(tx, stockLevelSet.make({
+    occurredAt: now, actor, correlationId: input.itemId,
+    payload: {
+      itemId: input.itemId, storeResourceId: input.storeResourceId, minBase, reorderBase, maxBase,
+      previous: prev === undefined ? null : { minBase: prev.minBase, reorderBase: prev.reorderBase, maxBase: prev.maxBase },
+    },
+  }));
+  return {
+    minBase, reorderBase, maxBase,
+    previous: prev === undefined ? null : { minBase: prev.minBase, reorderBase: prev.reorderBase, maxBase: prev.maxBase },
+  };
 }
 
 export async function stockLevelsAt(db: Db | Tx, storeResourceId: string, itemIds: readonly string[]): Promise<Map<string, StockLevel>> {

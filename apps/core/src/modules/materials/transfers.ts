@@ -228,7 +228,17 @@ export async function receiveStock(
   occurredAt: Date,
   siteId?: string,
   /** PHARMACY P6 — into the controlled cabinet only under two keys (the register names the store it came from). */
-  opts: { custody?: Custody } = {},
+  opts: {
+    custody?: Custody;
+    /**
+     * STORES S1 (#1111) — ADDITIVE. The cost centre written on both legs of every receipt row (the
+     * receiving department's org code: charge at issue). Absent for every pharmacy caller, so their rows
+     * stay without one.
+     */
+    costCenter?: string | null;
+    /** STORES S1 — set only by the Stores intent `receiveAtShelf`; without it a department shelf refuses the receipt. */
+    throughStores?: boolean;
+  } = {},
 ): Promise<{ status: string; shortfalls: { transferLineId: string; qtyShort: number }[] }> {
   const rows = await tx.select().from(transfers).where(eq(transfers.id, transferId));
   const transfer = rows[0];
@@ -268,6 +278,21 @@ export async function receiveStock(
     (`attributes.custodianRoles`, which `seed:pharmacy` sets on both pharmacy counters) is received
     into only by one of them, so the pharmacy, not the storekeeper, confirms what reached its shelf.
   */
+  /*
+    STORES S1 (#1111) — a department shelf names no keeper and this function checks no permission, so the
+    keeper check below would wave any caller through. A shelf is received into only by the Stores intent,
+    which asks the department-scoped grant first. Pharmacy stores carry neither attribute: untouched.
+  */
+  const [destination] = await tx.select({ code: resources.code, attributes: resources.attributes }).from(resources)
+    .where(eq(resources.id, transfer.toResourceId));
+  const destAttrs = (destination?.attributes ?? {}) as Record<string, unknown>;
+  if (destAttrs.domain === "stores" && destAttrs.kind === "shelf" && opts.throughStores !== true) {
+    throw new MaterialsError(
+      "shelf_receives_through_stores",
+      `${destination?.code ?? transfer.toResourceId} is a department shelf; it receives through Stores (the department's own in-charge)`,
+      { storeId: transfer.toResourceId },
+    );
+  }
   if (actor.id === transfer.issuedBy) {
     throw new MaterialsError("transfer_self_receipt", `you issued transfer ${transferId}; the receiving store confirms it`);
   }
@@ -313,13 +338,14 @@ export async function receiveStock(
 
     // **ONLY THE CONFIRMED QUANTITY MOVES.** This is the whole of A18.
     if (l.qtyReceived > 0) {
+      const costCenter = opts.costCenter === undefined || opts.costCenter === null ? {} : { costCenter: opts.costCenter };
       movements.push({
         resourceId: transitId, batchId: line.batchId, qtyDelta: -l.qtyReceived,
-        reason: "receive", refType: "transfer", refId: transferId, occurredAt,
+        reason: "receive", refType: "transfer", refId: transferId, occurredAt, ...costCenter,
       });
       movements.push({
         resourceId: transfer.toResourceId, batchId: line.batchId, qtyDelta: l.qtyReceived,
-        reason: "receive", refType: "transfer", refId: transferId, occurredAt,
+        reason: "receive", refType: "transfer", refId: transferId, occurredAt, ...costCenter,
         ...(opts.custody === undefined ? {} : {
           custody: { ...opts.custody, counterparty: opts.custody.counterparty ?? (await requireStore(tx, transfer.fromResourceId)).name, documentRef: `transfer ${transferId}` },
         }),
