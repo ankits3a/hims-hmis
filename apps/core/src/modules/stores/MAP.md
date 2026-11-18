@@ -14,7 +14,8 @@ Hand-written notes: the WHY and the traps. Signatures, routes and tables are gen
 `docs/architecture/modules/stores.md`. Paths are relative to `apps/core/src/modules/stores/` unless they start
 with a module name, `kernel/`, `packages/` or `apps/`. Citations name a file and a symbol, never a line number.
 Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials core), 0081 (done-means tests).
-Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built).
+Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
+`docs/specs/1112-stores-tickets-custody.md` (S2; S2a built here, S2b owed).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -66,6 +67,42 @@ department shelves every department (housekeeping included) receives from. Pharm
   (advisory lock + lookup). TRAP: a later migration that backfills ledger rows must drop and re-create the trigger
   in the same file. `truncateAll` (TRUNCATE) is unaffected.
 
-## 7. Not built here (S1 scope)
-Tickets, HOD approval, custody, porters (S2 #1112); gate passes (#1119); tower/concierge (S3); tagged units (S4);
-purchasing (S5). The reorder draft is saved as an event (`reorder_draft`); S2 turns it into a ticket.
+## 7. Tickets (S2a #1112, `tickets.ts`)
+- The ticket IS the materials indent (decision 1): `raiseTicket` → `materials.raiseIndentScoped` (caller-authorised,
+  runs in OUR tx) + one `stores_ticket_details` row (department, shelf, priority, channel, needed-by, deliver-to,
+  emergency reason, `night`, origin link, `clock_from`). Shelf = indent `from`; supplying store = indent `to`.
+- Approval is the indent's own stamp (`store_indents.approval_*`, `store_indent_lines.qty_approved`), written by
+  `materials.stampIndentApproval`. WRITE-ONCE in the database: migration 0238 REPLACES 0155's `store_indent_guard` /
+  `store_indent_line_guard` (same refusals plus exactly the stamp transitions). A decline closes the indent as
+  `rejected` with the approver as `decided_by` in the same update; stage `declined` = rejected + decision declined.
+- `materials.issueIndent` refuses `indent_not_approved` when `approval_required` and no decision and not
+  `issue_before_approval` (emergency). A pharmacy indent has `approval_required = false`, so it never refuses one.
+  Issue up to `qty_approved ?? qty_base`.
+- Who approves: `stores.indents.approve` AT the department (HOD); a hospital-scope holding (the MS) is the stand-in,
+  `forHod = not assigned at the department`. Never the requester (`own_ticket`).
+- Night (decision 5): an emergency raised outside the central store's `serviceHours` (IST, `withinServiceHours`) goes
+  to the night store whose `suppliedBy` is that central store. Issuing from a night store with
+  `stores.nightstore.issue` goes through `materials.issueIndentScoped`; anyone else goes through `issueIndent`
+  (so a storekeeper is refused `not_store_keeper` by the custodian check).
+- Picking claim: `stores_picking_claims` is insert-only; the live claim is the newest one younger than 30 min
+  (`CLAIM_IDLE_MS`). A claim needs approval (or emergency); issue is refused while another keeper's claim is live.
+- Every act appends one `stores.act_recorded` (refId = indent id) and raises its notices (`raiseNotice`, key
+  `stores-ticket:<id>:<step>`) in the same tx. Approvers are told on raise (the department's; if none but the
+  requester, the hospital-scope stand-ins). Requester: Approved / Not approved (never the reason) / On the way.
+
+## 8. Reads, Now cards, timeline, audit pack
+- `stage` is derived (`stageOf`), never stored. `ticketsToApprove` / `ticketsToPick` / `ticketsToReceive` are the one
+  read behind both the desk card (`desk.ts` `load`, gated at hospital scope by the kernel) and the waiting line
+  (`waiting`, `waitingSelfGated` — the only way a DEPARTMENT-scoped HOD sees it; roster-leave precedent). Waiting kinds
+  `stores.indentsToApprove|toPick|toReceive` live in `packages/contracts/src/waiting.ts`.
+- `ticketTimeline` (`timeline.ts`) derives raise, approve/decline ("for HOD"), claims, issue, review, reject, cancel,
+  receive from rows; minutes = since the step before. S2b adds hand-offs from `stores_custody_handoffs`.
+- `storesAuditPack` (`audit-pack.ts`) reads the events table only: `stores.act_recorded` + `material.*`, by window on
+  `occurred_at`, filters ANDed. Writes ONE `audit_export` act per call, after the read. TRAP: an event dated by the
+  wall clock falls outside a stated window — `materials/transfers.ts` now dates `material.issued/received/
+  discrepancy_flagged` by the movement's `occurredAt` (S2a).
+
+## 9. Not built here
+Custody chain, porters, counter collection, delivery with wrong/damaged, shorts, back-order, undelivered and
+department returns, late scans, the delivered notices (S2b, #1112); "Add to open ticket?" on the raise sheet; the
+issue voucher + label QR print; gate passes (#1119); tower/concierge/"Stuck" (S3); tagged units (S4); purchasing (S5).

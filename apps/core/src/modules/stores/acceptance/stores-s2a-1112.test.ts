@@ -199,8 +199,8 @@ describe("Stores S2a: tickets, approval, picking, night store, Now cards, audit 
     await db.insert(stockBatches).values({ id: batchId, itemId: gauze, batchNo: "G1", landedCostPaise: 100, ownership: "owned", createdBy: "t" });
     await withTx(db, (tx) => postMovements(tx, keeperA.actor, [{ resourceId: main, batchId, qtyDelta: 50, reason: "grn", occurredAt: NOW }]));
     const indent = await raiseIndent(db, pharmacist.actor, { fromResourceId: pharm, toResourceId: main, lines: [{ itemId: gauze, qtyBase: 10 }] }, NOW);
-    const row = await db.execute(sql`select approval_required, approval_decision, approved_by from store_indents where id = ${indent.id}`);
-    expect(row.rows[0]).toEqual({ approval_required: false, approval_decision: null, approved_by: null });
+    const row = await db.execute(sql`select approval_required, approval_decision, approval_by from store_indents where id = ${indent.id}`);
+    expect(row.rows[0]).toEqual({ approval_required: false, approval_decision: null, approval_by: null });
     expect((await issueIndent(db, keeperA.actor, indent.id, {}, NOW)).status).toBe("issued");
   });
 

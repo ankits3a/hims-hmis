@@ -8,7 +8,7 @@ export { StoresError, STORES_ERROR_CODES, storesHttpStatus } from "./errors";
 export type { StoresErrorCode } from "./errors";
 export { STORES_ACTS, STORES_ACT_EVENT, STORES_EVENTS, storesActRecorded } from "./events";
 export type { StoresAct } from "./events";
-export { STORES_MASTERS, STORES_SHELF_READ, STORES_SHELF_WORK } from "./access";
+export { STORES_AUDIT_READ, STORES_INDENTS_APPROVE, STORES_MASTERS, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_READ, STORES_SHELF_WORK } from "./access";
 export {
   CENTRAL_STORE_CODE, NIGHT_STORE_CODE, STORES_TOP_CATEGORIES, createCategory, importStoresItems, listCategories, listNewItemRequests,
   listStoresItems, registerStoresItem, requestNewItem, resolveNewItemRequest, searchStoresItems, seedStoresMasters, updateStoresItem,
@@ -19,13 +19,13 @@ export {
   saveReorderDraft, shelfReorderDraft,
 } from "./use";
 export { departmentChargeOn, floorShelfUseByMonth, myShelves, overBookCards, shelfView, storesPickers } from "./reads";
-export { STORES_ITEM_CLASSES, TRACK_MODES } from "./types";
+export { STORES_ITEM_CLASSES, TICKET_CHANNELS, TICKET_PRIORITIES, TRACK_MODES } from "./types";
 export type * from "./types";
 export { StoresModule } from "./stores.module";
 export {
-  approveTicket, claimPicking, declineTicket, getTicket, issueTicket, overdueEmergencyReviews, raiseTicket, reRaiseTicket, ticketsToApprove,
-  ticketsToPick, ticketsToReceive,
+  CLAIM_IDLE_MS, EMERGENCY_REVIEW_MS, approveTicket, claimPicking, declineTicket, getTicket, issueTicket, overdueEmergencyReviews, raiseTicket,
+  reRaiseTicket, reviewEmergency, ticketsToApprove, ticketsToPick, ticketsToReceive, withinServiceHours,
 } from "./tickets";
 export { ticketTimeline } from "./timeline";
 export { storesAuditPack } from "./audit-pack";
-export { storesApproveDesk, storesPickDesk, storesReceiveDesk } from "./desk";
+export { STORES_DESK_PROVIDERS, storesApproveDesk, storesPickDesk, storesReceiveDesk } from "./desk";

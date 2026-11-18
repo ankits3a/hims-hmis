@@ -20,6 +20,12 @@ import type { Db, Tx } from "../../kernel/db/client";
 export const STORES_MASTERS = "stores.masters.manage";
 export const STORES_SHELF_READ = "stores.shelf.read";
 export const STORES_SHELF_WORK = "stores.shelf.work";
+/** S2a (#1112, decision 3) — approve or decline a department's ticket: the HOD at department scope, the MS at hospital scope (stand-in). */
+export const STORES_INDENTS_APPROVE = "stores.indents.approve";
+/** S2a (#1112, decision 5) — issue from the night store: its keepers, the duty nursing supervisor and the duty manager. */
+export const STORES_NIGHTSTORE_ISSUE = "stores.nightstore.issue";
+/** S2a (#1112, decision 16) — the audit pack: materials head, medical superintendent, owner, the internal auditor. */
+export const STORES_AUDIT_READ = "stores.audit.read";
 
 export async function holds(db: Db | Tx, actor: Actor, permission: string, departmentId?: string): Promise<boolean> {
   if (actor.type !== "user") return false;

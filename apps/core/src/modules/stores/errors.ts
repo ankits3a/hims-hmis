@@ -33,6 +33,19 @@ export const STORES_ERROR_CODES = [
   "not_reversible",
   "already_reversed",
   "not_this_shelf",
+  // ── S2a (#1112): tickets, approval, picking, the audit pack ──
+  "unknown_ticket",
+  "reason_required",
+  "more_than_asked",
+  "own_ticket",
+  "already_decided",
+  "not_declined",
+  "already_reraised",
+  "not_approved",
+  "claimed_by_another",
+  "not_emergency",
+  "already_reviewed",
+  "bad_window",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -75,6 +88,18 @@ const STATUS: Record<StoresErrorCode, number> = {
   not_reversible: 409,
   already_reversed: 409,
   not_this_shelf: 422,
+  unknown_ticket: 404,
+  reason_required: 422,
+  more_than_asked: 422,
+  own_ticket: 403,
+  already_decided: 409,
+  not_declined: 409,
+  already_reraised: 409,
+  not_approved: 409,
+  claimed_by_another: 409,
+  not_emergency: 409,
+  already_reviewed: 409,
+  bad_window: 422,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {
