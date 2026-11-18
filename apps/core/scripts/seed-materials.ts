@@ -2,6 +2,7 @@ import { createDb } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { MATERIALS_APPROVAL_TYPES, registerMaterialsApprovalTypes } from "../src/modules/materials/approval-types";
+import { seedStoresMasters } from "../src/modules/stores/items";
 import type { Actor } from "@hmis/contracts";
 
 /**
@@ -67,6 +68,11 @@ async function main(): Promise<void> {
     await registerMaterialsApprovalTypes(db, activator);
     console.log(`approval types ensured: ${MATERIALS_APPROVAL_TYPES.map((t) => t.typeKey).join(", ")}`);
     console.log("no item, vendor or store seeded — master data is registered through /materials/* (DD16)");
+    // STORES S1 (#1111, decision 0099) — the ONE exception, and it is the owner's: the non-drug Stores spec
+    // seeds its twelve top categories and two places, the central store `GEN-MAIN` (kept by `storekeeper`)
+    // and the night store. No item, rate or vendor. Idempotent: nothing that exists is touched.
+    const stores = await seedStoresMasters(db, activator);
+    console.log(`stores masters ensured: ${String(stores.categories)} new categories, GEN-MAIN ${stores.centralStoreId}`);
   } finally {
     await pool.end();
   }
