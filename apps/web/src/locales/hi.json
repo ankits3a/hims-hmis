@@ -3410,6 +3410,7 @@
     "unknown_indent": "वह इंडेंट नहीं मिला।",
     "invalid_indent": "इंडेंट अधूरा है — हर आइटम एक ही बार, शून्य से अधिक पूरी संख्या में, किसी दूसरे स्टोर से माँगें; जितना माँगा गया उससे अधिक न दें और कम से कम एक यूनिट दें।",
     "indent_closed": "यह इंडेंट पहले ही जारी, अस्वीकार या रद्द हो चुका है — रिफ़्रेश करके फिर देखें।",
+    "indent_not_approved": "यह इंडेंट विभागाध्यक्ष की मंज़ूरी की प्रतीक्षा में है — मंज़ूरी से पहले कुछ जारी नहीं होता।",
     "grn_same_person": "यह माल आपने दर्ज किया है। अस्पताल की सेटिंग के अनुसार इसकी जाँच और पोस्टिंग कोई दूसरा व्यक्ति करेगा।",
     "pack_in_use": "यह पैक उपयोग में है — कोई बैच, माल प्राप्ति या खुला ऑर्डर इसी में गिना गया है। सही पैक को नए पैक के रूप में जोड़ें।",
     "grn_cancelled": "यह माल प्राप्ति रद्द हो चुकी है। इस पर अब कुछ नहीं किया जा सकता।",
@@ -16916,6 +16917,7 @@
         "today_one": "रिमाइंडर आज बाकी",
         "today_other": "रिमाइंडर आज बाकी"
       },
+      "stores": {"indentsToApprove_one": "इंडेंट मंज़ूरी बाकी", "indentsToApprove_other": "इंडेंट मंज़ूरी बाकी", "toPick_one": "टिकट उठाना है", "toPick_other": "टिकट उठाने हैं", "toReceive_one": "सामान लेना है", "toReceive_other": "सामान लेने हैं"},
       "roster": {
         "leaveToDecide_one": "छुट्टी तय करनी है",
         "leaveToDecide_other": "छुट्टियाँ तय करनी हैं",
@@ -17242,6 +17244,8 @@
     "saveNewVersion": "नया संस्करण सहेजेगा; पुराना दिखता रहेगा।"
   },
   "stores": {
+    "ticket": {"offline": "कनेक्शन नहीं", "ownTicket": "आपका अपना टिकट", "notYourDept": "आपका विभाग नहीं", "takenByAnother": "दूसरे कीपर ने लिया", "notApprovedYet": "अभी मंज़ूर नहीं", "reasonNeeded": "कारण ज़रूरी", "chooseFromList": "सूची से चुनें", "onlyDown": "केवल कम हो सकता है", "toApproveTitle": "मंज़ूरी के लिए इंडेंट", "nothingToApprove": "मंज़ूरी को कुछ नहीं", "priorityLabel": "प्राथमिकता", "priority": {"routine": "सामान्य", "urgent": "जल्दी", "emergency": "आपात"}, "item": "सामान", "asked": "माँगा", "approveQty": "मंज़ूर", "reason": "कारण", "approve": "मंज़ूर करें", "decline": "मना करें", "toPickTitle": "उठाना है", "nothingToPick": "उठाने को कुछ नहीं", "claim": "लें", "issue": "जारी करें", "issued": "जारी किया", "claimedBy": "लिया", "send": "भेजें", "sent": "भेज दिया", "forHod": "HOD की जगह", "stage": {"to_approve": "मंज़ूरी बाकी", "to_pick": "उठाना है", "to_receive": "रास्ते में", "delivered": "पहुँच गया", "declined": "मंज़ूर नहीं", "rejected": "स्टोर ने मना किया", "cancelled": "रद्द"}, "step": {"raise": "माँगा", "re_raise": "फिर माँगा", "re_ask": "फिर माँगा", "approve": "मंज़ूर", "decline": "मंज़ूर नहीं", "review": "देखा", "claim": "उठाने को लिया", "issue": "जारी किया", "receive": "लिया", "reject": "स्टोर ने मना किया", "cancel": "रद्द"}},
+    "now": {"toApprove": "मंज़ूरी बाकी", "toPick": "उठाना है", "toReceive": "लेना है"},
     "shelf": {
       "status": {
         "ok": "ठीक",
@@ -17346,6 +17350,14 @@
       }
     },
     "err": {
+      "reason_required": "कारण ज़रूरी",
+      "own_ticket": "आपका अपना टिकट",
+      "more_than_asked": "केवल कम हो सकता है",
+      "claimed_by_another": "दूसरे कीपर ने लिया",
+      "not_approved": "अभी मंज़ूर नहीं",
+      "already_decided": "पहले ही तय",
+      "not_declined": "मना नहीं हुआ",
+      "already_reraised": "पहले ही फिर भेजा",
       "failed": "सेव नहीं हुआ",
       "not_stores_class": "यह स्टोर का क्लास नहीं",
       "patient_billable_refused": "मरीज़ के बिल का सामान: फ़ार्मेसी रखती है",

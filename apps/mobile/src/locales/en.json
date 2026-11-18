@@ -3077,6 +3077,7 @@
         "today_one": "Reminder today",
         "today_other": "Reminders today"
       },
+      "stores": {"indentsToApprove_one": "Indent to approve", "indentsToApprove_other": "Indents to approve", "toPick_one": "Ticket to pick", "toPick_other": "Tickets to pick", "toReceive_one": "Delivery to receive", "toReceive_other": "Deliveries to receive"},
       "roster": {
         "leaveToDecide_one": "Leave to decide",
         "leaveToDecide_other": "Leaves to decide",

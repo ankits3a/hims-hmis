@@ -70,6 +70,7 @@ import { AdminUsers } from "./screens/admin-users";
 import { AttendanceLinks } from "./screens/attendance-links";
 import { StoresDesk } from "./screens/stores-desk";
 import { StoresShelf } from "./screens/stores-shelf";
+import { StoresApprove, StoresPick, StoresTicketTimeline } from "./screens/stores-tickets";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -1884,6 +1885,18 @@ const storesShelfRoute = createRoute({
     return <StoresShelf shelfId={shelfId} />;
   },
 });
+// STORES S2a (#1112) — the HOD's Approve list, the store's To pick list and a ticket's timeline. No menu row:
+// they are reached from the Now cards, the notices and `/stores`; the server asks each grant at the department.
+const storesApproveRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/approve", component: () => <StoresApprove /> });
+const storesPickRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/pick", component: StoresPick });
+const storesTicketRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/stores/tickets/$indentId",
+  component: function StoresTicketPage() {
+    const { indentId } = storesTicketRoute.useParams();
+    return <StoresTicketTimeline indentId={indentId} />;
+  },
+});
 
 /**
  * PLAN 09 T3 / DD8 — card recognition. It is under `/counter/…` rather than `/billing/…` because
@@ -1989,7 +2002,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesTicketRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

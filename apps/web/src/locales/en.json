@@ -3410,6 +3410,7 @@
     "unknown_indent": "That indent was not found.",
     "invalid_indent": "The indent is incomplete — ask for each item once, in whole numbers above zero, from another store; issue no more than was asked and at least one unit.",
     "indent_closed": "This indent was already issued, rejected or cancelled — refresh and look at it again.",
+    "indent_not_approved": "This indent waits for the head of department's approval — nothing is issued before it.",
     "grn_same_person": "You captured this delivery. The hospital's setting needs a different person to check and post it.",
     "pack_in_use": "This pack is in use — a batch, a goods receipt or an open order counts in it. Add the right pack as a new one instead.",
     "grn_cancelled": "This goods receipt was cancelled. Nothing more can be done on it.",
@@ -16916,6 +16917,7 @@
         "today_one": "reminder still today",
         "today_other": "reminders still today"
       },
+      "stores": {"indentsToApprove_one": "indent to approve", "indentsToApprove_other": "indents to approve", "toPick_one": "ticket to pick", "toPick_other": "tickets to pick", "toReceive_one": "delivery to receive", "toReceive_other": "deliveries to receive"},
       "roster": {
         "leaveToDecide_one": "leave to decide",
         "leaveToDecide_other": "leaves to decide",
@@ -17242,6 +17244,8 @@
     "saveNewVersion": "Saves a new version; the live one stays."
   },
   "stores": {
+    "ticket": {"offline": "No connection", "ownTicket": "Your own ticket", "notYourDept": "Not your department", "takenByAnother": "Taken by another keeper", "notApprovedYet": "Not approved yet", "reasonNeeded": "Reason needed", "chooseFromList": "Choose from the list", "onlyDown": "Can only go down", "toApproveTitle": "Indents to approve", "nothingToApprove": "Nothing to approve", "priorityLabel": "Priority", "priority": {"routine": "Routine", "urgent": "Urgent", "emergency": "Emergency"}, "item": "Item", "asked": "Asked", "approveQty": "Approve", "reason": "Reason", "approve": "Approve", "decline": "Decline", "toPickTitle": "To pick", "nothingToPick": "Nothing to pick", "claim": "Claim", "issue": "Issue", "issued": "Issued", "claimedBy": "Taken by", "send": "Send", "sent": "Sent", "forHod": "for HOD", "stage": {"to_approve": "To approve", "to_pick": "To pick", "to_receive": "On the way", "delivered": "Delivered", "declined": "Not approved", "rejected": "Refused by store", "cancelled": "Cancelled"}, "step": {"raise": "Raised", "re_raise": "Raised again", "re_ask": "Asked again", "approve": "Approved", "decline": "Not approved", "review": "Reviewed", "claim": "Taken to pick", "issue": "Issued", "receive": "Received", "reject": "Refused by store", "cancel": "Cancelled"}},
+    "now": {"toApprove": "Indents to approve", "toPick": "To pick", "toReceive": "To receive"},
     "shelf": {
       "status": {
         "ok": "OK",
@@ -17346,6 +17350,14 @@
       }
     },
     "err": {
+      "reason_required": "Reason needed",
+      "own_ticket": "Your own ticket",
+      "more_than_asked": "Can only go down",
+      "claimed_by_another": "Taken by another keeper",
+      "not_approved": "Not approved yet",
+      "already_decided": "Already answered",
+      "not_declined": "Not declined",
+      "already_reraised": "Already sent again",
       "failed": "Could not save",
       "not_stores_class": "Not a Stores class",
       "patient_billable_refused": "Billed to patients: pharmacy keeps it",

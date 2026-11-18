@@ -3077,6 +3077,7 @@
         "today_one": "रिमाइंडर आज",
         "today_other": "रिमाइंडर आज"
       },
+      "stores": {"indentsToApprove_one": "इंडेंट मंज़ूरी बाकी", "indentsToApprove_other": "इंडेंट मंज़ूरी बाकी", "toPick_one": "टिकट उठाना है", "toPick_other": "टिकट उठाने हैं", "toReceive_one": "सामान लेना है", "toReceive_other": "सामान लेने हैं"},
       "roster": {
         "leaveToDecide_one": "छुट्टी तय करनी है",
         "leaveToDecide_other": "छुट्टियाँ तय करनी हैं",

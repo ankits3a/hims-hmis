@@ -1,7 +1,7 @@
 import { ApiError, api } from "./api";
 import type {
   WireImportResult, WireItemRequest, WireOverBookCard, WireReorderLine, WireShelfView, WireStoresCategory, WireStoresItem, WireStoresPickers,
-  WireStoresShelf, WireStoresStore,
+  WireStoresShelf, WireStoresStore, WireTicket, WireTicketTimeline,
 } from "@hmis/contracts";
 
 /**
@@ -59,3 +59,16 @@ export const listRequests = (): Promise<{ requests: WireItemRequest[] }> => api(
 export const resolveRequest = (requestId: string, outcome: "created" | "use_existing", itemId: string): Promise<{ ok: true }> =>
   api("POST", `/stores/requests/${enc(requestId)}/resolve`, { outcome, itemId });
 export const overBookCards = (): Promise<{ cards: WireOverBookCard[] }> => api("GET", "/stores/cards");
+
+/* ── S2a (#1112): tickets — raise, approve, pick, the timeline ── */
+export type TicketPriority = "routine" | "urgent" | "emergency";
+export const raiseTicket = (shelfId: string, b: { lines: { itemId: string; qtyBase: number }[]; priority: TicketPriority; emergencyReason?: string | null }): Promise<WireTicket> =>
+  api("POST", `/stores/shelves/${enc(shelfId)}/tickets`, { ...b, channel: "phone" });
+export const ticketsToApprove = (): Promise<{ tickets: WireTicket[] }> => api("GET", "/stores/tickets/to-approve");
+export const ticketsToPick = (): Promise<{ tickets: WireTicket[] }> => api("GET", "/stores/tickets/to-pick");
+export const getTicket = (indentId: string): Promise<{ ticket: WireTicket; timeline: WireTicketTimeline }> => api("GET", `/stores/tickets/${enc(indentId)}`);
+export const approveTicket = (indentId: string, lines: { lineIdx: number; qtyBase: number }[]): Promise<WireTicket> =>
+  api("POST", `/stores/tickets/${enc(indentId)}/approve`, { lines });
+export const declineTicket = (indentId: string, reason: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/decline`, { reason });
+export const claimTicket = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/claim`, {});
+export const issueTicket = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/issue`, {});
