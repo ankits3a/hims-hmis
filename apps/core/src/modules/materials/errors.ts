@@ -318,6 +318,8 @@ export type MaterialsErrorCode =
   | "invalid_indent"
   /** The indent was already issued, rejected or cancelled — only a requested one is acted on. */
   | "indent_closed"
+  /** STORES S2a (#1112) — the indent waits for its approval (a Stores ticket the HOD has not approved yet): nothing is issued before it. */
+  | "indent_not_approved"
   // ── OWNER RULING 2026-09-30 — the two-person GRN setting (`settings.ts`, `grn.ts`) ──
   /** The setting is on and the person who captured this GRN tries to QC or post it: somebody else must. */
   | "grn_same_person"

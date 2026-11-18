@@ -848,6 +848,26 @@ export const storeIndents = pgTable(
     rejectReason: text("reject_reason"),
     cancelReason: text("cancel_reason"),
     transferId: text("transfer_id").references(() => transfers.id),
+    /**
+     * STORES S2a (#1112, decision 1) — THE APPROVAL STAMPS, all nullable or defaulted false: a pharmacy indent
+     * carries none, and "no stamp" means "no approval needed", exactly as before S2. Fixed at raise:
+     * `approval_required` (a Stores ticket; the HOD answers it) and `issue_before_approval` (an emergency: the
+     * store may issue first, the HOD reviews afterwards). The decision (`approved` | `declined`), who, when, the
+     * decline's reason and whether the medical superintendent answered as the HOD's stand-in are WRITE-ONCE:
+     * the migration's trigger refuses changing or clearing them, and an indent is never deleted.
+     */
+    approvalRequired: boolean("approval_required").notNull().default(false),
+    issueBeforeApproval: boolean("issue_before_approval").notNull().default(false),
+    approvalDecision: text("approval_decision"),
+    approvalBy: text("approval_by"),
+    approvalAt: timestamp("approval_at", { withTimezone: true }),
+    approvalReason: text("approval_reason"),
+    approvalForHod: boolean("approval_for_hod"),
+    /** Decision 4: the HOD's look at an emergency the store issued first ("Agree" | "Query"). Write-once. */
+    reviewDecision: text("review_decision"),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewNote: text("review_note"),
   },
   (t) => [
     uniqueIndex("store_indents_indent_no_ux").on(t.indentNo),
@@ -859,6 +879,13 @@ export const storeIndents = pgTable(
     check("store_indents_rejected_ck", sql`${t.status} <> 'rejected' or ${t.rejectReason} is not null`),
     check("store_indents_cancelled_ck", sql`${t.status} <> 'cancelled' or ${t.cancelReason} is not null`),
     check("store_indents_decided_ck", sql`(${t.status} = 'requested') = (${t.decidedAt} is null) and (${t.decidedAt} is null) = (${t.decidedBy} is null)`),
+    check("store_indents_approval_ck", sql`(${t.approvalDecision} is null or (${t.approvalRequired} and ${t.approvalDecision} in ('approved', 'declined')))
+      and (${t.approvalDecision} is null) = (${t.approvalBy} is null) and (${t.approvalDecision} is null) = (${t.approvalAt} is null)
+      and (${t.approvalDecision} is null) = (${t.approvalForHod} is null)
+      and (${t.approvalDecision} is distinct from 'declined' or ${t.approvalReason} is not null)
+      and (not ${t.issueBeforeApproval} or ${t.approvalRequired})`),
+    check("store_indents_review_ck", sql`(${t.reviewDecision} is null or (${t.issueBeforeApproval} and ${t.reviewDecision} in ('agree', 'query')))
+      and (${t.reviewDecision} is null) = (${t.reviewedBy} is null) and (${t.reviewDecision} is null) = (${t.reviewedAt} is null)`),
   ],
 );
 
@@ -872,11 +899,14 @@ export const storeIndentLines = pgTable(
     itemId: text("item_id").notNull().references(() => items.id),
     qtyBase: integer("qty_base").notNull(),
     qtyIssued: integer("qty_issued"),
+    /** STORES S2a (#1112, decision 3) — the HOD may approve less than asked, never more. Null: approved as asked (or no approval). Write-once. */
+    qtyApproved: integer("qty_approved"),
   },
   (t) => [
     uniqueIndex("store_indent_lines_idx_ux").on(t.indentId, t.lineIdx),
     uniqueIndex("store_indent_lines_item_ux").on(t.indentId, t.itemId),
     check("store_indent_lines_qty_ck", sql`${t.qtyBase} > 0 and (${t.qtyIssued} is null or ${t.qtyIssued} >= 0)`),
+    check("store_indent_lines_approved_ck", sql`${t.qtyApproved} is null or (${t.qtyApproved} >= 0 and ${t.qtyApproved} <= ${t.qtyBase})`),
   ],
 );
 

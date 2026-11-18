@@ -72,10 +72,12 @@ export {
 export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
 // ── PHARMACY GAP A6b — indents: a sub-store asks, the supplying store answers with a transfer ──
 export { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";
+// STORES S2a (#1112) — the caller-authorised twins and the write-once approval stamps (additive; the four above are unchanged).
+export { issueIndentScoped, raiseIndentScoped, stampIndentApproval, stampIndentReview } from "./indents";
 // OWNER RULING 2026-09-30 — the stores' settings; the two-person GRN rule is the first.
 export { loadMaterialsSettings, updateMaterialsSettings } from "./settings";
 export type { MaterialsSettings } from "./settings";
-export type { IndentLineInput, IndentStatus, IndentView, IssueIndentInput, RaiseIndentInput } from "./indents";
+export type { IndentApprovalInput, IndentLineInput, IndentStatus, IndentView, IssueIndentInput, RaiseIndentInput } from "./indents";
 export { MaterialsIndentsController } from "./materials-indents.controller";
 /**
  * DD13's half of the interface Plan 15 imports: it appends `consignmentDeployed` (exported above,
