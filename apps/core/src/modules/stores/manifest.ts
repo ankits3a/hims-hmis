@@ -25,6 +25,9 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * hospital scope as stand-in), `stores.nightstore.issue` (hospital; the night store's keepers) and
  * `stores.audit.read` (hospital; the audit pack).
  *
+ * S2b (#1112, decision 7) adds `stores.carry` (hospital; the porter, `support_staff`): take custody of an
+ * issued ticket by scanning its label, hand it on, bring it back undelivered.
+ *
  * One menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -42,6 +45,7 @@ export const storesManifest: ModuleManifest = {
     "stores.indents.approve",
     "stores.nightstore.issue",
     "stores.audit.read",
+    "stores.carry",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the three Now cards: "Indents to approve", "To pick", "To receive" (`desk.ts`). */

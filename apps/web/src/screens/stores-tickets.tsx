@@ -216,3 +216,9 @@ export function StoresTicketTimeline({ indentId }: { indentId: string }): React.
     </div>
   );
 }
+
+// ═══════════════════════════════ Receive (S2b, not built yet) ═══════════════════════════════
+
+export function StoresReceive(): React.ReactElement {
+  return <div data-testid="stores-receive" />;
+}

@@ -474,6 +474,7 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
         lineIdx: l.line.lineIdx, itemId: l.line.itemId, itemCode: l.itemCode, itemName: l.itemName, baseUom: l.baseUom,
         qtyBase: l.line.qtyBase, qtyApproved: l.line.qtyApproved, qtyIssued: l.line.qtyIssued,
       })),
+      custody: null, delivery: null, shorts: [],
     };
   });
 }

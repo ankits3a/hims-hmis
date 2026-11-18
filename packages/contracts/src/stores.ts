@@ -149,7 +149,7 @@ export const storesAuditQuery = z.object({
 export type WireTicketPerson = { id: string; name: string };
 export type WireTicket = {
   id: string; indentNo: string; status: string;
-  stage: "to_approve" | "to_pick" | "to_receive" | "delivered" | "declined" | "rejected" | "cancelled";
+  stage: "to_approve" | "to_pick" | "to_receive" | "delivered" | "declined" | "rejected" | "cancelled" | "returning" | "returned";
   priority: (typeof STORES_TICKET_PRIORITIES)[number]; channel: (typeof STORES_TICKET_CHANNELS)[number];
   neededBy: string | null; deliverTo: string | null; emergencyReason: string | null; night: boolean;
   department: { id: string; code: string; name: string };
@@ -162,6 +162,16 @@ export type WireTicket = {
   claim: { by: WireTicketPerson; at: string; lapsesAt: string } | null;
   transfer: { id: string; status: string } | null;
   lines: { lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null }[];
+  /** S2b (#1112): whose hands it is in, what the receiver said per line, and the shorts still in transit. */
+  custody?: { holder: WireTicketPerson | null; legs: number; lastCustodian: WireTicketPerson } | null;
+  delivery?: {
+    by: WireTicketPerson; at: string; atCounter: boolean; sentBack: number; sentBackAccepted: boolean;
+    lines: { lineIdx: number; itemId: string; accepted: number; short: number; wrong: number; damaged: number }[];
+  } | null;
+  shorts?: {
+    lineIdx: number; itemId: string; qty: number; with: WireTicketPerson;
+    resolution: { kind: "found" | "returned" | "lost"; by: WireTicketPerson; at: string; approvalId: string | null; posted: boolean } | null;
+  }[];
 };
 export type WireTimelineStep = {
   step: "raise" | "re_raise" | "re_ask" | "approve" | "decline" | "review" | "claim" | "issue" | "receive" | "reject" | "cancel";
