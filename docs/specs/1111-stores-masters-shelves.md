@@ -1,6 +1,6 @@
 ---
 issue: 1111
-status: approved
+status: built
 approved: 2026-11-18
 ---
 # SPEC: Stores S1, the non-drug master, stores and department shelves (#1111) — APPROVED by owner 2026-11-18

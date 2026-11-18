@@ -121,3 +121,5 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/roster/my-duties` | `apps/web/src/screens/roster-my-duties` |
 | `/roster/on-now` | `apps/web/src/screens/roster-on-now` |
 | `/staff` | `apps/web/src/screens/staff-reports` |
+| `/stores` | `apps/web/src/screens/stores-desk` |
+| `/stores/shelf/$shelfId` | `apps/web/src/screens/stores-shelf` |

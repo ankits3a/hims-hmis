@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/materials/`
 
 - **Depends on modules:** `formulary`
-- **Used by modules:** `opd`, `ot`, `pharmacy`
+- **Used by modules:** `opd`, `ot`, `pharmacy`, `stores`
 - **Kernel used:** `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `consignmentDeployed`
 
@@ -186,6 +186,11 @@ Source: `apps/core/src/modules/materials/`
   - `class MaterialsController`
 - `materials.module.ts`
   - `class MaterialsModule`
+- `opening-balances.ts`
+  - `OPENING_BALANCE_REF_TYPE`
+  - `hasOpeningBalance(db: Db | Tx, resourceId: string): Promise<boolean>`
+  - `postOpeningBalances(tx: Tx, actor: Actor, input: { resourceId: string; refId: string; occurredAt: Date; lines: readonly OpeningLine[] }): P…`
+  - types: `OpeningLine`
 - `payments.ts`
   - `PAYMENT_MODES: readonly PaymentMode[]`
   - `assertNotRunAuthoriser(db: Db, actor: Actor, runId: string): Promise<void>`
@@ -235,6 +240,7 @@ Source: `apps/core/src/modules/materials/`
   - `stockLevelsAt(db: Db | Tx, storeResourceId: string, itemIds: readonly string[]): Promise<Map<string, StockLevel>>`
   - `submitPurchaseOrder(db: Db, actor: Actor, poId: string, now: Date = new Date()): Promise<PoView>`
   - `updatePurchaseOrder(db: Db, actor: Actor, poId: string, patch: Partial<PoInput>, now: Date = new Date()): Promise<PoView>`
+  - `writeStockLevel(tx: Tx, actor: Actor, input: { itemId: string; storeResourceId: string } & StockLevel, now: Date = new Date()): Promise<Sto…`
   - types: `LastPurchase`, `PoFilter`, `PoInput`, `PoLineInput`, `PoLineView`, `PoStatus`, `PoSummary`, `PoView`, `StockLevel`
 - `qc.ts`
   - `daysBetween(from: string, to: string): number`
@@ -393,7 +399,7 @@ Source: `apps/core/src/modules/materials/`
 
 ## Tables (`kernel/db/schema/materials.ts`)
 
-`consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendor_item_rates`, `vendors`
+`consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_categories`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendor_item_rates`, `vendors`
 
 Foreign keys into: `formulary`, `resources`
 
