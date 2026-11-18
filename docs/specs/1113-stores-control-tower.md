@@ -6,7 +6,7 @@ approved: 2026-11-18
 # SPEC: Stores S3, the control tower, Now cards, concierge and chaser (#1113) — APPROVED by owner 2026-11-18
 
 Owner answered Q1–Q5 with the recommended options on 2026-11-18 (decision 0099). This is slice S3 of the Stores & Procurement programme (`docs/specs/stores-programme.md`) and needs
-S2. Owner, 2026-11-18: "This master stock/inventory register needs to be like a control tower of materials under
+S2 (#1112) and S2c (#1119). Owner, 2026-11-18: "This master stock/inventory register needs to be like a control tower of materials under
 procurement department … a true agentic AI and assisted co-pilot."
 
 ## What exists
@@ -38,7 +38,7 @@ procurement department … a true agentic AI and assisted co-pilot."
    - Picking, from approval: routine 4 h, urgent 30 min, emergency 10 min (emergency counts from raise).
    - Transit leg: 30 min.
    - An open short: 24 h. An emergency review: 24 h.
-   - A returnable pass past due.
+   - A returnable pass past due (#1119).
    - A porter holding custody for more than 2 h, or holding at the end of a shift once attendance knows it.
 
    Stuck names the clock that broke.
@@ -49,7 +49,9 @@ procurement department … a true agentic AI and assisted co-pilot."
 5. **Numbers strip.**
    - Today's tickets, the median approval minutes, the median raise-to-deliver minutes, the double-signed share
      and the open shorts.
-   - **Spend** this month per department at cost (charges minus credits) shows only to holders of
+   - **Spend** this month per department at cost: charge = receive rows into the department's shelves × batch
+     cost, minus return rows out of them; `consume` rows are excluded (they carry the same cost centre and would
+     count twice). It shows only to holders of
      `stores.spend.read`: the owner, the materials head and the medical superintendent. Doctors never see it
      (decision 0058).
    - Spend is per OPD visit for OPD departments, and per occupied bed-day once IPD is live.
@@ -70,7 +72,7 @@ procurement department … a true agentic AI and assisted co-pilot."
 |---|---|---|---|
 | `stores.where_is_ticket` | read, needs ticket | `stores.shelf.read` (own department) or `stores.tower.read` | `ticketTimeline`: lane, holder, minutes, next step |
 | `stores.my_tickets` | read | `stores.shelf.read` | the asker's department's open tickets by lane |
-| `stores.waiting_for_me` | read | any stores grant | approvals, picks, carries or receipts waiting on the asker |
+| `stores.waiting_for_me` | read | any of `stores.indents.approve`, `materials.stock.issue`, `stores.nightstore.issue`, `stores.carry`, `stores.shelf.work` | approvals, picks, carries or receipts waiting on the asker |
 | `stores.where_is_item` | read | `stores.shelf.read`, also `stores.tower.read` | on hand per visible place: stores, the asker's shelves, IN-TRANSIT |
 | `stores.shelf_low` | read | `stores.shelf.read` | the asker's shelves' Low and Out items |
 | `stores.stuck` | read | `stores.tower.read` | red cards by kind |
@@ -90,9 +92,13 @@ procurement department … a true agentic AI and assisted co-pilot."
     - Picking past its clock goes to the store's Now card. A transit leg past 30 min goes to the porter's phone
       and the store.
     - At most one nudge per ticket per step, recorded. Never to a supplier or a patient.
-13. **Now cards.** "Indents to approve" (HOD), "To pick" (store), "To receive" (department), "Stuck" (materials
-    head, duty manager).
+13. **Now cards.** "Indents to approve", "To pick" and "To receive" ship with S2 (#1112 decision 12). S3 adds
+    "Stuck" (materials head, duty manager).
 14. **The station shell's `copilot` slot** is passed on the tower and the department shelf.
+15. **Who reads the tower.** `stores.tower.read`: `materials_head`, `storekeeper`, `medical_superintendent`,
+    `duty_manager`, `owner`. `stores.spend.read`: `owner`, `materials_head`, `medical_superintendent`.
+16. **Owner summary (phone, 390 px).** One line: the stuck count and the places, "3 stuck · 4B, OT", from
+    `towerSummary`; a tap opens the Stuck list.
 
 ## Done means
 
@@ -105,7 +111,8 @@ procurement department … a true agentic AI and assisted co-pilot."
 - **D4** Given one stuck ticket, one open short and one overdue pass, the red-card strip lists three cards,
   oldest first. It never lists more than 8.
 - **D5** The spend tile is present for a holder of `stores.spend.read` and absent (the key is not in the
-  response) for a storekeeper. A department's value equals the month's cost-centre charges minus credits.
+  response) for a storekeeper. A department's value equals the month's receive rows into its shelves × batch
+  cost, minus return rows out of them; its `consume` rows are excluded.
 - **D6** `towerView` never lists a drug item or a pharmacy store, and has no patient field (the key set is
   asserted).
 - **D7** The boot collector lists the seven stores intents, each with a declared permission. The intents
@@ -125,11 +132,32 @@ procurement department … a true agentic AI and assisted co-pilot."
   sweep at 50 min. At 60 min the duty manager's Now card lists the ticket.
 - **D14** With the copilot halted for reads, or the model unavailable, `towerView`, the Now cards and the
   timeline still answer.
-- **D15** (web) The tower at 1920 × 1080 renders six lanes and the red-card strip, and its Stuck count equals
-  `towerView`'s.
+- **D15** (web) The tower at 1920 × 1080 renders six lanes and the red-card strip with no vertical scroll at
+  1366 × 768, and its Stuck count equals `towerView`'s.
 - **D16** Every concierge proposal and every confirmed act appears in the copilot ledger with the confirming
-  person. `storesAuditPack` for an item and a date range lists every movement, store, person and reason in order,
-  and its totals equal the ledger's.
+  person, and `storesAuditPack` (#1112) for that ticket lists the confirmed `stores.reorder` act with its person.
+- **D17** (web, 390 px) `towerSummary` with three stuck tickets on two floors returns count 3 and those places;
+  the owner summary shows "3 stuck · <places>" on one line with no horizontal scroll.
+
+## Screens
+
+Every status is a word, never colour alone. Notices are a few words on one line. Strings are verbatim,
+English / Hindi.
+
+- **Tower (`/stores/tower`, 1920 × 1080; fits 1366 × 768 with no vertical scroll).** Top: red-card strip (≤ 8
+  cards: what · where · clock). Middle: six lanes, Requested / मंज़ूरी बाकी, Approved / मंज़ूर, Picking / उठ रहा,
+  In transit / रास्ते में, Delivered / पहुँचा, Stuck / अटका; each card: ticket · department · holder · minutes.
+  Right: floor map (department · OK / ठीक, Low / कम, Out / खत्म). Bottom: numbers strip (spend only for
+  `stores.spend.read`). A wall has no primary button; on a desktop, clicking a card opens the ticket timeline.
+  Empty lane: "None / कोई नहीं". Loading: grey cards, no text. Heartbeat lost: "Offline / ऑफ़लाइन". Refused: "No
+  permission / अनुमति नहीं".
+- **Owner summary (phone, 390 px).** One line: "3 stuck · 4B, OT / 3 अटके · 4B, OT". Primary: **See stuck / अटके
+  देखें**. None stuck: "Nothing stuck / कुछ अटका नहीं".
+- **Now card.** "Stuck / अटके" (materials head, duty manager).
+- **Chaser bell, verbatim.** Approvers: "Indent waiting 45 min / इंडेंट 45 मिनट से रुका". Store: "Pick overdue /
+  उठाने में देर". Porter: "Leg over 30 min / 30 मिनट से ज़्यादा".
+- **Concierge.** Answers are keys rendered in short words in both locales; the reorder confirm sheet's primary is
+  **Send / भेजें**, and a state change answers "State changed / स्थिति बदली".
 
 ## Budgets
 
@@ -151,7 +179,7 @@ procurement department … a true agentic AI and assisted co-pilot."
     locales (SHARED), and a new eval items file under `kernel/copilot/acceptance/eval/` (add only; existing items
     are locked).
   - `worker.module.ts` for the chaser sweep (SHARED; read the worker-pool sizing note first).
-  - Web: `/stores/tower` (16:9) and the copilot slot on the shelf.
+  - Web: `/stores/tower` (16:9), the owner summary (390 px) and the copilot slot on the shelf.
 - **Migration** small: `stores_nudges` (one row per ticket and step).
 - **Permissions** `stores.tower.read` and `stores.spend.read`.
-- **Size** L. **Depends on** S2. **Blocked by** nothing.
+- **Size** L. **Depends on** S2 (#1112) and S2c (#1119). **Blocked by** nothing.

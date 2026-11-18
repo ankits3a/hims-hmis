@@ -7,7 +7,7 @@ approved: 2026-11-18
 # Stores & Procurement: the programme — APPROVED by owner 2026-11-18 (decision 0099)
 
 Non-drug master stock, movement tracking and purchasing for the whole hospital. Pharmacy stays separate.
-This file is the overview. The slice specs are docs/specs/1111 to 1113 (S1–S3); S4–S7 are outlines in the appendix, and the five owner questions are in
+This file is the overview. The slice specs are docs/specs/1111 to 1113 and 1119 (S1–S3, with S2's gate passes in 1119); S4–S7 are outlines in the appendix, and the five owner questions are in
 decision 0099. Public-scrub rules apply to every file here: no staff names, patient data, IPs,
 server names, supplier names, supplier rates or security findings.
 
@@ -40,21 +40,25 @@ that user experience is something I cannot compromise with. The flow of the whol
 7. **Look back.** Anyone permitted opens the ticket timeline and sees every step: who, where, when, and why.
 
 No step asks for something the system already knows, no screen is a dead end, and the next step is ready before the
-person reaches it. **Before S1 code, the full journey is drawn as a clickable board (phone 390 px and the 16:9 tower)
-for the owner to walk; the build follows the board** (see verify-UI-against-the-board practice).
+person reaches it. **Each slice spec has a `## Screens` section: per screen, its rows, the one primary button,
+empty/loading/refused states, and every notice string in English and Hindi, verbatim.** The build follows those
+sections; the owner waived a separate design board (2026-11-18).
 
 **Auditable by construction (DECIDED, applies to every slice):**
 
 - Every stores act writes its domain event (`kernel/events`) with the actor, the time, the store(s), the item,
   the quantity before and after, and the reason. Nothing is edited or deleted: a correction is a new reversing row
   that names the row it corrects.
-- The ledger, the hand-off log and the approval stamps are append-only; the database refuses UPDATE and DELETE on
-  them.
+- The ledger and the hand-off log are append-only, and an approval stamp is write-once; the database refuses
+  UPDATE and DELETE on them (S1 adds the `stock_ledger` trigger, a shared change under live pharmacy; S2a the
+  hand-off and stamp triggers). A ledger correction is `reverseShelfUse`: one opposite row naming the original.
 - Offline scans keep both the phone's time and the server's receipt time; the timeline shows both when they differ
-  by more than 5 minutes.
+  by more than 5 minutes. A scan is never lost: one older than 12 h is accepted and flagged for the keeper's
+  confirmation. The web app needs a connection; the offline queue arrives with the native staff-app screens.
 - Every agent proposal and every confirmed act is in the copilot ledger (#575) with the named person who confirmed.
 - **Audit pack:** for any ticket, item, person, store or date range, one export (print and CSV) lists every
   movement and signature in order; the internal auditor and an NABH surveyor read it without help.
+  `storesAuditPack` under `stores.audit.read` (S2a); each export writes one event.
 
 ## 1. Scope
 
@@ -80,7 +84,9 @@ The materials engine handles every item class and is live under pharmacy since 2
 - **Stores.** These are registry `store` resources (`materials/stores.ts` `createStore`, which takes `parentId`
   and `attributes`). `attributes.custodianRoles` names who receives into a store. `IN-TRANSIT` is a real store
   (`TRANSIT_STORE_CODE`).
-- **The ledger.** `stock_ledger` is append-only and written only through `postMovements` (`materials/ledger.ts`).
+- **The ledger.** `stock_ledger` is written only through `postMovements` (`materials/ledger.ts`). It is
+  append-only by convention: no code path updates or deletes it (`ledger.test.ts` pins that on the source), but
+  no database trigger refuses it. S1 adds one.
   `MovementInput.costCenter` exists, but no caller sets it. The reasons are grn, issue, receive, consume, return
   and adjust. Only pharmacy (`trays.ts`, `handover.ts`, `retail.ts`) and the OT consignment consumer post
   `consume`. **No intent records a department's use of non-drug stock.**
@@ -271,8 +277,10 @@ open proposals per department; beyond that the harness halts it.
     within 24 h; if nobody reviews it, it becomes a red card.
 11. **Duplicate tagging.** A tag already bound to a unit is refused. A unit carrying two tags keeps one, and the
     other is voided with a reason (S4).
-12. **Offline phone.** Scans queue with an idempotency key and the scan time. They post once, with
-    `occurred_at` set to the scan time (the ledger's downtime convention) and marked "synced late".
+12. **Offline phone.** The web app needs a connection. Scans carry an idempotency key and the scan time and
+    post once, with `occurred_at` set to the scan time (the ledger's downtime convention), marked "synced late".
+    A scan older than 12 h is accepted and flagged for the keeper's confirmation, never lost. The offline queue
+    arrives with the native staff-app screens (its own follow-up).
 13. **Two staff ask for the same item.** When a ticket is raised, an open ticket for the same item and shelf
     is offered: "add to it?".
 14. **Item not in the master.** A new-item request goes to the materials head. The duplicate finder runs
@@ -284,8 +292,10 @@ open proposals per department; beyond that the harness halts it.
     they are returned for a swap.
 18. **The phone's clock is wrong.** Every stamp uses server time, except a queued offline scan, which keeps its
     scan time and is flagged.
-19. **The HOD is on leave.** Any other holder of the department's approve grant can approve; formal delegation
-    comes later (S5 approval upgrades).
+19. **The HOD is on leave, or the requester is the only approver.** Any other holder of the department's approve
+    grant can approve. Otherwise the medical superintendent, who holds the grant at hospital scope, approves as
+    stand-in and the timeline shows "for HOD" (DECIDED; flagged to the owner 2026-11-19). Formal delegation comes
+    later (S5 approval upgrades).
 
 **AI-era**
 1. **An agent loops.** At most 3 open proposals per department per agent, then a halt.
@@ -327,8 +337,9 @@ The owner accepted every recommended default below ("Go with your recommendation
 | Slice | What | Depends on | Was blocked by (all ruled 2026-11-18, 0099) | Migration | New permissions (approx.) | Size |
 |---|---|---|---|---|---|---|
 | **S1 #1111** | Masters, stores, department shelves, use and shelf check, cost-centre charge, reorder draft | — | none (Q1/Q5 groups wait) | yes (categories, track mode, new-item requests) | 3 + roles `department_store_incharge`, `department_head` | L |
-| **S2 #1112** | Tickets: approval, priority, picking, custody chain, porter scan, delivery, shorts, returns, gate passes, night store | S1 | none (Q2's extra levels add later) | yes (indent stamps, ticket details, hand-offs, passes, claims) | 3 + porter and security roles | XL (two PRs: tickets + custody; gate passes) |
-| **S3 #1113** | Control tower, Now cards, concierge (7 intents, 1 act), chaser | S2 | none (Q5 pharmacy tile and Q2 budget line add later) | small (nudge log) | 2 | L |
+| **S2 #1112** | Tickets: approval, priority, picking, custody chain, porter scan, delivery, shorts, returns, night store, the three Now cards | S1 | none (Q2's extra levels add later) | yes, one per PR (S2a: indent stamps, ticket details, claims; S2b: hand-offs) | 4 + porter and `stores_auditor` roles | XL (two PRs: S2a tickets + approval + Now cards; S2b custody, shorts, wrong/damaged, returns) |
+| **S2c #1119** | Gate passes: returnable and non-returnable, guard scan, OUT-ON-PASS | S2b | none | yes (passes, pass scans) | 2 + security role | M |
+| **S3 #1113** | Control tower, Stuck Now card, concierge (7 intents, 1 act), chaser | S2, S2c | none (Q5 pharmacy tile and Q2 budget line add later) | small (nudge log) | 2 | L |
 | S4 #1114 | Item passport: QR per unit, holder and location, AMC and calibration, condemnation | S1, S2 | **Q3** | yes | ~2 | L |
 | S5 #1115 | Buying desk and buyer agent: grouping, RFQ, comparative, award, scorecard, KYC, approval upgrades, non-drug GRN QC | S1 | **Q2, Q4** | yes | ~3 | XL |
 | S6 #1116 | Paying desk and auditor: service bills, TDS and GST on bill, MSME clock, holds and release, UTR | S5 (or the existing GRN path) | **Q4**, Q2 | yes | ~2 | L |
@@ -349,6 +360,11 @@ questions are answered.
   - `kernel/copilot/mask.ts`, `packages/contracts/src/copilot.ts` and a new eval items file (add only) in S3.
 - **Migrations.** S1, S2 and S4–S6 each add tables. Take the number at merge, not at start. The IPD train
   (#967) renumbers a block of about 40 migrations, so whichever lands second renumbers. Additive only.
+- **The `stock_ledger` trigger (S1) is a shared kernel and migration change under live pharmacy.** A
+  `BEFORE UPDATE OR DELETE` trigger refuses every row change on the one ledger pharmacy writes. No code path
+  updates or deletes ledger rows today and `materials/ledger.test.ts` pins that on the source; the test helper
+  `truncateAll` uses TRUNCATE, which a row trigger does not fire on. Any later migration that backfills ledger
+  rows must drop and re-create the trigger in the same file.
 - **Materials is shared with live pharmacy.** Changes are additive only: approval stamps on `store_indents`
   (nullable, null means no approval, as every pharmacy indent has), an optional cost centre on receipt, and new
   functions for in-transit resolution and the night store. A change to the meaning of an existing status or
@@ -393,7 +409,7 @@ questions are answered.
 13. Shorts stay in IN-TRANSIT against the last custodian. Resolution is found, returned, or written off through
     the existing approver.
 14. Returns from a department credit its cost centre. Defective items go to quarantine.
-15. Gate passes are returnable (stock moves to OUT-ON-PASS; the guard scans out and in) or non-returnable
+15. Gate passes (S2c #1119) are returnable (stock moves to OUT-ON-PASS; the guard scans out and in) or non-returnable
     (needs a return, write-off or scrap sale reference).
 16. Three notices per ticket to the requester, a few words each.
 17. Tower: non-drug only, six lanes, and the clocks in S3. Spend is shown only to holders of

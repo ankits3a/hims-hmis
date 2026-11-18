@@ -57,3 +57,5 @@ live on it, so Stores is a front end on that ledger, not a second one.
   Stores stores instead of their own item or movement tables.
 - Slices: S1 #1111, S2 #1112, S3 #1113 (approved specs); S4 #1114, S5 #1115, S6 #1116, S7 #1117 need full specs
   before build, written to these rulings.
+- DECIDED (standard practice; flagged to the owner for a nod 2026-11-19): the medical superintendent holds the indent
+  approve grant at hospital scope as stand-in for an absent HOD or a sole-approver requester; the timeline shows "for HOD" (#1112).
