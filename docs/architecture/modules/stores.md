@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/stores/`
 
 - **Depends on modules:** `materials`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `auth`, `db`, `events`, `modules`, `resources`, `tokens`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `events`, `modules`, `resources`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
 
