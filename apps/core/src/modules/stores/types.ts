@@ -107,3 +107,112 @@ export type CheckResult = {
 };
 
 export type OverBookCard = { cardId: string; shelfId: string; shelfName: string; checkId: string; at: string; lines: { itemId: string; name: string; book: number; counted: number }[] };
+
+// ═══════════════════════════ S2a (#1112) — tickets, approval, picking, timeline, audit pack ═══════════════════════════
+
+/** Decision 2: routine (within the shift), urgent (≤ 60 min after approval), emergency (≤ 20 min from raise, with a reason). */
+export type TicketPriority = "routine" | "urgent" | "emergency";
+export const TICKET_PRIORITIES: readonly TicketPriority[] = ["routine", "urgent", "emergency"];
+/** Decision 1: how the ticket was raised. */
+export type TicketChannel = "phone" | "web" | "copilot" | "agent";
+export const TICKET_CHANNELS: readonly TicketChannel[] = ["phone", "web", "copilot", "agent"];
+
+/**
+ * Where a ticket is, DERIVED from rows (decision 13: nothing about a ticket's lane is stored).
+ *   to_approve — raised, the HOD has not answered (an emergency is also on "To pick" meanwhile);
+ *   to_pick    — approved (or an emergency), not yet issued;
+ *   to_receive — issued, the transfer is still in transit;
+ *   delivered  — the transfer was received (fully or with a discrepancy);
+ *   declined   — the HOD said no; rejected — the store said no; cancelled — the requester withdrew.
+ */
+export type TicketStage = "to_approve" | "to_pick" | "to_receive" | "delivered" | "declined" | "rejected" | "cancelled";
+
+export type RaiseTicketInput = {
+  shelfId: string;
+  /** `itemId` is typed loosely on purpose: a line with no item id is a refusal (`item_id_required`), not a crash. */
+  lines: { itemId?: string | null; qtyBase: number }[];
+  priority: TicketPriority;
+  neededBy?: string | null;
+  deliverTo?: string | null;
+  channel?: TicketChannel;
+  emergencyReason?: string | null;
+  note?: string | null;
+};
+
+export type ApproveTicketInput = { lines?: { lineIdx: number; qtyBase: number }[] };
+
+export type TicketPerson = { id: string; name: string };
+
+export type TicketView = {
+  id: string;
+  indentNo: string;
+  /** The materials indent's own status (`requested` | `issued` | `rejected` | `cancelled`). */
+  status: string;
+  stage: TicketStage;
+  priority: TicketPriority;
+  channel: TicketChannel;
+  neededBy: string | null;
+  deliverTo: string | null;
+  emergencyReason: string | null;
+  /** Raised outside the central store's hours and addressed to the night store (decision 5). */
+  night: boolean;
+  department: { id: string; code: string; name: string };
+  shelf: { id: string; code: string; name: string };
+  /** The supplying store. */
+  source: { id: string; code: string; name: string; kind: StoresStoreKind };
+  requestedBy: TicketPerson;
+  requestedAt: string;
+  /** The clock: the first raise of a re-raised or re-asked ticket, else this one's raise. */
+  clockFrom: string;
+  origin: { indentId: string; indentNo: string; kind: "re_raise" | "re_ask" } | null;
+  approval: {
+    state: "pending" | "approved" | "declined" | "not_needed";
+    by: TicketPerson | null; at: string | null;
+    /** The medical superintendent's stand-in approval (decision 3): the timeline reads "for HOD". */
+    forHod: boolean;
+    reason: string | null;
+  };
+  /** Decision 4: the HOD's look at an emergency issued before approval. */
+  review: { decision: "agree" | "query"; by: TicketPerson; at: string; note: string | null } | null;
+  /** Decision 6: the one picker, while the claim is live (30 idle minutes). */
+  claim: { by: TicketPerson; at: string; lapsesAt: string } | null;
+  transfer: { id: string; status: string } | null;
+  lines: { lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null }[];
+};
+
+export type TimelineStepKind = "raise" | "re_raise" | "re_ask" | "approve" | "decline" | "review" | "claim" | "issue" | "receive" | "reject" | "cancel";
+
+export type TimelineStep = {
+  step: TimelineStepKind;
+  who: { id: string; name: string; roles: string[] } | null;
+  from: { id: string; code: string; name: string } | null;
+  to: { id: string; code: string; name: string } | null;
+  at: string;
+  /** Minutes since the step before (the leg); null on the first step. */
+  minutes: number | null;
+  /** The medical superintendent approved as the HOD's stand-in: the row reads "for HOD". */
+  forHod: boolean;
+  note: string | null;
+  /** Per line, where the step changed a quantity: asked → approved, approved → issued. */
+  lines: { itemId: string; itemName: string; asked: number; approved: number | null; issued: number | null }[];
+};
+
+export type TicketTimeline = { indentId: string; indentNo: string; steps: TimelineStep[] };
+
+export type AuditPackFilter = { ticketId?: string; itemId?: string; personId?: string; storeId?: string; from: Date; to: Date };
+
+export type AuditPackRow = {
+  seq: number;
+  at: string;
+  /** `stores.act_recorded`'s act, or the materials event's name (`material.issued`, `material.indent_raised`, …). */
+  what: string;
+  actor: { id: string; name: string; roles: string[] };
+  storeId: string | null;
+  itemId: string | null;
+  ref: string | null;
+  before: unknown;
+  after: unknown;
+  reason: string | null;
+};
+
+export type AuditPack = { filter: { ticketId: string | null; itemId: string | null; personId: string | null; storeId: string | null; from: string; to: string }; rows: AuditPackRow[]; csv: string };

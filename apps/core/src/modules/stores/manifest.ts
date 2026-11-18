@@ -34,6 +34,9 @@ export const storesManifest: ModuleManifest = {
     "stores.masters.manage",
     "stores.shelf.read",
     "stores.shelf.work",
+    "stores.indents.approve",
+    "stores.nightstore.issue",
+    "stores.audit.read",
   ],
   subscriptions: [],
 };
