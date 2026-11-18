@@ -14,6 +14,7 @@ import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { events, users } from "../src/kernel/db/schema";
 import { requireEnv } from "../src/kernel/config";
+import { istDayString } from "../src/kernel/approvals/cumulative";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Db } from "../src/kernel/db/client";
 
@@ -42,8 +43,15 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
   let deptId: string;
   let draId: string;
 
-  const T0 = new Date("2026-08-17T04:00:00.000Z");
-  const DATE = "2026-08-17";
+  /*
+   * A RECENT IST DAY, RELATIVE TO THE REAL CLOCK. The routes measure the history horizon from the
+   * real today, and the sealed-lane test below reads `/me/report` as a clerk who holds no history
+   * grant (the 91-day floor). A fixed 2026-08-17 fell outside that floor on 2026-11-17 and the test
+   * went red with a 400 `history_horizon_exceeded`. A week back is a settled, past day for every
+   * caller, so no assertion here depends on the date the suite happens to run.
+   */
+  const DATE = istDayString(new Date(Date.now() - 7 * 86_400_000));
+  const T0 = new Date(`${DATE}T04:00:00.000Z`); // 09:30 IST on DATE
 
   beforeAll(async () => {
     ({ db, teardown } = await setupTestDb());
@@ -72,7 +80,7 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
     /*
      * ═══ STAFF-REPORTS T0 — WHY THESE TWO HOLD `history.full` ═══
      *
-     * Every DD14 assertion below reads `date=2026-08-17`, a fixed day. The history horizon is
+     * Every DD14 assertion below once read `date=2026-08-17`, a fixed day. The history horizon is
      * measured from the REAL today, so a 91-day window anchored 28 days in the past reaches 119 days
      * back — and these tests would have started failing about a week after they were written, for a
      * reason nobody would have connected to this commit.
