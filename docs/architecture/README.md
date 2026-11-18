@@ -145,14 +145,14 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | subsystem | used by modules | depends on kernel | serves HTTP |
 |---|---|---|---|
 | `alerts` | attendance, doctor-desk, lab, opd, radiology, roster, stores | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
-| `approvals` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
+| `approvals` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, stores, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
 | `auth` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, stores, tariff | config, crypto, db, events, modules, printing, push, ratelimit, tokens | yes |
 | `config` | abdm, attendance, billing, formulary, lab, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `consent` | ot, radiology | — | — |
 | `copilot` | billing, doctor-desk, formulary, lab, opd, pharmacy, radiology, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | yes |
 | `crypto` | abdm, billing, opd, patients | — | — |
 | `db` | abdm, aerb, attendance, billing, cds, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, stores, tariff | — | — |
-| `desk` | attendance, billing, doctor-desk, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | yes |
+| `desk` | attendance, billing, doctor-desk, lab, membership, opd, partners, patients, pharmacy, radiology, roster, stores | approvals, auth, db, events, modules, reminders, report, tokens, workflow | yes |
 | `documents` | lab, patients, pharmacy | — | — |
 | `episodes` | billing, lab, materials, opd, ot, pharmacy, radiology | db | — |
 | `events` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, stores, tariff | db, worker | — |
@@ -174,6 +174,6 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | yes |
 | `tokens` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, stores, tariff | — | — |
 | `worker` | — | alerts, approvals, auth, config, copilot, db, desk, documents, events, modules, notify, obligations, ops, orders, push, reminders, resources, retention, tokens, workflow | — |
-| `workflow` | attendance, billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | yes |
+| `workflow` | attendance, billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, stores, tariff | auth, db, events, modules, tokens | yes |
 
 Kernel HTTP routes: [kernel-routes.md](kernel-routes.md). Database: [schema.md](schema.md). Web screens: [web.md](web.md).
