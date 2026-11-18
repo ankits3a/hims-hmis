@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import { events, itemStockLevels, opdEncounters, orgDepartments, resources, stockBatches, stockLedger } from "../../kernel/db/schema";
 import { balances, transferWorklist } from "../materials";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import {
   STORES_MASTERS, STORES_SHELF_READ, STORES_SHELF_WORK, departmentOf, holds, requireMasters, requireShelf, requireShelfAct,
 } from "./access";
@@ -26,9 +27,7 @@ const IST = "Asia/Kolkata";
 
 const netUse = sql<string>`coalesce(sum(case when ${stockLedger.reason} = 'consume' or ${stockLedger.refType} = ${REVERSAL_REF} then -${stockLedger.qtyDelta} else 0 end), 0)`;
 
-function istDay(at: Date): string {
-  return new Date(at.getTime() + 330 * 60_000).toISOString().slice(0, 10);
-}
+const istDay = istDayString;
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
