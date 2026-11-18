@@ -2441,7 +2441,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // run exit rather than die on a duplicate key.
     const second = await seedRoles(db);
     // PLAN 17 T2 / DD16 — 25 -> 29 with the lab's four.
-    expect(second.roles.map((r) => r.created)).toEqual(Array(49).fill(false)); // STORES S1 (#1111): 49; CRK FORMULARY (#618): 47; COPILOT LEDGER E0.1: 46; STAFF ATTENDANCE: 44; CONSULTED ON PAPER: 43; 18-S RS8b: 42; 18-S RS5: 41; STAGE D5: 40; P17: 39; // FD-30: 38 (opd_scribe)
+    expect(second.roles.map((r) => r.created)).toEqual(Array(51).fill(false)); // STORES S2a (#1112): 51; STORES S1 (#1111): 49; CRK FORMULARY (#618): 47; COPILOT LEDGER E0.1: 46; STAFF ATTENDANCE: 44; CONSULTED ON PAPER: 43; 18-S RS8b: 42; 18-S RS5: 41; STAGE D5: 40; P17: 39; // FD-30: 38 (opd_scribe)
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
     // PLAN 07c T9 — the same two entries as the first run's `granted` census above.
     // The FIRST run's `granted` census, read back — see the note there for Plan 17 T2's changes.
