@@ -42,6 +42,11 @@ export const STORES_ACTS = [
   // S5a (#1115): the buying desk's front (refId = the request, the GRN, the vendor, the delegation or the department).
   "raise_purchase_request", "approve_purchase_request", "decline_purchase_request", "cancel_purchase_request", "set_band",
   "set_budget", "delegate_approvals", "grn_qc", "grn_post", "supplier_fields", "approve_supplier_category",
+  // S5b (#1115): the buying desk by hand (refId = the group, RFQ, quote, award, PO or seat row; a request's chain is read by
+  // the audit pack from the rows that link them).
+  "group_requests", "move_group_line", "create_rfq", "invite_suppliers", "send_rfq", "move_reply_by", "close_rfq", "enter_quote",
+  "open_quote", "admit_late_quote", "mark_technical", "propose_award", "approve_award", "sign_award", "object_award", "set_committee_seat",
+  "po_from_award", "submit_po", "approve_po", "send_po",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

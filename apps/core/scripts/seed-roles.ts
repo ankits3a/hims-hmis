@@ -977,6 +977,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.tower.read", "stores.spend.read",
       // STORES S4a (#1114, decision 16) — the asset register and every unit's passport.
       "stores.assets.read",
+      // STORES S5b (#1115, decision 9; ruling 0101 Q3) — the medical superintendent's seat of the purchase committee.
+      "stores.award.sign",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1250,6 +1252,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.assets.condemn",
       // STORES S5a (#1115, decision 14) — signs a non-drug GRN's QC (technical items), no pharmacist needed.
       "stores.grn.qc",
+      // STORES S5b (#1115, decision 9; ruling 0101 Q3) — the biomedical seat of the purchase committee (medical equipment).
+      "stores.award.sign",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1359,6 +1363,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // STORES S5a (#1115, decisions 14, 16) — the buying desk (the store's requests, bands, supplier fields) and the
       // non-drug GRN QC that needs no pharmacist.
       "stores.buying.manage", "stores.grn.qc",
+      // STORES S5b (#1115, decision 9) — the materials head's committee seat and its band B award approval.
+      "stores.award.sign",
     ],
   },
   {
@@ -2051,7 +2057,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work", "stores.purchase.request"] },
   // STORES S4b (#1114, decision 13): + `stores.assets.condemn`, the user department's seat (asked AT the department).
   // STORES S5a (#1115, decisions 14, 16): + `stores.purchase.request` and `stores.grn.qc` (the department's nominee), AT it.
-  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve", "stores.assets.condemn", "stores.purchase.request", "stores.grn.qc"] },
+  // STORES S5b (#1115, decision 9): + `stores.award.sign`, the user HOD's committee seat (asked AT the department).
+  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve", "stores.assets.condemn", "stores.purchase.request", "stores.grn.qc", "stores.award.sign"] },
   /**
    * STORES S2a (#1112, decisions 3, 5, 16). `department_head` above approves its department's tickets
    * (`stores.indents.approve`, asked AT the department). Two more roles, assigned by nobody:
@@ -2081,7 +2088,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   // STORES S4b (#1114, decision 13): + `stores.assets.condemn`, the accounts seat of the condemnation committee.
   // STORES S5a (#1115, decision 15): + `stores.budget.manage`, the departments' month budgets.
-  { roleKey: "accounts_officer", permissions: ["stores.assets.export", "stores.assets.condemn", "stores.budget.manage"] },
+  // STORES S5b (#1115, decision 9): + `stores.award.sign`, the accounts head's committee seat.
+  { roleKey: "accounts_officer", permissions: ["stores.assets.export", "stores.assets.condemn", "stores.budget.manage", "stores.award.sign"] },
   /**
    * STORES S5a (#1115, decision 16) — the buyer: `purchase_officer`, seeded with no holders (the materials head buys
    * until one is appointed). The buying desk only: the store's requests, bands and the supplier's Stores fields. Never

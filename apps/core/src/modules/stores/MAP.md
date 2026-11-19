@@ -17,7 +17,7 @@ Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials co
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
 `docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
-`docs/specs/1115-stores-buying-desk.md` (S5: S5a built, S5b and S5c to come).
+`docs/specs/1115-stores-buying-desk.md` (S5: S5a and S5b built, S5c to come).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -368,10 +368,44 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Web `/stores/buy` (`apps/web/src/screens/stores-buy.tsx`): tabs by grant (Ask, To approve, My requests, Hand over, Budgets, Suppliers, QC);
   notices `stores_purchase_request` open it with `?pr=`.
 
+## 10e. The buying desk by hand (S5b #1115; ruling 0101 Q3, Q4, Q7)
+- Groups (`buy-groups.ts`, migration 0245): `stores_buy_groups` + `stores_buy_group_moves` (newest move per request line =
+  its group; null = out). The band is DERIVED: highest of its requests' `bandOf` (split check, lifts) and of its own sum;
+  FROZEN on the RFQ. A group with an RFQ or an award is locked (`group_locked`). "Buy now" = approved urgent/emergency
+  requests not yet ordered, a read (no job).
+- Money (`buying-common.ts` `lineMoney`): materials' own rounding (`netRatePaise`, `lineGstPaise`), so a PO made from an
+  award prices to the paisa what the comparative showed. Freight/other spread over a supplier's lines by value (`apportion`).
+- RFQ (`rfq.ts`): `RFQ`+yymmdd+4 (`episode_series` `stores_rfq`), lines summed by item, one RFQ per group. Invitees "can
+  quote" (`cannot_quote` + `detail.missing`). `sendRfq` is the ONLY send: a `sent` step (who, channel, vendorIds) and one
+  `stores_rfq` print job per invitee not sent before (`stores_a4`; HMIS mails nothing). Reply-by moves once (`stores_rfq_steps`).
+- Quotes (`quotes.ts`): append-only versions per (group, supplier); `late` when entered after the reply-by; the materials
+  head's admission row lets it rank. Unsealed + an earlier version = negotiation: L1 only (`only_l1_negotiates`), lower
+  landed only (`negotiation_upward`). Technical marks (equipment): `hod` (indents.approve at a group department) and
+  `biomedical` (role `biomedical_engineer`); both Yes to rank, any No (with reason) out.
+- Comparative (`comparative.ts` `computeComparative`): recomputed every read; sealed = before reply-by AND fewer quoted than
+  invited. Ties: delivery days, then supplier code (scorecard joins in S5c).
+- Awards (`awards.ts`): one live award per RFQ (`already_proposed`); band A awards are made by `makePoFromGroup` (contract
+  lines need no quote; the 2 % rule via materials `judgePrice`). Band C seats are FROZEN on the row (`freezeSeats`): rows in
+  `stores_committee_seats` for materials head / accounts head / MS / biomedical (equipment), and the user HOD = the group's
+  departments' HODs (one seat, any one of them; DECIDED). Delegation scope `committee_seat` (`delegations.ts`
+  `seatDelegationFor`): the giver must still sit in the seat. Owner signs last (`awaiting_seats`). Status derived from
+  `stores_award_signatures` (unique per seat; object = sent back; a fresh proposal names `replaces_id`).
+- PO from award: materials `createPurchaseOrder(..., { awardId })` with "Pay after GRN" terms; the award check is
+  REGISTERED with materials at import (`registerAwardPoGuard`): submit refuses `po_differs_from_award`, send refuses
+  `award_not_approved`; a PO with no award never asks it, and one with an award and no check loaded is refused (fail
+  closed; `materials/stores-s5b-no-change.test.ts`). `approveAwardAndPo` writes the award stamp, then the PO approval only
+  when the person holds its tier (head ≤ ₹50,000, owner above). Bulk: POs and requests only (`bulk_not_allowed`).
+- Delivery (`purchase-delivery.ts`): `postStoresGrn` → accepted qty shared over the group's department lines, oldest first,
+  up to what each lacks (`stores_pr_deliveries`) → `tickets.ts` `raiseDeliveryTicketInTx` (no stamp, channel `agent`, the
+  act's `after.prId`) + "In store". The department nominee's non-drug QC follows the same GRN → PO → award link.
+- Audit pack `{prId}`: request, groups, RFQs, quotes, awards, POs (+ `purchase_order.*`), GRNs (+ `grn.*`), delivery tickets.
+- Web `/stores/buying` (`apps/web/src/screens/stores-buying.tsx`): the desk's one read `GET buying/desk`; notices
+  `stores_award` / `stores_po` open the phone sheet (`?award=`, `?po=`).
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
 staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
-SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5a leaves: the nightly central shortfall →
-PR job and the agent (S5c), committee seats and their delegation, RFQ/quotes/award/PO-from-award (S5b), the owner's monthly
-over-budget list, a Now card / waiting kind for "Purchase to approve" (the notice opens `/stores/buy`), the department
-nominee's QC scope.
+SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5a/S5b leave: the nightly central shortfall →
+PR job, the agent and the scorecard (S5c), the owner's monthly over-budget list, a Now card / waiting kind for "Purchase to
+approve" and "Award to sign" (notices open the screens), Stores PO value in a department's spent figure, splitting one
+request line across groups, a single-source certificate path and the emergency one-quote path (ruling 0101 Q4), advances.

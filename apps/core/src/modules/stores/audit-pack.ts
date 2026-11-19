@@ -1,6 +1,9 @@
 import { and, asc, eq, gt, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
-import { events, roleAssignments, storeIndents, storesAssetUnitEvents, users } from "../../kernel/db/schema";
+import {
+  events, grns, purchaseOrders, roleAssignments, storeIndents, storesAssetUnitEvents, storesAwards, storesBuyGroupMoves, storesPrDeliveries, storesQuotes,
+  storesRfqs, users,
+} from "../../kernel/db/schema";
 import { STORES_AUDIT_READ, holds, recordAct } from "./access";
 import { StoresError } from "./errors";
 import { STORES_ACT_EVENT } from "./events";
@@ -41,6 +44,9 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
   // Only Stores' own places: a materials event is in the pack when a Stores store is its source, destination or store.
   // Pharmacy's indents, transfers and GRNs share the stream and stay out of a Stores audit.
   const storesPlaces = sql`(select r.id from resources r where r.kind = 'store' and r.attributes->>'domain' = 'stores')`;
+  // S5b (#1115, D18): a purchase request's chain — its groups, RFQs, quotes, awards, the POs made from them, their GRNs
+  // and the delivery tickets raised from it. The PO's and GRN's own materials events join by their correlation id.
+  const prRefs = filter.prId === undefined ? null : await purchaseChain(db, filter.prId);
   const conds = [
     // The window first: `recorded_at` prunes the monthly partitions, `occurred_at` is the window asked for.
     gte(events.recordedAt, new Date(filter.from.getTime() - RECORDED_BEFORE_OCCURRED_MS)),
@@ -48,8 +54,11 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
     or(eq(events.name, STORES_ACT_EVENT), and(like(events.name, "material.%"), or(
       sql`${events.payload}->>'fromResourceId' in ${storesPlaces}`, sql`${events.payload}->>'toResourceId' in ${storesPlaces}`,
       sql`${events.payload}->>'storeResourceId' in ${storesPlaces}`,
-    ))),
+    )), ...(prRefs === null ? [] : [and(or(like(events.name, "purchase_order.%"), like(events.name, "grn.%")), inArray(events.correlationId, prRefs))])),
   ];
+  if (prRefs !== null) {
+    conds.push(or(inArray(events.correlationId, prRefs), sql`${events.payload}->>'refId' in (${sql.join(prRefs.map((r) => sql`${r}`), sql`, `)})`));
+  }
   if (filter.afterSeq !== undefined) conds.push(gt(events.seq, filter.afterSeq));
   if (filter.ticketId !== undefined) {
     const [ind] = await db.select({ transferId: storeIndents.transferId }).from(storeIndents).where(eq(storeIndents.id, filter.ticketId));
@@ -119,11 +128,31 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
   const shown = {
     ticketId: filter.ticketId ?? null, itemId: filter.itemId ?? null, personId: filter.personId ?? null, storeId: filter.storeId ?? null,
     ...(filter.unitId === undefined ? {} : { unitId: filter.unitId }),
+    ...(filter.prId === undefined ? {} : { prId: filter.prId }),
     from: filter.from.toISOString(), to: filter.to.toISOString(),
   };
   await withTx(db, (tx) => recordAct(tx, actor, now, {
-    act: "audit_export", storeId: filter.storeId ?? null, itemId: filter.itemId ?? null, refId: filter.ticketId ?? null,
+    act: "audit_export", storeId: filter.storeId ?? null, itemId: filter.itemId ?? null, refId: filter.ticketId ?? filter.prId ?? null,
     after: { ...shown, rows: rows.length, truncated },
   }));
   return { filter: shown, rows, csv, truncated, nextAfterSeq };
+}
+
+/** Every record a purchase request's chain names (S5b): request, groups, RFQs, quotes, awards, POs, GRNs, delivery tickets. */
+async function purchaseChain(db: Db, prId: string): Promise<string[]> {
+  const refs = new Set<string>([prId]);
+  const groups = (await db.selectDistinct({ g: storesBuyGroupMoves.groupId }).from(storesBuyGroupMoves).where(eq(storesBuyGroupMoves.prId, prId)))
+    .map((r) => r.g).filter((g): g is string => g !== null);
+  for (const g of groups) refs.add(g);
+  if (groups.length > 0) {
+    for (const r of await db.select({ id: storesRfqs.id }).from(storesRfqs).where(inArray(storesRfqs.groupId, groups))) refs.add(r.id);
+    for (const q of await db.select({ id: storesQuotes.id }).from(storesQuotes).where(inArray(storesQuotes.groupId, groups))) refs.add(q.id);
+    const awards = (await db.select({ id: storesAwards.id }).from(storesAwards).where(inArray(storesAwards.groupId, groups))).map((a) => a.id);
+    for (const a of awards) refs.add(a);
+    const pos = awards.length === 0 ? [] : (await db.select({ id: purchaseOrders.id }).from(purchaseOrders).where(inArray(purchaseOrders.awardId, awards))).map((p) => p.id);
+    for (const p of pos) refs.add(p);
+    if (pos.length > 0) for (const g of await db.select({ id: grns.id }).from(grns).where(inArray(grns.purchaseOrderId, pos))) refs.add(g.id);
+  }
+  for (const d of await db.select({ i: storesPrDeliveries.indentId }).from(storesPrDeliveries).where(eq(storesPrDeliveries.prId, prId))) refs.add(d.i);
+  return [...refs];
 }

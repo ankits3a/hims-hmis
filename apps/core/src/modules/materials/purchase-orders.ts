@@ -313,10 +313,35 @@ function wrongStatus(po: PoRow, act: string, need: readonly string[]): Materials
 const header = (po: PoRow): { purchaseOrderId: string; poNo: string; vendorId: string; totalPaise: number } =>
   ({ purchaseOrderId: po.id, poNo: po.poNo, vendorId: po.vendorId, totalPaise: po.totalPaise });
 
+// ═══════════════════════════════════ the award check (Stores S5b) ═══════════════════════════════════
+
+/**
+ * STORES S5b (#1115, decision 10) — A PO MADE FROM A STORES AWARD (`purchase_orders.award_id`) must equal its award.
+ * Materials knows no Stores table, so the Stores module registers the check at load (`stores/awards.ts`); this file
+ * asks it at submit (the PO matches the award: supplier, item, rate, no more quantity) and at send (the award is
+ * approved). ADDITIVE: an order with no award link — every pharmacy order — never reaches either call. An award-linked
+ * order with no check registered is refused (fail closed), never waved through.
+ */
+export type AwardPoGuard = {
+  onSubmit(tx: Tx, po: { id: string; awardId: string; vendorId: string }, lines: { itemId: string; multiplier: number; qtyPacks: number; ratePaise: number; listRatePaise: number | null; discountBps: number }[]): Promise<void>;
+  onSend(tx: Tx, po: { id: string; awardId: string }): Promise<void>;
+};
+let awardGuard: AwardPoGuard | null = null;
+
+export function registerAwardPoGuard(guard: AwardPoGuard): () => void {
+  awardGuard = guard;
+  return () => { if (awardGuard === guard) awardGuard = null; };
+}
+
+function requireAwardGuard(po: { poNo: string }): AwardPoGuard {
+  if (awardGuard === null) throw new MaterialsError("po_invalid", `purchase order ${po.poNo} was made from an award and its check is not loaded`);
+  return awardGuard;
+}
+
 // ═══════════════════════════════════ draft, edit ═══════════════════════════════════
 
 export async function createPurchaseOrder(
-  db: Db, actor: Actor, input: PoInput, opts: { source?: "manual" | "agent"; now?: Date } = {},
+  db: Db, actor: Actor, input: PoInput, opts: { source?: "manual" | "agent"; now?: Date; awardId?: string | null } = {},
 ): Promise<PoView> {
   await requireRaiser(db, actor, "drafting a purchase order");
   const now = opts.now ?? new Date();
@@ -329,7 +354,7 @@ export async function createPurchaseOrder(
     const poNo = await nextEpisodeNo(tx, "purchase_order", istDayOf(now));
     await tx.insert(purchaseOrders).values({
       id, poNo, vendorId: input.vendorId, storeResourceId: input.storeResourceId, status: "draft",
-      source: opts.source ?? "manual", expectedDate: cleanDate(input.expectedDate),
+      source: opts.source ?? "manual", expectedDate: cleanDate(input.expectedDate), awardId: opts.awardId ?? null,
       terms: cleanText(input.terms, "terms"), note: cleanText(input.note, "the note"),
       ...totals, createdBy: actor.id, updatedBy: actor.id, createdAt: now, updatedAt: now,
     });
@@ -396,6 +421,10 @@ export async function submitPurchaseOrder(db: Db, actor: Actor, poId: string, no
     const lines = await tx.select({ id: purchaseOrderLines.id }).from(purchaseOrderLines).where(eq(purchaseOrderLines.purchaseOrderId, poId));
     if (lines.length === 0) throw new MaterialsError("po_invalid", "an order carries at least one line");
     const vendor = await assertVendorPurchasable(tx, po.vendorId);
+    if (po.awardId !== null) {
+      const full = await tx.select().from(purchaseOrderLines).where(eq(purchaseOrderLines.purchaseOrderId, poId));
+      await requireAwardGuard(po).onSubmit(tx, { id: po.id, awardId: po.awardId, vendorId: po.vendorId }, full);
+    }
     const tier = approvalTierFor(po.totalPaise);
     const { approvalId } = await requestApproval(tx, actor, {
       typeKey: tier === "head" ? PO_APPROVAL_TYPE : PO_OWNER_APPROVAL_TYPE,
@@ -487,6 +516,7 @@ export async function sendPurchaseOrder(db: Db, actor: Actor, poId: string, now:
     const po = await lockPo(tx, poId);
     if (po.status !== "approved") throw wrongStatus(po, "sending", ["approved"]);
     await assertVendorPurchasable(tx, po.vendorId);
+    if (po.awardId !== null) await requireAwardGuard(po).onSend(tx, { id: po.id, awardId: po.awardId });
     await tx.update(purchaseOrders).set({ status: "sent", sentBy: actor.id, sentAt: now, updatedBy: actor.id, updatedAt: now })
       .where(eq(purchaseOrders.id, poId));
     await appendEvent(tx, purchaseOrderSent.make({ occurredAt: now, actor, correlationId: poId, payload: { ...header(po), sentBy: actor.id } }));

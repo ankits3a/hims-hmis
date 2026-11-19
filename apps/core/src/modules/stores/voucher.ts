@@ -4,6 +4,7 @@ import { HOSPITAL, esc, registerDocumentRenderer } from "../../kernel/printing/d
 import { qrSvg } from "../../kernel/printing/qr";
 import { renderAssetLabel } from "./asset-label";
 import { renderGatePass } from "./gate-pass-print";
+import { renderRfq } from "./rfq-print";
 import type { RenderedDocument } from "../../kernel/printing/document-kit";
 import type { Db } from "../../kernel/db/client";
 
@@ -87,5 +88,7 @@ export function registerStoresPrinting(): () => void {
   const offPass = registerDocumentRenderer("stores_gate_pass", (db, params) => renderGatePass(db, params));
   // S4a (#1114, decision 3) — the unit label with its QR (the tag number only).
   const offLabel = registerDocumentRenderer("stores_asset_label", (db, params) => renderAssetLabel(db, params));
-  return () => { offVoucher(); offPass(); offLabel(); };
+  // S5b (#1115, decision 6) — the RFQ a supplier receives.
+  const offRfq = registerDocumentRenderer("stores_rfq", (db, params) => renderRfq(db, params));
+  return () => { offVoucher(); offPass(); offLabel(); offRfq(); };
 }

@@ -75,6 +75,7 @@ import { StoresGate, StoresPasses } from "./screens/stores-gate";
 import { StoresTower } from "./screens/stores-tower";
 import { StoresAssetPassport, StoresAssets, StoresCondemnSign, StoresTagUnits, StoresVerificationRound } from "./screens/stores-assets";
 import { StoresBuy } from "./screens/stores-buy";
+import { StoresBuying } from "./screens/stores-buying";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -302,6 +303,8 @@ const NAV: readonly NavEntry[] = [
     to: "/stores/buy", label: "nav.storesBuy", permission: "stores.buying.manage", group: "admin",
     anyScope: ["stores.purchase.request", "stores.indents.approve", "stores.budget.manage", "stores.grn.qc"],
   },
+  // STORES S5b (#1115) — the buying desk by hand, `storesManifest.menu`'s row.
+  { to: "/stores/buying", label: "nav.storesBuying", permission: "stores.buying.manage", group: "admin" },
   { to: "/stores/gate", label: "nav.storesGate", permission: "stores.gatepass.scan", group: "desk" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
@@ -1961,6 +1964,13 @@ const storesBuyRoute = createRoute({
   validateSearch: (s: Record<string, unknown>): { pr?: string; tab?: string } => ({ pr: str(s.pr), tab: str(s.tab) }),
   component: StoresBuy,
 });
+// STORES S5b (#1115) — the buying desk (16:9: Buy now, Grouping, RFQs, Comparisons, Awards, POs) and, from a notice, the
+// phone sheet that approves one award (`?award=`) or one PO (`?po=`). Committee members and the owner reach it by notice.
+const storesBuyingRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/stores/buying",
+  validateSearch: (s: Record<string, unknown>): { award?: string; po?: string; tab?: string } => ({ award: str(s.award), po: str(s.po), tab: str(s.tab) }),
+  component: StoresBuying,
+});
 // STORES S4b (#1114) — the committee's phone: the condemnations this person may sign (`?c=` puts one first).
 const storesCondemnRoute = createRoute({
   getParentRoute: () => authedRoute, path: "/stores/condemn",
@@ -2080,7 +2090,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesAssetsRoute, storesAssetRoute, storesTagUnitsRoute, storesRoundRoute, storesCondemnRoute, storesBuyRoute, storesTicketRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesAssetsRoute, storesAssetRoute, storesTagUnitsRoute, storesRoundRoute, storesCondemnRoute, storesBuyRoute, storesBuyingRoute, storesTicketRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

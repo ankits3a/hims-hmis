@@ -39,6 +39,8 @@ export const STORES_BUYING_MANAGE = "stores.buying.manage";
 export const STORES_BUDGET_MANAGE = "stores.budget.manage";
 /** S5a (#1115, decision 14) — sign a non-drug GRN's QC: the materials head and biomedical (hospital), the HOD (department). */
 export const STORES_GRN_QC = "stores.grn.qc";
+/** S5b (#1115, decision 16) — sign an award in a committee seat (and the materials head's band B approval): the seat holders. */
+export const STORES_AWARD_SIGN = "stores.award.sign";
 
 export async function holds(db: Db | Tx, actor: Actor, permission: string, departmentId?: string): Promise<boolean> {
   if (actor.type !== "user") return false;

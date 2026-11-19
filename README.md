@@ -1770,6 +1770,16 @@ with its papers, a bank account past cooling-off and the category approved.
 `stores.buying.manage` by `materials_head` and `purchase_officer`; `stores.budget.manage` by `accounts_officer` and
 `owner`; `stores.grn.qc` by `materials_head`, `biomedical_engineer` and `department_head` (at its department).
 
+**Stores buying desk, by hand (decision 0101, S5b #1115, 2026-11-19).** The buyer groups approved requests, takes one
+quote up to ₹25,000 (checked against the last price) or sends an RFQ to at least three suppliers, a tap that records
+who sent it and hands over one PDF per supplier: HMIS mails nothing. Quotes stay sealed until the reply-by date or until
+all are in; the comparative ranks landed cost with GST; an award that is not the lowest needs a reason, and only a
+supplier with complete KYC is awarded. Above ₹5 lakh and for medical equipment every committee seat signs, then the
+owner; any member may object or hand the seat over for a dated spell. The PO copies the award and is refused if it
+differs; its own approval tier is unchanged. When the goods pass QC the requester's delivery ticket is raised by itself.
+`stores.award.sign` is held by `materials_head`, `accounts_officer`, `medical_superintendent`, `biomedical_engineer` and
+`department_head` (at its department, the user HOD's seat).
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the
