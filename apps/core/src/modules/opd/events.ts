@@ -86,6 +86,19 @@ export const doctorSecondaryDepartmentEnded = defineEvent("doctor.secondary_depa
   affectedAppointmentIds: z.array(id),
 }));
 
+/**
+ * #1127 (owner 2026-11-19) — the doctor master's change history, which the OPD Admin panel reads back.
+ * `from`/`to` are the stored values as text (`active` as "true"/"false", a department as its id).
+ */
+const doctorFieldChange = z.object({ field: z.string().min(1), from: z.string().nullable(), to: z.string().nullable() });
+export const doctorCreated = defineEvent("doctor.created", MODULE, z.object({
+  doctorId: id, code: z.string().min(1), displayName: z.string().min(1), departmentId: id,
+}));
+/** A department change or a deactivation marks the stranded bookings needs_rebooking in the same transaction. */
+export const doctorProfileChanged = defineEvent("doctor.profile_changed", MODULE, z.object({
+  doctorId: id, changes: z.array(doctorFieldChange).min(1), affectedAppointmentIds: z.array(id),
+}));
+
 export const doctorLeaveScheduled = defineEvent("doctor_leave.scheduled", MODULE, z.object({
   leaveId: id, doctorId: id, fromDate: isoDate, toDate: isoDate, reason: z.string().min(1),
   affectedAppointmentIds: z.array(id), // marked needs_rebooking in the same transaction (§11.5 cascade)

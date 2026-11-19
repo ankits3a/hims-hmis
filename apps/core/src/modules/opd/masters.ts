@@ -1,12 +1,15 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { opdDepartments, opdDoctors, resources, users } from "../../kernel/db/schema";
+import { opdAppointments, opdDepartments, opdDoctorSchedules, opdDoctors, resources, users } from "../../kernel/db/schema";
+import { appendEvent } from "../../kernel/events/append";
 import {
   KERNEL_RESOURCE_KINDS, ResourceError, changeResourceStatus, createResource, findKindDecl,
   updateResource,
 } from "../../kernel/resources";
 import { OpdError } from "./errors";
-import { currentSecondaries, secondaryDepartmentsOn } from "./secondary";
+import { strandedBookings, waitingTodayFor } from "./doctor-cascade";
+import { doctorCreated, doctorProfileChanged } from "./events";
+import { currentSecondaries, currentSecondary, secondaryDepartmentsOn } from "./secondary";
 import { istDate } from "./time";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -250,8 +253,10 @@ export async function listRooms(db: Db, opts: { activeOnly?: boolean } = {}): Pr
  * being clever. A future `deleteDoctor` would have to reserve the number, and this paragraph is the
  * reason it cannot simply be added.
  *
- * It reads only codes matching the minted shape, so a hospital that overwrites some rows with its
- * own faculty numbering (`CRK/FAC/114`) does not derail the sequence for the rest.
+ * It reads only codes matching the minted shape, so a row created with a hospital's own faculty
+ * numbering (`createDoctor`'s optional `code`) does not derail the sequence for the rest. Once a
+ * doctor exists the id never changes: #1127 (owner 2026-11-19, decision 0100) — `updateDoctor`
+ * refuses `doctor_id_fixed`.
  *
  * NOT SERIALISED BY A LOCK, and that is a size judgement rather than an oversight: doctors are
  * created by an admin a handful of times a year, and `opd_doctors_code_ux` turns the racing case
@@ -311,8 +316,12 @@ export async function createDoctor(
       updatedBy: actor.id,
     })
     .onConflictDoNothing({ target: opdDoctors.userId })
-    .returning({ id: opdDoctors.id });
+    .returning({ id: opdDoctors.id, code: opdDoctors.code });
   if (rows.length === 0) throw new OpdError("user_already_doctor", `user "${input.username}" already has a doctor profile`);
+  // #1127 — the first line of the doctor's history in the OPD Admin panel.
+  await appendEvent(tx, doctorCreated.make({
+    actor, payload: { doctorId: id, code: rows[0]!.code, displayName: input.displayName, departmentId: input.departmentId },
+  }));
   return { doctorId: id, userId: user.id };
 }
 
@@ -322,27 +331,89 @@ function blankToNull(v: string | null | undefined): string | null {
   return t === "" ? null : t;
 }
 
-export async function updateDoctor(
-  tx: Tx,
-  actor: Actor,
-  id: string,
-  patch: { displayName?: string; code?: string; registrationNo?: string | null; departmentId?: string; specialty?: string | null; designation?: string | null; active?: boolean },
-): Promise<void> {
+/**
+ * #1127 — the fields an admin edits on a doctor. `code` is ACCEPTED ONLY TO BE REFUSED: the owner
+ * ruled on 2026-11-19 (decision 0100) that the Doctor ID is fixed once minted, because it is what
+ * every prescription prints. Keeping it in the type means a caller that still sends one is told so,
+ * rather than having it dropped in silence and reading "saved".
+ */
+export type DoctorPatch = {
+  displayName?: string; code?: string; registrationNo?: string | null; departmentId?: string;
+  specialty?: string | null; designation?: string | null; active?: boolean;
+};
+export type DoctorUpdateResult = { needsRebooking: string[]; waitingToday: number };
+
+const TRACKED_FIELDS = ["displayName", "registrationNo", "specialty", "designation", "departmentId", "active"] as const;
+const asText = (v: string | boolean | null | undefined): string | null => (v === null || v === undefined ? null : String(v));
+
+/**
+ * #1127 — one edit of the doctor master, with what it does to the people booked:
+ *   · a DEPARTMENT change strands the BOOKED appointments in the department being left, from today
+ *     on, and sessions that named that department explicitly follow the doctor to the new one;
+ *   · a DEACTIVATION strands every booked appointment from today on, and reports today's queue.
+ * Both go to `needs_rebooking` in this transaction (`doctor-cascade.ts`), the leave cascade's rule.
+ * Every changed field is written to the event log as `doctor.profile_changed` — the panel's history.
+ */
+export async function updateDoctor(tx: Tx, actor: Actor, id: string, patch: DoctorPatch, now: Date = new Date()): Promise<DoctorUpdateResult> {
   requireUserActor(actor);
-  const existing = await tx.select().from(opdDoctors).where(eq(opdDoctors.id, id));
-  if (!existing[0]) throw new OpdError("unknown_doctor", `doctor ${id} not found`);
-  if (patch.departmentId !== undefined) {
-    const deptRows = await tx.select().from(opdDepartments).where(eq(opdDepartments.id, patch.departmentId));
-    const dept = deptRows[0];
+  if (patch.code !== undefined) throw new OpdError("doctor_id_fixed", "a Doctor ID is fixed once it is created");
+  const existing = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, id)))[0];
+  if (!existing) throw new OpdError("unknown_doctor", `doctor ${id} not found`);
+  const today = istDate(now);
+
+  const displayName = patch.displayName === undefined ? undefined : patch.displayName.trim();
+  if (displayName === "") throw new OpdError("invalid_doctor_name", "a doctor's display name cannot be blank");
+  const movesDepartment = patch.departmentId !== undefined && patch.departmentId !== existing.departmentId;
+  if (movesDepartment) {
+    const dept = (await tx.select().from(opdDepartments).where(eq(opdDepartments.id, patch.departmentId!)))[0];
     if (!dept) throw new OpdError("unknown_department", `department ${patch.departmentId} not found`);
     if (!dept.active) throw new OpdError("department_inactive", `department ${patch.departmentId} is inactive`);
+    const second = await currentSecondary(tx, id, today);
+    if (second !== null && second.departmentId === dept.id) {
+      throw new OpdError("invalid_department_change", "that is the doctor's second department; end it first");
+    }
   }
-  /* NULLABLE NOWHERE: the column is NOT NULL, so a patch may CHANGE the id but never clear it —
-     a prescription printed against a doctor with no id names nobody. */
-  const code = patch.code === undefined ? {} : { code: normaliseDoctorCode(patch.code) };
-  // 2026-10-04 — a designation typed as blanks is cleared, not stored as "  ".
-  const designation = patch.designation === undefined ? {} : { designation: blankToNull(patch.designation) };
-  await tx.update(opdDoctors).set({ ...patch, ...code, ...designation, updatedBy: actor.id, updatedAt: new Date() }).where(eq(opdDoctors.id, id));
+
+  // Blank text clears (2026-10-04's designation rule, now for every free-text field): a registration
+  // number typed as spaces would print blank AND hide the doctor from the "no registration" note.
+  const next = {
+    displayName,
+    registrationNo: patch.registrationNo === undefined ? undefined : blankToNull(patch.registrationNo),
+    specialty: patch.specialty === undefined ? undefined : blankToNull(patch.specialty),
+    designation: patch.designation === undefined ? undefined : blankToNull(patch.designation),
+    departmentId: patch.departmentId,
+    active: patch.active,
+  };
+  const changes = TRACKED_FIELDS
+    .filter((f) => next[f] !== undefined && asText(next[f]) !== asText(existing[f]))
+    .map((f) => ({ field: f, from: asText(existing[f]), to: asText(next[f]) }));
+  const set = Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined));
+  await tx.update(opdDoctors).set({ ...set, updatedBy: actor.id, updatedAt: now }).where(eq(opdDoctors.id, id));
+
+  const stranded: string[] = [];
+  if (movesDepartment) {
+    const rows = await tx.update(opdAppointments)
+      .set({ status: "needs_rebooking", updatedBy: actor.id, updatedAt: now })
+      .where(strandedBookings(id, today, existing.departmentId))
+      .returning({ id: opdAppointments.id });
+    stranded.push(...rows.map((r) => r.id));
+    await tx.update(opdDoctorSchedules).set({ departmentId: null })
+      .where(and(eq(opdDoctorSchedules.doctorId, id), eq(opdDoctorSchedules.departmentId, existing.departmentId)));
+  }
+  const deactivates = patch.active === false && existing.active;
+  if (deactivates) {
+    const rows = await tx.update(opdAppointments)
+      .set({ status: "needs_rebooking", updatedBy: actor.id, updatedAt: now })
+      .where(strandedBookings(id, today))
+      .returning({ id: opdAppointments.id });
+    stranded.push(...rows.map((r) => r.id));
+  }
+  const needsRebooking = [...new Set(stranded)].sort();
+  const waitingToday = deactivates ? await waitingTodayFor(tx, id, today) : 0;
+  if (changes.length > 0) {
+    await appendEvent(tx, doctorProfileChanged.make({ actor, occurredAt: now, payload: { doctorId: id, changes, affectedAppointmentIds: needsRebooking } }));
+  }
+  return { needsRebooking, waitingToday };
 }
 
 /** #914 — the doctor's running or coming secondary department, or null; the admin screen edits it. */

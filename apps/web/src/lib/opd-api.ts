@@ -554,6 +554,44 @@ export function listRooms(): Promise<{ items: WireRoom[] }> {
 export function listDoctors(): Promise<{ items: WireDoctor[] }> {
   return api("GET", "/opd/doctors");
 }
+/* ═══ #1127 (owner 2026-11-19) — OPD Admin → Doctors on the Users screen's pattern ═══ */
+
+/** `GET /opd/doctors/admin`: the doctor row plus the login it belongs to and whether it sits this IST week. */
+export type WireAdminDoctor = WireDoctor & { username: string; scheduledThisWeek: boolean; updatedByName?: string | null };
+/** `GET /opd/doctors/candidates?q=`: active staff with no doctor profile; doctor-role holders first. */
+export type WireDoctorCandidate = { userId: string; username: string; fullName: string; staffCode: string; isDoctorRole: boolean };
+/** `GET /opd/doctors/:id/impact`: what a deactivation or a department change sends to needs_rebooking. */
+export type WireDoctorImpact = { booked: number; bookedByDate: { date: string; count: number }[]; waitingToday: number };
+export type WireDoctorHistoryLine = {
+  at: string; actorName: string; kind: "created" | "changed" | "secondary_set" | "secondary_ended";
+  changes: { field: string; from: string | null; to: string | null }[];
+};
+/** The panel's edit. No `code`: the Doctor ID is fixed once minted (decision 0100). */
+export type DoctorPatch = {
+  displayName?: string; registrationNo?: string | null; departmentId?: string;
+  specialty?: string | null; designation?: string | null; active?: boolean;
+};
+export type DoctorPatchResult = { ok: true; needsRebooking: string[]; waitingToday: number };
+
+export function listDoctorsForAdmin(): Promise<{ items: WireAdminDoctor[] }> {
+  return api("GET", "/opd/doctors/admin");
+}
+export function searchDoctorCandidates(q: string): Promise<{ items: WireDoctorCandidate[] }> {
+  return api("GET", `/opd/doctors/candidates?q=${encodeURIComponent(q)}`);
+}
+export function fetchDoctorImpact(
+  doctorId: string, change: { kind: "deactivate" } | { kind: "department"; departmentId: string },
+): Promise<WireDoctorImpact> {
+  const qs = change.kind === "department" ? `kind=department&departmentId=${encodeURIComponent(change.departmentId)}` : "kind=deactivate";
+  return api("GET", `/opd/doctors/${doctorId}/impact?${qs}`);
+}
+export function fetchDoctorHistory(doctorId: string): Promise<{ items: WireDoctorHistoryLine[] }> {
+  return api("GET", `/opd/doctors/${doctorId}/history`);
+}
+export function patchDoctor(doctorId: string, patch: DoctorPatch): Promise<DoctorPatchResult> {
+  return api("PATCH", `/opd/doctors/${doctorId}`, patch);
+}
+
 export function listDoctorSchedules(doctorId: string): Promise<{ items: WireSchedule[] }> {
   return api("GET", `/opd/doctors/${doctorId}/schedules`);
 }

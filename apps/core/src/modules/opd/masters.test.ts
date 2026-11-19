@@ -175,19 +175,21 @@ describe("opd masters", () => {
       expect((await getDoctor(db, first.doctorId))?.code).toBe("DR-0001");
     });
 
-    it("lets an admin change the id but never clear it", async () => {
+    /* #1127 (owner 2026-11-19, decision 0100) — the id is FIXED once minted: neither changed nor cleared. */
+    it("refuses to change or clear the id once the doctor exists", async () => {
       const admin = await mkUser(db, "admin-code-4", ["opd_admin"]);
       const { deptId } = await seedOpdMasters(db);
       await mkUser(db, "codedoc8", ["doctor"]);
       const { doctorId } = await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc8", displayName: "Dr H", departmentId: deptId }));
-
-      await withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { code: "CRK/FAC/0207" }));
-      expect((await getDoctor(db, doctorId))?.code).toBe("CRK/FAC/0207");
+      const minted = (await getDoctor(db, doctorId))?.code;
 
       await expect(
+        withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { code: "CRK/FAC/0207" })),
+      ).rejects.toMatchObject({ code: "doctor_id_fixed" });
+      await expect(
         withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { code: "" })),
-      ).rejects.toMatchObject({ code: "invalid_doctor_code" });
-      expect((await getDoctor(db, doctorId))?.code).toBe("CRK/FAC/0207");
+      ).rejects.toMatchObject({ code: "doctor_id_fixed" });
+      expect((await getDoctor(db, doctorId))?.code).toBe(minted);
     });
   });
 

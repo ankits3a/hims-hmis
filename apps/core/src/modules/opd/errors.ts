@@ -7,6 +7,10 @@ export type OpdErrorCode =
   // is right for each: a blank or over-long id is a malformed request, and the exhausted case
   // is reached only at ten thousand doctors, where the caller's answer is to supply one.
   | "invalid_doctor_code" | "doctor_code_exhausted"
+  // #1127 (owner 2026-11-19, decision 0100) — the Doctor ID is fixed once minted, so a change is refused
+  // (400 by `opdStatus`'s default); a blank name is malformed; a primary department cannot become the
+  // doctor's own running second department (end that first).
+  | "doctor_id_fixed" | "invalid_doctor_name" | "invalid_department_change"
   | "not_a_doctor" | "not_your_patient"
   // #914 — a doctor's second department. A bad department or date is a malformed request (400); a
   // second secondary while one runs, or ending one that is not running, is a state (409 by rule).

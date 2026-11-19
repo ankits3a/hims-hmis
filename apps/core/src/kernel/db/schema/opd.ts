@@ -89,10 +89,10 @@ export const opdDoctors = pgTable(
      * canvases and nowhere in the schema, and a sheet cannot print a field the system does not hold.
      *
      * MINTED, NOT REQUIRED OF THE ADMIN: `nextDoctorCode` assigns `DR-` + four digits at creation,
-     * so no doctor is ever without one and no clerk has to invent a numbering scheme. It is
-     * OVERRIDABLE through `updateDoctor` for a hospital that already issues faculty numbers of its
-     * own — which a medical college does. Unique, because a shared id on a prescription identifies
-     * nobody.
+     * so no doctor is ever without one and no clerk has to invent a numbering scheme. FIXED once the
+     * doctor exists: #1127 (owner 2026-11-19, decision 0100) — `updateDoctor` refuses a change, since
+     * a changed id makes every prescription already printed name nobody. Unique, because a shared id
+     * on a prescription identifies nobody.
      *
      * NOT `registrationNo`, which stays: that is the NMC/state-council number, it is a different
      * fact about a different authority, and the e-Rx still prints it.

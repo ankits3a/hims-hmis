@@ -25,7 +25,9 @@ import { OPD_VISIT_DEFINITION_JSON } from "./workflow-def";
 import type { DangerRangesConfig, Letterhead, OpdConfig, OpdConfigPatch } from "./config";
 import type { OpdErrorCode } from "./errors";
 import type { LeaveRow } from "./leaves";
-import type { DepartmentRow, DoctorListRow, DoctorRow, RoomRow } from "./masters";
+import type { DepartmentRow, DoctorListRow, DoctorRow, DoctorUpdateResult, RoomRow } from "./masters";
+import { doctorCandidates, doctorChangeImpact, doctorHistory, listDoctorsForAdmin } from "./doctor-admin";
+import type { DoctorAdminRow, DoctorCandidate, DoctorHistoryLine, DoctorImpact } from "./doctor-admin";
 import { endSecondaryDepartment, setSecondaryDepartment } from "./secondary";
 import type { SecondaryRow } from "./secondary";
 import type { Db } from "../../kernel/db/client";
@@ -160,11 +162,16 @@ const doctorCreateBody = z.object({
   /* 2026-10-04 (owner) — "Guest Faculty", "Senior Resident": shown at the desk, never printed. */
   designation: z.string().max(100).optional(),
 });
+const candidatesQuery = z.object({ q: z.string().max(100).optional() });
+const impactQuery = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("deactivate") }),
+  z.object({ kind: z.literal("department"), departmentId: z.string().min(1) }),
+]);
 const doctorPatchBody = z.object({
   displayName: z.string().min(1).max(200).optional(),
-  /* NOT nullable, unlike `registrationNo` beside it: the column is NOT NULL and a doctor without
-     an id would print a blank where the prescription identifies the prescriber. */
-  code: z.string().min(1).max(32).optional(),
+  /* #1127 (owner 2026-11-19, decision 0100) — the Doctor ID is fixed once minted. Still PARSED so that
+     `updateDoctor` refuses it as `doctor_id_fixed`; dropped here it would read as a silent "saved". */
+  code: z.string().max(32).optional(),
   registrationNo: z.string().max(100).nullable().optional(),
   departmentId: z.string().min(1).optional(),
   specialty: z.string().max(200).nullable().optional(),
@@ -433,6 +440,38 @@ export class OpdMastersController {
     return { items: await listDoctors(this.db, { departmentId: q.departmentId, activeOnly: q.active === "true" }) };
   }
 
+  /* #1127 (owner 2026-11-19) — the Doctors tab's reads, declared before ':id' like the list. */
+  @RequirePermission("opd.masters.read", "hospital")
+  @Get("doctors/admin")
+  async doctorsForAdmin(): Promise<{ items: DoctorAdminRow[] }> {
+    return { items: await listDoctorsForAdmin(this.db) };
+  }
+
+  /* Staff who can become a doctor: names and codes only, so it sits behind the masters' own permission. */
+  @RequirePermission("opd.masters.manage", "hospital")
+  @Get("doctors/candidates")
+  async doctorCandidates(@Query() query: unknown): Promise<{ items: DoctorCandidate[] }> {
+    const q = parsed(candidatesQuery, query);
+    return { items: await doctorCandidates(this.db, q.q ?? "") };
+  }
+
+  @RequirePermission("opd.masters.read", "hospital")
+  @Get("doctors/:id/impact")
+  async doctorImpact(@Param("id") id: string, @Query() query: unknown): Promise<DoctorImpact> {
+    const q = parsed(impactQuery, query);
+    try {
+      return await doctorChangeImpact(this.db, id, q.kind === "department" ? { kind: "department", departmentId: q.departmentId } : { kind: "deactivate" });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.masters.read", "hospital")
+  @Get("doctors/:id/history")
+  async doctorHistory(@Param("id") id: string): Promise<{ items: DoctorHistoryLine[] }> {
+    return { items: await doctorHistory(this.db, id) };
+  }
+
   @RequirePermission("opd.masters.manage", "hospital")
   @Post("doctors")
   async createDoctor(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ doctorId: string; userId: string }> {
@@ -454,11 +493,11 @@ export class OpdMastersController {
 
   @RequirePermission("opd.masters.manage", "hospital")
   @Patch("doctors/:id")
-  async patchDoctor(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ ok: true }> {
+  async patchDoctor(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ ok: true } & DoctorUpdateResult> {
     const b = parsed(doctorPatchBody, body);
     try {
-      await withTx(this.db, (tx) => updateDoctor(tx, actor, id, b));
-      return { ok: true };
+      // #1127 — the bookings a deactivation or department change sent to needs_rebooking, and today's queue.
+      return { ok: true, ...await withTx(this.db, (tx) => updateDoctor(tx, actor, id, b)) };
     } catch (e) {
       toHttp(e);
     }
