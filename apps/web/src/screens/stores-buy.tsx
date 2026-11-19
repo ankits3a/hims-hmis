@@ -474,6 +474,7 @@ function BudgetsTab({ initialMonth }: { initialMonth?: string | undefined }): Re
                 <div style={line}>
                   <span style={cell}>{`${t("stores.buy.spent")} ${money(d.spentPaise)}`}</span>
                   {(d.committedPaise ?? 0) > 0 && <span style={word}>{`${t("stores.buy.onOrder")} ${money(d.committedPaise)}`}</span>}
+                  {(d.gstNotCreditedPaise ?? 0) > 0 && <span style={word} data-testid={`gst-not-credited-${d.code}`}>{`${t("stores.paying.tax.gstNotCredited")} ${money(d.gstNotCreditedPaise ?? 0)}`}</span>}
                   {d.equipment.requests.length > 0 && <span style={word}>{`${t("stores.buy.equipment")} ${money(d.equipment.requests.reduce((a, r) => a + r.estimatePaise, 0))}`}</span>}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>

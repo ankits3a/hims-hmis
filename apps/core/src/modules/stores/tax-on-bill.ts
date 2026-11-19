@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, ne, notInArray, sql } from "drizzle-orm";
 import { newId, storesTaxTableBody } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
   grnLines, itemCategories, items, resources, stockBatches, stockLedger, storesTaxTableSigns, storesTaxTables, storesTdsCertificates, supplierBillLines,
   supplierBills, vendors,
 } from "../../kernel/db/schema";
-import { financialYearOf, registerBillTaxHooks, writeBillLineTds } from "../materials";
+import { NON_SUPPLIER_VENDOR_CODES, financialYearOf, registerBillTaxHooks, writeBillLineTds } from "../materials";
 import { STORES_TAX_MANAGE, holds, recordAct } from "./access";
 import { clean, ex, peopleNamed } from "./buying-common";
 import { StoresError } from "./errors";
@@ -146,6 +146,26 @@ export async function addTdsCertificate(
     await recordAct(tx, actor, now, { act: "tds_certificate", refId: id, after: { vendorId: input.vendorId, rateBps: input.rateBps, validFrom: input.validFrom, validTo: input.validTo } });
   });
   return { id };
+}
+
+/** S6c (#1116): the suppliers a certificate or an objection is written for (active ones, by name) — the paying desk's readers. */
+export async function payingSuppliers(db: Db, actor: Actor): Promise<{ id: string; code: string; name: string }[]> {
+  await requirePayingReader(db, actor);
+  const rows = await db.select({ id: vendors.id, code: vendors.code, legal: vendors.legalName, trade: vendors.tradeName }).from(vendors)
+    .where(and(eq(vendors.status, "active"), notInArray(vendors.code, [...NON_SUPPLIER_VENDOR_CODES]))).orderBy(asc(vendors.legalName)).limit(2000);
+  return rows.map((r) => ({ id: r.id, code: r.code, name: r.trade ?? r.legal }));
+}
+
+/** S6c (#1116): the certificates on file, newest first, for the accounts officer's screen. */
+export async function tdsCertificates(db: Db, actor: Actor): Promise<{ id: string; vendorId: string; vendorName: string; number: string; rateBps: number; validFrom: string; validTo: string; documentRef: string; by: { id: string; name: string }; at: string }[]> {
+  await requirePayingReader(db, actor);
+  const rows = await db.select({ c: storesTdsCertificates, legal: vendors.legalName, trade: vendors.tradeName }).from(storesTdsCertificates)
+    .innerJoin(vendors, eq(vendors.id, storesTdsCertificates.vendorId)).orderBy(desc(storesTdsCertificates.createdAt)).limit(200);
+  const person = await peopleNamed(db, rows.map((r) => r.c.createdBy));
+  return rows.map(({ c, legal, trade }) => ({
+    id: c.id, vendorId: c.vendorId, vendorName: trade ?? legal, number: c.number, rateBps: c.rateBps, validFrom: c.validFrom, validTo: c.validTo,
+    documentRef: c.documentRef, by: person(c.createdBy), at: c.createdAt.toISOString(),
+  }));
 }
 
 /* ─────────────────────────────── a bill's lines, as the rules read them ─────────────────────────────── */
@@ -349,6 +369,11 @@ const IST = "Asia/Kolkata";
  * the category's default). Derived on read; nothing is written to the ledger and the charge itself is unchanged.
  */
 export async function gstNotCreditedOn(db: Db, departmentCode: string, day: string): Promise<{ paise: number; rows: number }> {
+  return gstNotCreditedBetween(db, departmentCode, day, day);
+}
+
+/** S6c (#1116): the same figure over IST days `from`..`to` (both inclusive) — the spend tile's and the budget's month. */
+export async function gstNotCreditedBetween(db: Db | Tx, departmentCode: string, from: string, to: string): Promise<{ paise: number; rows: number }> {
   const rows = await db.select({
     sign: sql<number>`case when ${resources.attributes}->>'kind' = 'shelf' then 1 else -1 end`, qty: stockLedger.qtyDelta, cost: stockBatches.landedCostPaise,
     grnId: grnLines.grnId, itemId: stockBatches.itemId, itemGst: items.gstRateBps, catCode: itemCategories.code, catParent: itemCategories.parentId,
@@ -357,7 +382,7 @@ export async function gstNotCreditedOn(db: Db, departmentCode: string, day: stri
     .leftJoin(grnLines, eq(grnLines.id, stockBatches.grnLineId))
     .where(and(
       eq(stockLedger.costCenter, departmentCode), eq(stockLedger.reason, "receive"), sql`${stockLedger.qtyDelta} > 0`,
-      sql`(${stockLedger.occurredAt} at time zone ${IST})::date = ${day}::date`,
+      sql`(${stockLedger.occurredAt} at time zone ${IST})::date between ${from}::date and ${to}::date`,
       sql`not exists (select 1 from stores_asset_units u where u.batch_id = ${stockLedger.batchId})`,
     ));
   if (rows.length === 0) return { paise: 0, rows: 0 };

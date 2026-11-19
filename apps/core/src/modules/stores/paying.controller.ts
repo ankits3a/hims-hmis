@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   storesBillTdsBody, storesHoldKeepBody, storesHoldReleaseBody, storesMsmeObjectionBody, storesMsmeObjectionCloseBody, storesPayBookBody,
   storesPayingSettingsBody, storesRecordPaymentBody, storesRunDecideBody, storesSesBody, storesTallyLedgersBody, storesTaxSignBody, storesTaxTableBody,
-  storesTdsCertificateBody,
+  storesTdsCertificateBody, storesFlagReviewBody,
 } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor } from "../../kernel/auth/decorators";
@@ -12,10 +12,11 @@ import { holdsDryRun, holdsForBill, keepHold, releaseHold, requirePayingReader }
 import { bookDraft, bookFromDesk } from "./paying-book";
 import { decideRunFromPhone, payablesByGroup, payingDesk, runToAuthorise, submitRunFromDesk } from "./paying-reads";
 import { payingSettings, setPayingSettings } from "./paying-settings";
-import { confirmServiceEntry, myServiceDepartments, readServiceEntry, servicesToConfirm } from "./service-entries";
-import { closeMsmeObjection, msmeDryRun, recordMsmeObjection } from "./msme";
+import { confirmServiceEntry, myServiceDepartments, readServiceEntry, reverseServiceEntry, serviceEntriesAt, servicesToConfirm } from "./service-entries";
+import { auditFlags, ownerMonthlyList, reviewFlag } from "./auditor-agent";
+import { closeMsmeObjection, msmeDryRun, msmeDuesReport, msmeHalfOf, msmeObjections, recordMsmeObjection } from "./msme";
 import { setStoresTallyLedgers, storesTallyLedgerNames } from "./tally-split";
-import { addTdsCertificate, billTaxProposal, saveTaxTable, setBillTds, signTaxTable, taxTables, tdsDryRun } from "./tax-on-bill";
+import { addTdsCertificate, billTaxProposal, saveTaxTable, setBillTds, signTaxTable, payingSuppliers, taxTables, tdsCertificates, tdsDryRun } from "./tax-on-bill";
 import { parsed, toHttp } from "./stores-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -222,6 +223,64 @@ export class StoresPayingController {
   @Header("Cache-Control", "no-store")
   async serviceDepartments(@CurrentActor() actor: Actor): Promise<unknown> {
     try { return await myServiceDepartments(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("services/sheets")
+  @Header("Cache-Control", "no-store")
+  async serviceSheets(@CurrentActor() actor: Actor, @Query("departmentId") departmentId: string): Promise<unknown> {
+    try { return await serviceEntriesAt(this.db, actor, parsed(id, departmentId)); } catch (e) { toHttp(e); }
+  }
+
+  @Post("services/:sesId/reverse")
+  async reverseSes(@CurrentActor() actor: Actor, @Param("sesId") sesId: string, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesHoldReleaseBody, body);
+    try { return await reverseServiceEntry(this.db, actor, parsed(id, sesId), b.reason); } catch (e) { toHttp(e); }
+  }
+
+  /* ─────────────── S6c: the auditor's flags, the MSME dues report, the tax screens' lists ─────────────── */
+
+  @Get("flags")
+  @Header("Cache-Control", "no-store")
+  async flags(@CurrentActor() actor: Actor, @Query("status") status?: string): Promise<unknown> {
+    const st = status === undefined || status === "" ? undefined : parsed(z.enum(["open", "upheld", "dismissed"]), status);
+    try { return await auditFlags(this.db, actor, st === undefined ? {} : { status: st }); } catch (e) { toHttp(e); }
+  }
+
+  @Get("flags/owner-month")
+  @Header("Cache-Control", "no-store")
+  async ownerMonth(@CurrentActor() actor: Actor, @Query("month") month: string): Promise<unknown> {
+    try { return await ownerMonthlyList(this.db, actor, parsed(z.string().regex(/^\d{4}-\d{2}$/), month)); } catch (e) { toHttp(e); }
+  }
+
+  @Post("flags/:flagId/review")
+  async review(@CurrentActor() actor: Actor, @Param("flagId") flagId: string, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesFlagReviewBody, body);
+    try { return await reviewFlag(this.db, actor, parsed(id, flagId), b); } catch (e) { toHttp(e); }
+  }
+
+  @Get("msme-report")
+  @Header("Cache-Control", "no-store")
+  async msmeReport(@CurrentActor() actor: Actor, @Query("half") half?: string): Promise<unknown> {
+    const h = half === undefined || half === "" ? msmeHalfOf(new Date()) : parsed(z.string().regex(/^\d{4}-H[12]$/), half);
+    try { return await msmeDuesReport(this.db, actor, h); } catch (e) { toHttp(e); }
+  }
+
+  @Get("msme-objections")
+  @Header("Cache-Control", "no-store")
+  async objections(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await msmeObjections(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("suppliers")
+  @Header("Cache-Control", "no-store")
+  async suppliers(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await payingSuppliers(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("tds-certificates")
+  @Header("Cache-Control", "no-store")
+  async certificates(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await tdsCertificates(this.db, actor); } catch (e) { toHttp(e); }
   }
 
   @Get("services/:sesId")

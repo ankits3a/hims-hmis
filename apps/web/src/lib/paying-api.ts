@@ -1,7 +1,8 @@
 import { api } from "./api";
 import type {
   WireGstCredit, WireMsmeDryRun, WireTdsDryRun, WireHoldsDryRun, WirePayBookDraft, WirePayBooked, WirePayHold, WirePayablesByGroup, WirePayingDesk, WirePayingSettings, WireRunToAuthorise,
-  WireServiceEntry, WireServiceToConfirm, WireSesPeriodKind, WireSesSource,
+  WireServiceEntry, WireServiceToConfirm, WireSesPeriodKind, WireSesSource, WireAuditFlag, WireGstCreditRule, WireMsmeDuesReport, WireServiceEntryRow,
+  WireStoresTallyLedgers, WireTaxTable, WireTaxTables, WireTdsRule,
 } from "@hmis/contracts";
 
 /**
@@ -48,3 +49,31 @@ export const confirmService = (body: {
   purchaseOrderId: string; departmentId: string; period: { kind: WireSesPeriodKind; key: string; start: string; end: string }; source: WireSesSource;
   lines?: { itemId: string; qtyBase: number; shortReason?: string | null }[];
 }): Promise<WireServiceEntry> => api("POST", "/stores/pay/services", body);
+
+/* ═══ STORES S6c (#1116) — the desk's tax screens (the CA's tables, certificates, Tally ledger names, MSME objections), the
+ * half-yearly MSME dues report, the auditor's flags and their review, a department's sheets and the reversing entry. ═══ */
+export type TdsCertificate = { id: string; vendorId: string; vendorName: string; number: string; rateBps: number; validFrom: string; validTo: string; documentRef: string; by: { id: string; name: string }; at: string };
+export type MsmeObjection = {
+  id: string; kind: "qc_rejection" | "short"; vendorName: string; doc: { type: "grn" | "ses"; id: string; no: string }; raisedOn: string; reason: string;
+  closed: { on: string; note: string } | null;
+};
+export const taxTables = (): Promise<WireTaxTables> => api("GET", "/stores/pay/tax-tables");
+export const saveTaxTable = (body: { kind: "tds"; rules: WireTdsRule[]; documentRef: string } | { kind: "gst_credit"; rules: WireGstCreditRule[]; documentRef: string }): Promise<WireTaxTable> =>
+  api("POST", "/stores/pay/tax-tables", body);
+export const signTaxTable = (tableId: string, documentRef: string): Promise<WireTaxTable> => api("POST", `/stores/pay/tax-tables/${enc(tableId)}/sign`, { documentRef });
+export const tdsCertificates = (): Promise<TdsCertificate[]> => api("GET", "/stores/pay/tds-certificates");
+export const addTdsCertificate = (body: { vendorId: string; number: string; rateBps: number; validFrom: string; validTo: string; documentRef: string }): Promise<{ id: string }> =>
+  api("POST", "/stores/pay/tds-certificates", body);
+export const tallyLedgers = (): Promise<WireStoresTallyLedgers> => api("GET", "/stores/pay/tally-ledgers");
+export const setTallyLedgers = (names: Record<string, string>): Promise<WireStoresTallyLedgers> => api("POST", "/stores/pay/tally-ledgers", { names });
+export const msmeObjections = (): Promise<MsmeObjection[]> => api("GET", "/stores/pay/msme-objections");
+export const addMsmeObjection = (body: { grnId?: string | null; sesId?: string | null; kind: "qc_rejection" | "short"; raisedOn: string; reason: string }): Promise<{ id: string }> =>
+  api("POST", "/stores/pay/msme-objections", body);
+export const closeMsmeObjection = (id: string, closedOn: string, note: string): Promise<{ id: string }> => api("POST", `/stores/pay/msme-objections/${enc(id)}/close`, { closedOn, note });
+export const msmeReport = (half?: string): Promise<WireMsmeDuesReport> => api("GET", `/stores/pay/msme-report${half === undefined ? "" : `?half=${enc(half)}`}`);
+export const auditFlags = (status?: "open" | "upheld" | "dismissed"): Promise<WireAuditFlag[]> => api("GET", `/stores/pay/flags${status === undefined ? "" : `?status=${status}`}`);
+export const ownerMonthFlags = (month: string): Promise<WireAuditFlag[]> => api("GET", `/stores/pay/flags/owner-month?month=${enc(month)}`);
+export const reviewFlag = (flagId: string, verdict: "upheld" | "dismissed", note: string): Promise<WireAuditFlag> => api("POST", `/stores/pay/flags/${enc(flagId)}/review`, { verdict, note });
+export const serviceSheets = (departmentId: string): Promise<WireServiceEntryRow[]> => api("GET", `/stores/pay/services/sheets?departmentId=${enc(departmentId)}`);
+export const reverseService = (sesId: string, reason: string): Promise<WireServiceEntry> => api("POST", `/stores/pay/services/${enc(sesId)}/reverse`, { reason });
+export const payingSuppliers = (): Promise<{ id: string; code: string; name: string }[]> => api("GET", "/stores/pay/suppliers");

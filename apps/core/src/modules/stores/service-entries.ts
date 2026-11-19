@@ -22,7 +22,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  * (a month for most; the start of the term for a contract billed in advance by its own terms) the department that
  * receives the service confirms it: the lines prefilled from the PO (or the source module), one tap Confirm, or a Short
  * with the quantity and one line. One sheet per PO and period (`ses_exists`, under an advisory lock); the rows are
- * append-only (0247), so a correction is a reversing sheet naming the first (`reverses_id`; not built in S6a).
+ * append-only (0247), so a correction is a reversing sheet naming the first (`reverses_id`; S6c `reverseServiceEntry`).
  *
  * The bill: `billDraftFromSes` mirrors materials' `billDraftFromGrn`; the bill's lines name `ses_id` and the 3-way match is
  * PO × SES × bill (materials reads the sheet through `registerServiceEntrySource`, registered below at import).
@@ -111,6 +111,57 @@ export async function confirmServiceEntry(db: Db, actor: Actor, input: ServiceEn
     return id;
   });
   return getServiceEntry(db, sesId);
+}
+
+/**
+ * S6c (#1116, decision 2) — a correction is a REVERSING sheet naming the first: a header row with `reverses_id` and the
+ * reason, no lines. The first then counts nowhere (To book, the match, the month's "to confirm"), and the period can be
+ * confirmed again. Only while the first is on no live bill (a billed service is corrected by the supplier's credit note,
+ * edge case 2); never a reversal of a reversal; once per sheet. The department's confirmer, with a reason.
+ */
+export async function reverseServiceEntry(db: Db, actor: Actor, sesId: string, reason: string, now: Date = new Date()): Promise<WireServiceEntry> {
+  const why = clean(reason);
+  const first = await getServiceEntry(db, sesId);
+  if (!(await holds(db, actor, STORES_SES_CONFIRM, first.department.id))) {
+    throw new StoresError("not_permitted", "Not your department", { permission: STORES_SES_CONFIRM, departmentId: first.department.id });
+  }
+  if (why === null) throw new StoresError("reason_required", "say why the service entry is reversed");
+  const id = await withTx(db, async (tx) => {
+    const [h] = await tx.select().from(storesServiceEntries).where(eq(storesServiceEntries.id, sesId)).for("update");
+    if (h!.reversesId !== null) throw new StoresError("not_reversible", "a reversing entry is not reversed again");
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`stores-ses:${h!.purchaseOrderId}:${h!.periodKey}`}))`);
+    const [again] = await tx.select({ id: storesServiceEntries.id }).from(storesServiceEntries).where(eq(storesServiceEntries.reversesId, sesId)).limit(1);
+    if (again !== undefined) throw new StoresError("already_reversed", `service entry ${h!.sesNo} is already reversed`);
+    const [billed] = await tx.select({ billNo: supplierBills.billNo }).from(supplierBillLines).innerJoin(supplierBills, eq(supplierBills.id, supplierBillLines.billId))
+      .where(and(eq(supplierBillLines.sesId, sesId), ne(supplierBills.status, "cancelled"))).limit(1);
+    if (billed !== undefined) throw new StoresError("ses_already_billed", `service entry ${h!.sesNo} is on bill ${billed.billNo}; the supplier's credit note corrects it`, { billNo: billed.billNo });
+    const rid = newId();
+    const sesNo = await nextNo(tx, "stores_ses", "SES", now);
+    await tx.insert(storesServiceEntries).values({
+      id: rid, sesNo, purchaseOrderId: h!.purchaseOrderId, vendorId: h!.vendorId, departmentId: h!.departmentId, periodKind: h!.periodKind, periodKey: h!.periodKey,
+      periodStart: h!.periodStart, periodEnd: h!.periodEnd, source: h!.source, sourceRef: h!.sourceRef, reversesId: sesId, note: why.slice(0, 300),
+      confirmedBy: actor.id, confirmedAt: now,
+    });
+    await recordAct(tx, actor, now, {
+      act: "ses_reverse", refId: rid, reason: why.slice(0, 300), before: { sesNo: h!.sesNo, status: "confirmed" },
+      after: { sesNo, reverses: sesId, reversesNo: h!.sesNo, purchaseOrderId: h!.purchaseOrderId, periodKey: h!.periodKey },
+    });
+    return rid;
+  });
+  return getServiceEntry(db, id);
+}
+
+/** The sheets confirmed at a department (newest first), each with whether it can still be reversed. */
+export async function serviceEntriesAt(db: Db, actor: Actor, departmentId: string, limit = 30): Promise<(WireServiceEntry & { reversed: boolean; reversal: boolean })[]> {
+  if (!(await holds(db, actor, STORES_SES_CONFIRM, departmentId))) {
+    throw new StoresError("not_permitted", "Not your department", { permission: STORES_SES_CONFIRM, departmentId });
+  }
+  const rows = await db.select({ id: storesServiceEntries.id, rev: storesServiceEntries.reversesId }).from(storesServiceEntries)
+    .where(eq(storesServiceEntries.departmentId, departmentId)).orderBy(desc(storesServiceEntries.confirmedAt)).limit(Math.min(limit, 100));
+  const reversed = new Set(rows.map((r) => r.rev).filter((x): x is string => x !== null));
+  const out: (WireServiceEntry & { reversed: boolean; reversal: boolean })[] = [];
+  for (const r of rows) out.push({ ...(await getServiceEntry(db, r.id)), reversed: reversed.has(r.id), reversal: r.rev !== null });
+  return out;
 }
 
 export async function getServiceEntry(db: Exec, sesId: string): Promise<WireServiceEntry> {

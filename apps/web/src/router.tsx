@@ -1981,7 +1981,8 @@ const storesBuyingRoute = createRoute({
 // phone sheet for one run (`?run=`) or one bill's hold cards (`?bill=`).
 const storesPayRoute = createRoute({
   getParentRoute: () => authedRoute, path: "/stores/pay",
-  validateSearch: (s: Record<string, unknown>): { run?: string; bill?: string; tab?: string } => ({ run: str(s.run), bill: str(s.bill), tab: str(s.tab) }),
+  // S6c (#1116): `?flags=1`, the auditor's flags.
+  validateSearch: (s: Record<string, unknown>): { run?: string; bill?: string; tab?: string; flags?: string } => ({ run: str(s.run), bill: str(s.bill), tab: str(s.tab), flags: s.flags === undefined || s.flags === "" ? undefined : String(s.flags) }),
   component: StoresPaying,
 });
 // STORES S6a (#1116) — "Service to confirm": the department confirms a service month (or a term started) on the phone.

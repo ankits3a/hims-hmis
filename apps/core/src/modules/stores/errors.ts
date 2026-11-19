@@ -192,6 +192,10 @@ export const STORES_ERROR_CODES = [
   "bill_booked",
   "unknown_objection",
   "objection_closed",
+  // ── S6c (#1116): the auditor agent's flags and their review ──
+  "unknown_flag",
+  "flag_reviewed",
+  "hod_reviews_own",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -383,6 +387,9 @@ const STATUS: Record<StoresErrorCode, number> = {
   bill_booked: 409,
   unknown_objection: 404,
   objection_closed: 409,
+  unknown_flag: 404,
+  flag_reviewed: 409,
+  hod_reviews_own: 403,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

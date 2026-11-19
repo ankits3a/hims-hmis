@@ -1,6 +1,6 @@
 ---
 issue: 1116
-status: approved
+status: built
 approved: 2026-11-19
 ---
 # SPEC: Stores S6, the paying desk and the auditor agent: service bills, tax on the bill, MSME clock, holds and release, UTR, one Tally export (#1116) — APPROVED by owner 2026-11-19 (decision 0101)
