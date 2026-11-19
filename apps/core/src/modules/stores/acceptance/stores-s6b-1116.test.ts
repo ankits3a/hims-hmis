@@ -140,7 +140,8 @@ describe("Stores S6b: GST marks, TDS, IRN, the MSME clock and the Tally split (s
       msmeClass: o.msmeClass ?? null,
     }));
     await withTx(db, (tx) => addVendorDocument(tx, head.actor, v, { type: "gst_certificate", number: "g" }));
-    if (pan !== null) await withTx(db, (tx) => addVendorDocument(tx, head.actor, v, { type: "pan", number: "p" }));
+    // The PAN paper is an activation precondition; "PAN missing" is a supplier with no PAN number on file.
+    await withTx(db, (tx) => addVendorDocument(tx, head.actor, v, { type: "pan", number: "p" }));
     if (o.agreement === true) await withTx(db, (tx) => addVendorDocument(tx, head.actor, v, { type: "payment_terms_agreement", number: "agreed terms" }));
     if (o.einvoice !== undefined) await withTx(db, (tx) => updateVendor(tx, head.actor, v, { einvoiceApplicable: o.einvoice }));
     await withTx(db, (tx) => activateVendor(tx, head.actor, v, at(-400 * DAY)));
@@ -160,7 +161,8 @@ describe("Stores S6b: GST marks, TDS, IRN, the MSME clock and the Tally split (s
       vendorId, storeResourceId: pharm ? pharmStore : genMain, lines: [{ itemId, ...(pharm ? { uom: "strip" } : {}), qtyPacks: qty, ratePaise: rate }],
     }, { now: at((postDay - 5) * DAY) });
     await submitPurchaseOrder(db, raiser.actor, po.id, at((postDay - 5) * DAY + 1));
-    await decidePurchaseOrder(db, head.actor, po.id, "approve", "ok", at((postDay - 5) * DAY + 2));
+    // Above ₹50,000 the PO is the owner's to approve (the S5 tiers).
+    await decidePurchaseOrder(db, qty * rate >= 4_000_000 ? owner.actor : head.actor, po.id, "approve", "ok", at((postDay - 5) * DAY + 2));
     const { grnId } = await withTx(db, (tx) => captureGrn(tx, keeper.actor, {
       vendorId, source: "challan", storeResourceId: pharm ? pharmStore : genMain, purchaseOrderId: po.id, challanNo: `CH-${newId().slice(-6)}`,
       challanDate: dayAt(postDay), invoiceNo: `INV-${newId().slice(-6)}`,
@@ -256,8 +258,9 @@ describe("Stores S6b: GST marks, TDS, IRN, the MSME clock and the Tally split (s
     const proposal = await billTaxProposal(db, acct.actor, pharmBill, at(3));
     expect(proposal.lines.map((l) => [l.storesLine, l.gstCredit])).toEqual([[false, null]]);
     expect((await getSupplierBill(db, acct.actor, pharmBill)).lines[0]).not.toHaveProperty("gstCredit");
+    const pg2 = await received(vp, crocin, 10, 25_000);
     await expect(createSupplierBill(db, pharmacist.actor, {
-      vendorId: vp, vendorBillNo: "PH/2", billDate: TODAY, lines: [{ grnId: pg.grnId, itemId: crocin, uom: "strip", qtyPacks: 10, ratePaise: 25_000, gstRateBps: 1200, gstCredit: "eligible" }],
+      vendorId: vp, vendorBillNo: "PH/2", billDate: TODAY, lines: [{ grnId: pg2.grnId, itemId: crocin, uom: "strip", qtyPacks: 10, ratePaise: 25_000, gstRateBps: 1200, gstCredit: "eligible" }],
     }, { now: at(4) })).rejects.toMatchObject({ code: "bill_invalid" });
 
     // Reverse charge: the supplier's bill carries no GST and is paid without it; the export carries the liability.

@@ -115,3 +115,13 @@ export { HOLD_RELEASE_LIMIT_PAISE, HOLD_WORDS, heldBillIds, holdsDryRun, holdsFo
 export { PAYING_DEFAULTS, payingSettings, setPayingSettings } from "./paying-settings";
 export { decideRunFromPhone, payablesByGroup, payingDesk, runToAuthorise, submitRunFromDesk } from "./paying-reads";
 export { bookDraft, bookFromDesk } from "./paying-book";
+// S6b (#1116): tax on the bill (GST credit marks, reverse charge, TDS from a CA-signed table, the IRN hold), the MSME
+// clock of the Act behind its switch, the Tally split. Importing these registers the tax and MSME hooks and the
+// purchase split with materials; with every switch off and no signed table, pharmacy is as before.
+export { STORES_TAX_MANAGE } from "./access";
+export {
+  addTdsCertificate, billTaxProposal, gstNotCreditedOn, natureOf, proposeCredit, saveTaxTable, setBillTds, signTaxTable, signedTaxTable, taxTables, tdsDryRun, tdsFor,
+} from "./tax-on-bill";
+export { MSME_ACT_DAYS, MSME_ACT_MAX_DAYS, actDueDate, closeMsmeObjection, msmeDryRun, onTheClock, recordMsmeObjection } from "./msme";
+export { setStoresTallyLedgers, storesTallyLedgerNames } from "./tally-split";
+export type { PayingSwitches } from "./paying-settings";

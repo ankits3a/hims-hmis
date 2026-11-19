@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Header, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import {
-  storesHoldKeepBody, storesHoldReleaseBody, storesPayBookBody, storesPayingSettingsBody, storesRecordPaymentBody, storesRunDecideBody, storesSesBody,
+  storesBillTdsBody, storesHoldKeepBody, storesHoldReleaseBody, storesMsmeObjectionBody, storesMsmeObjectionCloseBody, storesPayBookBody,
+  storesPayingSettingsBody, storesRecordPaymentBody, storesRunDecideBody, storesSesBody, storesTallyLedgersBody, storesTaxSignBody, storesTaxTableBody,
+  storesTdsCertificateBody,
 } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor } from "../../kernel/auth/decorators";
@@ -11,6 +13,9 @@ import { bookDraft, bookFromDesk } from "./paying-book";
 import { decideRunFromPhone, payablesByGroup, payingDesk, runToAuthorise, submitRunFromDesk } from "./paying-reads";
 import { payingSettings, setPayingSettings } from "./paying-settings";
 import { confirmServiceEntry, myServiceDepartments, readServiceEntry, servicesToConfirm } from "./service-entries";
+import { closeMsmeObjection, msmeDryRun, recordMsmeObjection } from "./msme";
+import { setStoresTallyLedgers, storesTallyLedgerNames } from "./tally-split";
+import { addTdsCertificate, billTaxProposal, saveTaxTable, setBillTds, signTaxTable, taxTables, tdsDryRun } from "./tax-on-bill";
 import { parsed, toHttp } from "./stores-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -123,6 +128,80 @@ export class StoresPayingController {
   async setSettings(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const b = parsed(storesPayingSettingsBody, body);
     try { return await setPayingSettings(this.db, actor, b); } catch (e) { toHttp(e); }
+  }
+
+  @Get("settings/msme-dry-run")
+  @Header("Cache-Control", "no-store")
+  async msmeDry(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await msmeDryRun(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("settings/tds-dry-run")
+  @Header("Cache-Control", "no-store")
+  async tdsDry(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await tdsDryRun(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  /* ─────────────── S6b: tax on the bill, MSME objections, Tally ledgers ─────────────── */
+
+  @Get("tax-tables")
+  @Header("Cache-Control", "no-store")
+  async tables(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await taxTables(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tax-tables")
+  async saveTable(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesTaxTableBody, body);
+    try { return await saveTaxTable(this.db, actor, b); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tax-tables/:tableId/sign")
+  async signTable(@CurrentActor() actor: Actor, @Param("tableId") tableId: string, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesTaxSignBody, body);
+    try { return await signTaxTable(this.db, actor, parsed(id, tableId), b); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tds-certificates")
+  async certificate(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesTdsCertificateBody, body);
+    try { return await addTdsCertificate(this.db, actor, b); } catch (e) { toHttp(e); }
+  }
+
+  @Get("bills/:billId/tax")
+  @Header("Cache-Control", "no-store")
+  async billTax(@CurrentActor() actor: Actor, @Param("billId") billId: string): Promise<unknown> {
+    try { return await billTaxProposal(this.db, actor, parsed(id, billId)); } catch (e) { toHttp(e); }
+  }
+
+  @Post("bills/:billId/tds")
+  async billTds(@CurrentActor() actor: Actor, @Param("billId") billId: string, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesBillTdsBody, body);
+    try { return await setBillTds(this.db, actor, parsed(id, billId), b); } catch (e) { toHttp(e); }
+  }
+
+  @Post("msme-objections")
+  async objection(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesMsmeObjectionBody, body);
+    try { return await recordMsmeObjection(this.db, actor, b); } catch (e) { toHttp(e); }
+  }
+
+  @Post("msme-objections/:objectionId/close")
+  async closeObjection(@CurrentActor() actor: Actor, @Param("objectionId") objectionId: string, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesMsmeObjectionCloseBody, body);
+    try { return await closeMsmeObjection(this.db, actor, parsed(id, objectionId), b); } catch (e) { toHttp(e); }
+  }
+
+  @Get("tally-ledgers")
+  @Header("Cache-Control", "no-store")
+  async tallyLedgers(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await storesTallyLedgerNames(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tally-ledgers")
+  async setTallyLedgers(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const b = parsed(storesTallyLedgersBody, body);
+    try { return await setStoresTallyLedgers(this.db, actor, b.names); } catch (e) { toHttp(e); }
   }
 
   /* ─────────────── service entry sheets ─────────────── */

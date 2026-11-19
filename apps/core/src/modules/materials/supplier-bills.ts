@@ -80,7 +80,17 @@ export type BillLineInput = {
   discountBps?: number;
   /** #637 — the discount as an amount off the list rate, per pack, in paise. Not with `discountBps`. */
   discountPaise?: number;
+  /**
+   * STORES S6b (#1116, decision 4) — the line's input-credit mark and reverse charge, as the accounts officer confirmed
+   * them. Only a Stores item line or a service line carries them (`bill_invalid` on a pharmacy line). Reverse charge:
+   * the supplier's bill carries no GST on the line (its GST columns are 0), the hospital owes it.
+   */
+  gstCredit?: BillGstCredit | null;
+  reverseCharge?: boolean | null;
 };
+
+export type BillGstCredit = "eligible" | "not_available" | "shared";
+export const BILL_GST_CREDITS: readonly BillGstCredit[] = ["eligible", "not_available", "shared"];
 
 export type BillInput = {
   vendorId: string;
@@ -89,6 +99,8 @@ export type BillInput = {
   interState?: boolean;
   roundOffPaise?: number;
   note?: string | null;
+  /** STORES S6b (#1116, decision 4) — the e-invoice's reference number (IRN) when the paper carries one. */
+  irn?: string | null;
   lines: BillLineInput[];
 };
 
@@ -100,6 +112,8 @@ export type BillLineView = {
   listRatePaise: number | null; discountBps: number; discountPaise: number;
   totalPaise: number; expectedBase: number; expectedPacks: number; expectedRatePaise: number; expectedTaxablePaise: number;
   expectedGstRateBps: number; differencePaise: number; mismatch: BillMismatch[]; out: boolean;
+  /** STORES S6b (#1116) — present only when set (a pharmacy line's view is unchanged): the marks and the TDS booked. */
+  gstCredit?: BillGstCredit; reverseCharge?: boolean; tdsPaise?: number; tdsNature?: string;
 };
 
 export type BillSummary = {
@@ -116,6 +130,8 @@ export type BillView = BillSummary & {
   names: Record<string, string>; lines: BillLineView[];
   /** GRN items accepted but not on the bill — counted in the expected total. */
   unbilled: { grnId: string | null; grnNo: string; sesId?: string; itemId: string; itemCode: string; itemName: string; expectedBase: number; expectedTaxablePaise: number }[];
+  /** STORES S6b (#1116) — present only when set: the IRN, and the TDS deducted at booking (counted in `paidPaise`). */
+  irn?: string; tdsPaise?: number;
   /** Recorded payments against this bill; `creditPaise` is the vendor credit set off on the same voucher (P4). */
   payments: { paymentId: string; paymentNo: string; runNo: string; mode: string; reference: string | null; paidOn: string; paidPaise: number; creditPaise: number }[];
 };
@@ -202,6 +218,75 @@ export function registerBillHoldHooks(hooks: BillHoldHooks): () => void {
 
 export function billHoldHooks(): BillHoldHooks | null {
   return holdHooks;
+}
+
+// ═══════════════════════════════════ STORES S6b — tax on the bill, the MSME rule, the Tally split ═══════════════════════════════════
+
+/**
+ * STORES S6b (#1116, decisions 4–6, 10, 13) — Stores' tax rules, the MSME rule and the Tally split are Stores' rows; Stores
+ * registers these at import. Each answers `null` (or leaves a bill out) when its switch is off or its table unsigned, and
+ * then materials does exactly what it did before S6b (`pharmacy/stores-s6b-no-change.test.ts`).
+ */
+export type BillBookingTax = {
+  /** Per line: a mark Stores fills on a Stores line left unmarked, and the TDS deducted (with its nature and table row). */
+  lines: { lineId: string; gstCredit?: BillGstCredit | null; tdsPaise: number | null; tdsNature: string | null; tdsRef: string | null }[];
+  /** The bill's TDS, the sum of its lines' (null = "TDS not checked": nothing deducted). */
+  tdsPaise: number | null;
+};
+export type BillTaxHooks = {
+  /** A bill is being booked, inside the act's transaction, before its row is written. `null` = nothing to write. */
+  onBooking(tx: Tx, actor: Actor, billId: string, now: Date): Promise<BillBookingTax | null>;
+  /** The due date under a rule other than today's (the Act's, when switched on); `null` = today's `dueDateFor`. */
+  dueDate(tx: Tx, input: { billId: string; vendorId: string; billDate: string; acceptanceDate: string; termsDays: number | null }): Promise<{ dueDate: string; msme: boolean; acceptanceDate: string } | null>;
+};
+let taxHooks: BillTaxHooks | null = null;
+
+export function registerBillTaxHooks(hooks: BillTaxHooks): () => void {
+  taxHooks = hooks;
+  return () => { if (taxHooks === hooks) taxHooks = null; };
+}
+
+/**
+ * STORES S6b (#1116, decision 10) — a purchase voucher read per line. A debit is > 0 and a credit < 0; `std` names one
+ * of pharmacy's own mapped ledgers, else `ledger` is the accountant's Stores name under `group`. `deductedPaise` is
+ * what the party is NOT credited (the TDS); the round-off and the party's credit are the export's, as before.
+ * `missing` lists Stores ledger keys with no name yet (the export refuses with the list).
+ */
+export type PurchaseSplitEntry = { amountPaise: number; costCentre: string | null } & (
+  | { std: "purchases" | "inputCgst" | "inputSgst" | "inputIgst" }
+  | { ledger: string; group: string }
+);
+export type PurchaseSplit = { entries: PurchaseSplitEntry[]; deductedPaise: number; missing: string[] };
+export type PurchaseSplitSource = (db: Db | Tx, billIds: readonly string[]) => Promise<Map<string, PurchaseSplit>>;
+let splitSource: PurchaseSplitSource | null = null;
+
+export function registerPurchaseSplitSource(source: PurchaseSplitSource): () => void {
+  splitSource = source;
+  return () => { if (splitSource === source) splitSource = null; };
+}
+
+/**
+ * STORES S6b (#1116, decision 5) — the accounts officer's change to a proposed TDS, with its reason, on an entered and
+ * not yet booked bill (inside the caller's transaction; the caller checks the grant and writes the act). Booking keeps a
+ * changed line's figure. An edit or a match re-enters the lines, and the TDS is then proposed afresh.
+ */
+export async function writeBillLineTds(tx: Tx, billId: string, lines: readonly { lineId: string; tdsPaise: number }[], reason: string): Promise<BillRow> {
+  const b = await lockBill(tx, billId);
+  if (!EDITABLE.includes(b.status as BillStatus)) throw wrongStatus(b, "changing the TDS", EDITABLE);
+  const mine = await tx.select().from(supplierBillLines).where(eq(supplierBillLines.billId, billId));
+  for (const l of lines) {
+    const row = mine.find((m) => m.id === l.lineId);
+    if (row === undefined) throw new MaterialsError("bill_invalid", `line ${l.lineId} is not on bill ${b.billNo}`);
+    if (!Number.isSafeInteger(l.tdsPaise) || l.tdsPaise < 0 || l.tdsPaise > row.taxablePaise) throw new MaterialsError("bill_invalid", "the TDS is between nothing and the line's value before GST");
+    await tx.update(supplierBillLines).set({ tdsPaise: l.tdsPaise, tdsReason: reason.slice(0, MAX_TEXT) }).where(eq(supplierBillLines.id, l.lineId));
+  }
+  return b;
+}
+
+/** The split of each bill that needs one (a Stores or service line, reverse charge or TDS); a bill left out exports as before. */
+export async function purchaseSplitsFor(db: Db | Tx, billIds: readonly string[]): Promise<Map<string, PurchaseSplit>> {
+  if (splitSource === null || billIds.length === 0) return new Map();
+  return splitSource(db, billIds);
 }
 
 // ═══════════════════════════════════ who may ═══════════════════════════════════
@@ -354,6 +439,8 @@ type ResolvedLine = {
   gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
   expectedBase: number; expectedRatePaise: number; expectedTaxablePaise: number; expectedGstRateBps: number;
   mismatch: BillMismatch[];
+  /** STORES S6b — null on every pharmacy line. */
+  gstCredit: BillGstCredit | null; reverseCharge: boolean | null;
 };
 
 const MAX_LINES = 300;
@@ -474,9 +561,17 @@ async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineIn
     const e = expectations.get(docKey(l));
     const expectedBase = e?.acceptedBase ?? 0;
     const rate = e?.rate ?? { paise: 0, per: 1 };
-    // GST is on the DISCOUNTED value: packs × net rate (#637).
+    // STORES S6b (#1116, decision 4): the marks ride a Stores item or service line only; a pharmacy line carries none.
+    const storesLine = named(l.sesId) || (item.trackMode !== null && item.class !== "drug");
+    const gstCredit = l.gstCredit ?? null;
+    const reverseCharge = l.reverseCharge ?? null;
+    if (gstCredit !== null && !BILL_GST_CREDITS.includes(gstCredit)) throw new MaterialsError("bill_invalid", `line for ${item.code}: GST credit is eligible, not_available or shared`, { itemId: l.itemId });
+    if (!storesLine && (gstCredit !== null || reverseCharge !== null)) {
+      throw new MaterialsError("bill_invalid", `line for ${item.code}: a pharmacy line carries no GST credit or reverse-charge mark`, { itemId: l.itemId });
+    }
+    // GST is on the DISCOUNTED value: packs × net rate (#637). Reverse charge: the supplier bills none.
     const taxablePaise = l.qtyPacks * d.ratePaise;
-    const split = splitGst(lineGstPaise(taxablePaise, l.gstRateBps), interState);
+    const split = splitGst(reverseCharge === true ? 0 : lineGstPaise(taxablePaise, l.gstRateBps), interState);
     const resolved = {
       grnId: named(l.grnId) ? l.grnId : null, sesId: named(l.sesId) ? l.sesId : null, itemId: l.itemId, uom: pack?.uom ?? item.baseUom, multiplier, qtyPacks: l.qtyPacks, ratePaise: d.ratePaise,
       listRatePaise: d.listRatePaise, discountBps: d.discountBps, discountPaise: d.discountPaise,
@@ -484,7 +579,7 @@ async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineIn
       expectedBase, expectedRatePaise: packRate(multiplier, rate), expectedTaxablePaise: valueAt(expectedBase, rate),
       expectedGstRateBps: e?.gstRateBps ?? item.gstRateBps ?? 0,
     };
-    return { ...resolved, mismatch: lineMismatches(resolved).reasons };
+    return { ...resolved, mismatch: lineMismatches(resolved).reasons, gstCredit, reverseCharge };
   });
   return { lines, grnRows, sesRows, expectations };
 }
@@ -497,12 +592,16 @@ function totalsOf(lines: readonly ResolvedLine[], roundOffPaise: number): {
   return { ...t, roundOffPaise, totalPaise: t.taxablePaise + t.cgstPaise + t.sgstPaise + t.igstPaise + roundOffPaise };
 }
 
-/** What the GRNs received would have cost at the PO's rate, GST included — every accepted item, billed or not. */
-function expectedTotalOf(expectations: Map<string, Expectation>): number {
+/**
+ * What the GRNs received would have cost at the PO's rate, GST included — every accepted item, billed or not. STORES S6b
+ * (#1116): a line billed under reverse charge is expected without GST (the supplier bills none); no pharmacy line is.
+ */
+function expectedTotalOf(expectations: Map<string, Expectation>, lines: readonly Pick<ResolvedLine, "grnId" | "sesId" | "itemId" | "reverseCharge">[] = []): number {
+  const reverse = new Set(lines.filter((l) => l.reverseCharge === true).map((l) => docKey(l)));
   let total = 0;
-  for (const e of expectations.values()) {
+  for (const [k, e] of expectations) {
     const taxable = valueAt(e.acceptedBase, e.rate);
-    total += taxable + lineGstPaise(taxable, e.gstRateBps);
+    total += taxable + (reverse.has(k) ? 0 : lineGstPaise(taxable, e.gstRateBps));
   }
   return total;
 }
@@ -515,7 +614,15 @@ async function insertLines(tx: Tx, billId: string, lines: readonly ResolvedLine[
     igstPaise: l.igstPaise, expectedBase: l.expectedBase, expectedRatePaise: l.expectedRatePaise,
     expectedTaxablePaise: l.expectedTaxablePaise, expectedGstRateBps: l.expectedGstRateBps,
     mismatch: l.mismatch.length === 0 ? null : l.mismatch.join(","),
+    ...(l.gstCredit === null ? {} : { gstCredit: l.gstCredit }), ...(l.reverseCharge === null ? {} : { reverseCharge: l.reverseCharge }),
   })));
+}
+
+/** STORES S6b (#1116): the IRN as printed, spaces out; not checked against the GST portal (out of scope). */
+function cleanIrn(v: string | null | undefined): string | null {
+  const t = (v ?? "").replace(/\s+/g, "");
+  if (t.length > 100) throw new MaterialsError("bill_invalid", "the IRN is longer than 100 characters");
+  return t === "" ? null : t;
 }
 
 function cleanText(v: string | null | undefined, what: string): string | null {
@@ -632,8 +739,9 @@ export async function createSupplierBill(
       const totals = totalsOf(lines, h.roundOffPaise);
       await tx.insert(supplierBills).values({
         id, billNo, vendorId: input.vendorId, vendorBillNo: h.vendorBillNo, vendorBillKey: h.key, billDate: h.billDate, fy: h.fy,
-        purchaseOrderId: poOf(grnRows, sesRows), status: "draft", interState, ...totals, expectedTotalPaise: expectedTotalOf(expectations),
+        purchaseOrderId: poOf(grnRows, sesRows), status: "draft", interState, ...totals, expectedTotalPaise: expectedTotalOf(expectations, lines),
         msme: isMsme(vendor), termsDays: vendor.paymentTermsDays, note: cleanText(input.note, "the note"),
+        ...(cleanIrn(input.irn) === null ? {} : { irn: cleanIrn(input.irn) }),
         createdBy: actor.id, updatedBy: actor.id, createdAt: now, updatedAt: now,
       });
       await insertLines(tx, id, lines);
@@ -659,6 +767,7 @@ export async function createSupplierBill(
 const storedInput = (l: typeof supplierBillLines.$inferSelect): BillLineInput => ({
   ...(l.grnId !== null ? { grnId: l.grnId } : { sesId: l.sesId ?? "" }), itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
   ...(l.listRatePaise === null ? {} : { listRatePaise: l.listRatePaise, ...(l.discountBps !== 0 ? { discountBps: l.discountBps } : { discountPaise: l.discountPaise }) }),
+  ...(l.gstCredit === null ? {} : { gstCredit: l.gstCredit as BillGstCredit }), ...(l.reverseCharge === null ? {} : { reverseCharge: l.reverseCharge }),
 });
 
 export async function updateSupplierBill(
@@ -684,8 +793,9 @@ export async function updateSupplierBill(
       const totals = totalsOf(lines, h.roundOffPaise);
       const [after] = await tx.update(supplierBills).set({
         vendorBillNo: h.vendorBillNo, vendorBillKey: h.key, billDate: h.billDate, fy: h.fy, interState, ...totals,
-        purchaseOrderId: poOf(grnRows, sesRows), expectedTotalPaise: expectedTotalOf(expectations), status: "draft", heldReason: null, matchedAt: null,
+        purchaseOrderId: poOf(grnRows, sesRows), expectedTotalPaise: expectedTotalOf(expectations, lines), status: "draft", heldReason: null, matchedAt: null,
         ...(patch.note !== undefined ? { note: cleanText(patch.note, "the note") } : {}),
+        ...(patch.irn !== undefined ? { irn: cleanIrn(patch.irn) } : {}),
         updatedBy: actor.id, updatedAt: now,
       }).where(eq(supplierBills.id, billId)).returning();
       await appendEvent(tx, supplierBillUpdated.make({
@@ -714,7 +824,7 @@ export async function matchSupplierBill(db: Db, actor: Actor, billId: string, no
     const { lines, expectations } = await resolveLines(tx, b.vendorId, current.map((l) => storedInput(l)), b.interState, billId);
     await tx.delete(supplierBillLines).where(eq(supplierBillLines.billId, billId));
     await insertLines(tx, billId, lines);
-    const expectedTotalPaise = expectedTotalOf(expectations);
+    const expectedTotalPaise = expectedTotalOf(expectations, lines);
     const out = lines.filter((l) => lineMismatches(l).out);
     const billed = new Set(lines.map((l) => docKey(l)));
     const unbilled = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(docKey(e)));
@@ -761,17 +871,36 @@ async function acceptanceDayOf(tx: Tx, billId: string): Promise<string> {
 
 async function book(tx: Tx, actor: Actor, b: BillRow, now: Date, difference: { reason: string } | null): Promise<void> {
   const [vendor] = await tx.select().from(vendors).where(eq(vendors.id, b.vendorId));
-  const msme = isMsme(vendor!);
-  const acceptanceDate = await acceptanceDayOf(tx, b.id);
-  const dueDate = dueDateFor({ msme, termsDays: vendor!.paymentTermsDays, billDate: b.billDate, acceptanceDate });
+  const delivered = await acceptanceDayOf(tx, b.id);
+  // STORES S6b (#1116, decision 6): the Act's clock when the owner has switched it on; else today's rule, unchanged.
+  const ruled = taxHooks === null ? null
+    : await taxHooks.dueDate(tx, { billId: b.id, vendorId: b.vendorId, billDate: b.billDate, acceptanceDate: delivered, termsDays: vendor!.paymentTermsDays });
+  const msme = ruled?.msme ?? isMsme(vendor!);
+  const acceptanceDate = ruled?.acceptanceDate ?? delivered;
+  const dueDate = ruled?.dueDate ?? dueDateFor({ msme, termsDays: vendor!.paymentTermsDays, billDate: b.billDate, acceptanceDate });
+  // STORES S6b (#1116, decisions 4–5): the marks Stores fills and the TDS deducted from a signed table. A deduction is a
+  // settlement: it is counted in `paid_paise`, so the payable (and every run and payment) is the total less TDS.
+  const tax = taxHooks === null ? null : await taxHooks.onBooking(tx, actor, b.id, now);
+  if (tax !== null) {
+    for (const l of tax.lines) {
+      await tx.update(supplierBillLines).set({
+        ...(l.gstCredit === undefined ? {} : { gstCredit: l.gstCredit }), tdsPaise: l.tdsPaise, tdsNature: l.tdsNature, tdsRef: l.tdsRef,
+      }).where(and(eq(supplierBillLines.id, l.lineId), eq(supplierBillLines.billId, b.id)));
+    }
+  }
+  const tdsPaise = tax?.tdsPaise ?? null;
   await tx.update(supplierBills).set({
     status: "accepted", acceptedBy: actor.id, acceptedAt: now, acceptanceDate, dueDate, msme, termsDays: vendor!.paymentTermsDays,
     ...(difference === null ? {} : { differenceAcceptedBy: actor.id, differenceReason: difference.reason }),
+    ...(tdsPaise === null ? {} : { tdsPaise, paidPaise: b.paidPaise + tdsPaise }),
     updatedBy: actor.id, updatedAt: now,
   }).where(eq(supplierBills.id, b.id));
   await appendEvent(tx, supplierBillAccepted.make({
     occurredAt: now, actor, correlationId: b.id,
-    payload: { ...header(b), dueDate, msme, differenceReason: difference?.reason ?? null, differencePaise: b.totalPaise - b.expectedTotalPaise },
+    payload: {
+      ...header(b), dueDate, msme, differenceReason: difference?.reason ?? null, differencePaise: b.totalPaise - b.expectedTotalPaise,
+      ...(tdsPaise === null ? {} : { tdsPaise }),
+    },
   }));
   // STORES S6a (#1116, decision 7): the hold rules, in the booking's own transaction.
   if (holdHooks !== null) await holdHooks.onBooked(tx, actor, b.id, now);
@@ -970,6 +1099,7 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
   return {
     ...summaryOf(row.b, row.vendor), note: row.b.note, poNo: row.poNo, cancelReason: row.b.cancelReason,
     differenceAcceptedBy: row.b.differenceAcceptedBy, names,
+    ...(row.b.irn === null ? {} : { irn: row.b.irn }), ...(row.b.tdsPaise === null ? {} : { tdsPaise: row.b.tdsPaise }),
     lines: lines.map(({ l, code, name, grnNo }) => {
       const m = lineMismatches(l);
       return {
@@ -980,6 +1110,8 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
         expectedBase: l.expectedBase, expectedPacks: l.expectedBase / l.multiplier, expectedRatePaise: l.expectedRatePaise,
         expectedTaxablePaise: l.expectedTaxablePaise, expectedGstRateBps: l.expectedGstRateBps,
         differencePaise: l.taxablePaise - l.expectedTaxablePaise, mismatch: m.reasons, out: m.out,
+        ...(l.gstCredit === null ? {} : { gstCredit: l.gstCredit as BillGstCredit }), ...(l.reverseCharge === null ? {} : { reverseCharge: l.reverseCharge }),
+        ...(l.tdsPaise === null ? {} : { tdsPaise: l.tdsPaise }), ...(l.tdsNature === null ? {} : { tdsNature: l.tdsNature }),
       };
     }),
     unbilled: missing.map((e) => {
@@ -1180,7 +1312,8 @@ export async function payables(db: Db, actor: Actor, now: Date = new Date(), fil
 }
 
 export type LedgerEntry = {
-  date: string; kind: "bill" | "payment" | "debit_note" | "credit_note"; voucherNo: string; reference: string;
+  /** STORES S6b (#1116): `tds` = the TDS deducted from a bill at booking (a debit: it is owed to the tax, not the vendor). */
+  date: string; kind: "bill" | "payment" | "debit_note" | "credit_note" | "tds"; voucherNo: string; reference: string;
   /** What we owe the vendor goes up (a bill) … */
   creditPaise: number;
   /** … or down (a payment, or the vendor's accepted credit note). */
@@ -1202,7 +1335,7 @@ export type SupplierLedger = {
   creditedPaise: number;
 };
 
-const LEDGER_KIND_ORDER: Record<LedgerEntry["kind"], number> = { bill: 0, debit_note: 1, credit_note: 2, payment: 3 };
+const LEDGER_KIND_ORDER: Record<LedgerEntry["kind"], number> = { bill: 0, tds: 1, debit_note: 2, credit_note: 3, payment: 4 };
 
 /**
  * One vendor's account, oldest first: each accepted bill on its bill date (credit), each payment on
@@ -1229,6 +1362,7 @@ export async function supplierLedger(db: Db, actor: Actor, vendorId: string, ran
     .where(and(eq(supplierCreditNotes.vendorId, vendorId), eq(supplierCreditNotes.status, "accepted"), ...(to === null ? [] : [lte(supplierCreditNotes.creditNoteDate, to)])));
   const all: Omit<LedgerEntry, "balancePaise">[] = [
     ...bills.map((b) => ({ date: b.billDate, kind: "bill" as const, voucherNo: b.billNo, reference: b.vendorBillNo, creditPaise: b.totalPaise, debitPaise: 0, memoPaise: 0, id: b.id })),
+    ...bills.filter((b) => (b.tdsPaise ?? 0) > 0).map((b) => ({ date: b.billDate, kind: "tds" as const, voucherNo: b.billNo, reference: `TDS ${b.vendorBillNo}`, creditPaise: 0, debitPaise: b.tdsPaise!, memoPaise: 0, id: `${b.id}:tds` })),
     ...pays.map((p) => ({ date: p.paidOn, kind: "payment" as const, voucherNo: p.paymentNo, reference: `${p.mode.toUpperCase()}${p.reference === null ? "" : ` ${p.reference}`}`, creditPaise: 0, debitPaise: p.amountPaise, memoPaise: 0, id: p.id })),
     ...debitNotes.map((r) => ({ date: r.debitNoteDate!, kind: "debit_note" as const, voucherNo: r.debitNoteNo!, reference: r.returnNo, creditPaise: 0, debitPaise: 0, memoPaise: r.totalPaise, id: r.id })),
     ...credits.map(({ c, debitNoteNo }) => ({

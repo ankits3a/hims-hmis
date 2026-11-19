@@ -380,6 +380,8 @@ export const supplierBillMatched = defineEvent("supplier_bill.matched", MODULE, 
 /** Booked as payable. `differenceReason` is set when a held bill's difference was accepted. */
 export const supplierBillAccepted = defineEvent("supplier_bill.accepted", MODULE, z.object({
   ...billHeader, dueDate: z.string(), msme: z.boolean(), differenceReason: z.string().nullable(), differencePaise: paise,
+  /** STORES S6b (#1116, additive): the TDS deducted at booking, only when a signed table checked it. */
+  tdsPaise: paise.optional(),
 }));
 export const supplierBillCancelled = defineEvent("supplier_bill.cancelled", MODULE, z.object({ ...billHeader, reason: z.string().min(1), fromStatus: z.string() }));
 
