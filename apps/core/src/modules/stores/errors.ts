@@ -103,6 +103,23 @@ export const STORES_ERROR_CODES = [
   "regulator_paper_needed",
   "bids_required",
   "not_written_off",
+  // S5a (#1115): purchase requests, bands, budgets, delegation, non-drug QC, supplier KYC.
+  "item_required",
+  "stock_item",
+  "answers_required",
+  "estimate_required",
+  "own_request",
+  "unknown_purchase_request",
+  "band_lowered",
+  "delegation_ended",
+  "delegate_is_requester",
+  "delegate_is_buyer",
+  "not_delegable",
+  "bad_delegation",
+  "not_stores_line",
+  "unknown_grn",
+  "bad_month",
+  "unknown_vendor",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -210,6 +227,22 @@ const STATUS: Record<StoresErrorCode, number> = {
   regulator_paper_needed: 409,
   bids_required: 422,
   not_written_off: 409,
+  item_required: 422,
+  stock_item: 422,
+  answers_required: 422,
+  estimate_required: 422,
+  own_request: 403,
+  unknown_purchase_request: 404,
+  band_lowered: 422,
+  delegation_ended: 403,
+  delegate_is_requester: 422,
+  delegate_is_buyer: 422,
+  not_delegable: 422,
+  bad_delegation: 422,
+  not_stores_line: 422,
+  unknown_grn: 404,
+  bad_month: 422,
+  unknown_vendor: 404,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { StoresAssetsController } from "./assets.controller";
+import { StoresBuyingController } from "./buying.controller";
 import { StoresController } from "./stores.controller";
 import { registerStoresPrinting } from "./voucher";
 import type { OnModuleInit } from "@nestjs/common";
@@ -11,7 +12,8 @@ import type { OnModuleInit } from "@nestjs/common";
  */
 @Module({
   // S4a (#1114): `/stores/assets/*` is its own controller (the passport), declared before nothing else under /stores.
-  controllers: [StoresController, StoresAssetsController],
+  // S5a (#1115): the buying desk's front (`buying.controller.ts`); its paths do not overlap the other two.
+  controllers: [StoresController, StoresAssetsController, StoresBuyingController],
 })
 export class StoresModule implements OnModuleInit {
   onModuleInit(): void {

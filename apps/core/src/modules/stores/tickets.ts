@@ -13,6 +13,8 @@ import {
   addIndentLinesScoped, availableQtyByItem, issueIndent, issueIndentScoped, raiseIndentScoped, sellableBatchesByItem, stampIndentApproval, stampIndentReview,
 } from "../materials";
 import { taggedBatchIds } from "./asset-rules";
+import { markTicketOverBudget, ticketsOverBudget, warnBudget } from "./budgets";
+import { delegationFor, liveDelegatedDepartments } from "./delegations";
 import { requireUnitsAt, unitsIntoTransit, unitsOnTransfers } from "./assets";
 import { chainsOf, holderOf, lastCustodianOf, legsOf, returningUndelivered } from "./chain";
 import {
@@ -323,13 +325,20 @@ export async function requireTicketRow(db: Db | Tx, indentId: string, lock = fal
  * hospital-scoped holding — the medical superintendent's — satisfies any department, and is the stand-in:
  * `forHod`). Never the requester.
  */
-async function requireApprover(tx: Tx, actor: Actor, t: TicketRow): Promise<{ forHod: boolean }> {
+async function requireApprover(tx: Tx, actor: Actor, t: TicketRow, now: Date): Promise<{ forHod: boolean; delegationId: string | null }> {
   if (!(await holds(tx, actor, STORES_INDENTS_APPROVE, t.details.departmentId))) {
+    // S5a (#1115, decision 11): a delegate of the department's HOD, inside the delegation's window, approves "for HOD".
+    const d = actor.type === "user" ? await delegationFor(tx, actor.id, t.details.departmentId, now) : { live: null, ended: false };
+    if (d.live !== null) {
+      if (t.indent.requestedBy === actor.id || d.live.fromUserId === t.indent.requestedBy) throw new StoresError("own_ticket", "your own ticket goes to another approver");
+      return { forHod: true, delegationId: d.live.id };
+    }
+    if (d.ended) throw new StoresError("delegation_ended", "your delegation for this department has ended", { departmentId: t.details.departmentId });
     throw new StoresError("not_permitted", "not your department", { permission: STORES_INDENTS_APPROVE, departmentId: t.details.departmentId });
   }
   if (t.indent.requestedBy === actor.id) throw new StoresError("own_ticket", "your own ticket goes to another approver");
   const deptOwn = (await holdersOf(tx, STORES_INDENTS_APPROVE, { departmentId: t.details.departmentId })).includes(actor.id);
-  return { forHod: !deptOwn };
+  return { forHod: !deptOwn, delegationId: null };
 }
 
 function requireOpen(t: TicketRow): void {
@@ -342,7 +351,7 @@ function requireOpen(t: TicketRow): void {
 export async function approveTicket(db: Db, actor: Actor, indentId: string, input: ApproveTicketInput = {}, now: Date = new Date()): Promise<TicketView> {
   await withTx(db, async (tx) => {
     const t = await requireTicketRow(tx, indentId, true);
-    const { forHod } = await requireApprover(tx, actor, t);
+    const { forHod, delegationId } = await requireApprover(tx, actor, t, now);
     requireOpen(t);
     const lines = await tx.select().from(storeIndentLines).where(eq(storeIndentLines.indentId, indentId)).orderBy(asc(storeIndentLines.lineIdx));
     const given = new Map<number, number>();
@@ -358,11 +367,15 @@ export async function approveTicket(db: Db, actor: Actor, indentId: string, inpu
     await stampIndentApproval(tx, indentId, {
       decision: "approved", by: actor.id, at: now, reason: null, forHod, lines: approved.map((a) => ({ lineIdx: a.line.lineIdx, qtyApproved: a.qty })),
     });
+    // S5a (#1115, decision 15): never refused for budget; a ticket approved when the month is used up carries "over budget".
+    const overBudget = await markTicketOverBudget(tx, indentId, t.details.departmentId, now);
     await recordAct(tx, actor, now, {
-      act: "approve_ticket", storeId: t.details.shelfId, refId: indentId, after: { forHod },
+      act: "approve_ticket", storeId: t.details.shelfId, refId: indentId,
+      after: { forHod, ...(delegationId === null ? {} : { delegationId }), ...(overBudget ? { overBudget } : {}) },
       lines: approved.map((a) => ({ itemId: a.line.itemId, asked: a.line.qtyBase, approved: a.qty })),
     });
     await notify(tx, t.indent.requestedBy, WORDS.approved, t.indent, "approved", now);
+    await warnBudget(tx, t.details.departmentId, now);
   });
   return (await getTicket(db, indentId, now))!;
 }
@@ -373,7 +386,7 @@ export async function declineTicket(db: Db, actor: Actor, indentId: string, reas
   if (why === null) throw new StoresError("reason_required", "a decline says why");
   await withTx(db, async (tx) => {
     const t = await requireTicketRow(tx, indentId, true);
-    const { forHod } = await requireApprover(tx, actor, t);
+    const { forHod } = await requireApprover(tx, actor, t, now);
     requireOpen(t);
     await stampIndentApproval(tx, indentId, { decision: "declined", by: actor.id, at: now, reason: why, forHod });
     await recordAct(tx, actor, now, { act: "decline_ticket", storeId: t.details.shelfId, refId: indentId, after: { forHod }, reason: why });
@@ -388,7 +401,7 @@ export async function reviewEmergency(
 ): Promise<TicketView> {
   await withTx(db, async (tx) => {
     const t = await requireTicketRow(tx, indentId, true);
-    await requireApprover(tx, actor, t);
+    await requireApprover(tx, actor, t, now);
     if (!t.indent.issueBeforeApproval || t.indent.status !== "issued") throw new StoresError("not_emergency", `${t.indent.indentNo} is not an emergency issued before approval`);
     if (t.indent.approvalDecision !== null || t.indent.reviewDecision !== null) throw new StoresError("already_reviewed", `${t.indent.indentNo} is already answered`);
     const note = cleanText(input.note);
@@ -540,10 +553,16 @@ async function ticketRows(db: Db | Tx, where: ReturnType<typeof and>): Promise<T
 
 /** "Indents to approve": pending tickets of the departments the reader approves for; never their own. */
 export async function ticketsToApprove(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]> {
-  if (actor.type !== "user" || !(await holdsAnywhere(db, actor.id, STORES_INDENTS_APPROVE))) return [];
+  if (actor.type !== "user") return [];
+  const holder = await holdsAnywhere(db, actor.id, STORES_INDENTS_APPROVE);
+  // S5a (#1115, decision 11): a delegate sees the departments it approves for, inside the window.
+  const delegated = await liveDelegatedDepartments(db, actor.id, now);
+  if (!holder && delegated.size === 0) return [];
   const rows = (await ticketRows(db, and(eq(storeIndents.status, "requested"), eq(storeIndents.approvalRequired, true), isNull(storeIndents.approvalDecision))))
     .filter((r) => r.indent.requestedBy !== actor.id);
-  return ticketViews(db, await filterByDepartment(db, actor, rows, STORES_INDENTS_APPROVE), now);
+  const own = holder ? await filterByDepartment(db, actor, rows, STORES_INDENTS_APPROVE) : [];
+  const ownIds = new Set(own.map((r) => r.indent.id));
+  return ticketViews(db, [...own, ...rows.filter((r) => !ownIds.has(r.indent.id) && delegated.has(r.details.departmentId))], now);
 }
 
 /** "To pick": approved (or emergency) tickets of the stores the reader keeps, sorted by floor, then clock. */
@@ -643,6 +662,7 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
   const nameOf = new Map((await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, people)))
     .map((u) => [u.id, u.fullName] as const));
   const transferStatus = new Map([...transferRows.values()].map((t) => [t.id, t.status] as const));
+  const overBudget = await ticketsOverBudget(db, ids);
   const originIds = rows.map((r) => r.details.originIndentId).filter((x): x is string => x !== null);
   const originNo = new Map(originIds.length === 0 ? [] : (await db.select({ id: storeIndents.id, no: storeIndents.indentNo })
     .from(storeIndents).where(inArray(storeIndents.id, originIds))).map((o) => [o.id, o.no] as const));
@@ -678,6 +698,8 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
         state: !i.approvalRequired ? "not_needed" : i.approvalDecision === null ? "pending" : (i.approvalDecision as "approved" | "declined"),
         by: i.approvalBy === null ? null : person(i.approvalBy), at: i.approvalAt?.toISOString() ?? null,
         forHod: i.approvalForHod === true, reason: i.approvalReason,
+        // S5a (#1115, decision 15): present only when the stamp carries "over budget".
+        ...(overBudget.has(i.id) ? { overBudget: true as const } : {}),
       },
       review: i.reviewDecision === null || i.reviewedBy === null || i.reviewedAt === null ? null
         : { decision: i.reviewDecision as "agree" | "query", by: person(i.reviewedBy), at: i.reviewedAt.toISOString(), note: i.reviewNote },

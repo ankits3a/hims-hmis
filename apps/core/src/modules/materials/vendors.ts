@@ -176,6 +176,10 @@ export async function updateVendor(
     classFlags?: Record<string, boolean>;
     /** PARITY P4 — the vendor's expiry return window; null returns it to the default. */
     expiryReturnDays?: number | null;
+    /** STORES S5a (#1115, decision 12) — additive and nullable; only the Stores supplier screen writes them. */
+    msmeActivity?: string | null;
+    einvoiceApplicable?: boolean | null;
+    gstUnregisteredReason?: string | null;
   },
 ): Promise<void> {
   await requireVendor(tx, vendorId);
@@ -192,6 +196,9 @@ export async function updateVendor(
   if (patch.paymentTermsDays !== undefined) next.paymentTermsDays = patch.paymentTermsDays;
   if (patch.expiryReturnDays !== undefined) next.expiryReturnDays = patch.expiryReturnDays;
   if (patch.classFlags !== undefined) next.classFlags = patch.classFlags;
+  if (patch.msmeActivity !== undefined) next.msmeActivity = patch.msmeActivity;
+  if (patch.einvoiceApplicable !== undefined) next.einvoiceApplicable = patch.einvoiceApplicable;
+  if (patch.gstUnregisteredReason !== undefined) next.gstUnregisteredReason = patch.gstUnregisteredReason;
 
   const changed = Object.keys(next);
   if (changed.length === 0) return;

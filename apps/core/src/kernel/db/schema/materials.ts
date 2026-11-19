@@ -434,6 +434,12 @@ export const vendors = pgTable(
     pan: text("pan"),
     msmeUdyamNo: text("msme_udyam_no"),
     msmeClass: text("msme_class"), // micro | small | medium — 14b's MSME clock (R-099) reads it
+    /** STORES S5a (#1115, decision 12) — maker | service | trader; nullable, additive (pharmacy never reads it). */
+    msmeActivity: text("msme_activity"),
+    /** STORES S5a (#1115, decision 12) — the supplier's own declaration that it issues e-invoices; S6 reads it. */
+    einvoiceApplicable: boolean("einvoice_applicable"),
+    /** STORES S5a (#1115, decision 12) — a supplier with no GSTIN declares why (unregistered); "can quote" reads it. */
+    gstUnregisteredReason: text("gst_unregistered_reason"),
     paymentTermsDays: integer("payment_terms_days"),
     /**
      * PARITY P4 — how many days after a batch's expiry this vendor still takes it back for credit
@@ -454,6 +460,7 @@ export const vendors = pgTable(
     uniqueIndex("vendors_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("vendors_status_idx").on(t.status),
     check("vendors_status_ck", sql`${t.status} in ('draft', 'active', 'suspended', 'blacklisted')`),
+    check("vendors_msme_activity_ck", sql`${t.msmeActivity} is null or ${t.msmeActivity} in ('maker', 'service', 'trader')`),
   ],
 );
 
@@ -482,7 +489,7 @@ export const vendorDocuments = pgTable(
   },
   (t) => [
     index("vendor_documents_vendor_type_idx").on(t.vendorId, t.type),
-    check("vendor_documents_type_ck", sql`${t.type} in ('drug_licence_20b', 'drug_licence_21b', 'gst_certificate', 'pan', 'cancelled_cheque', 'udyam', 'dpdp_processor_agreement', 'consignment_agreement', 'iso', 'aerb_type_approval')`),
+    check("vendor_documents_type_ck", sql`${t.type} in ('drug_licence_20b', 'drug_licence_21b', 'gst_certificate', 'pan', 'cancelled_cheque', 'udyam', 'dpdp_processor_agreement', 'consignment_agreement', 'iso', 'aerb_type_approval', 'payment_terms_agreement')`),
   ],
 );
 

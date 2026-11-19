@@ -39,6 +39,9 @@ export const STORES_ACTS = [
   // S4b (#1114): withdrawal, regulation, the committee, the approvals read back, disposal, loss and a unit found again (refId = the unit).
   "withdraw_unit", "return_to_use", "regulated_by", "regulator_paper", "propose_condemnation", "propose_loss", "sign_condemnation",
   "object_condemnation", "dispose_unit", "write_off_loss", "mark_found",
+  // S5a (#1115): the buying desk's front (refId = the request, the GRN, the vendor, the delegation or the department).
+  "raise_purchase_request", "approve_purchase_request", "decline_purchase_request", "cancel_purchase_request", "set_band",
+  "set_budget", "delegate_approvals", "grn_qc", "grn_post", "supplier_fields", "approve_supplier_category",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

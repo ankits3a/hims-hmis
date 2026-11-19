@@ -71,7 +71,9 @@ const CENSUS: Record<string, string[]> = {
   ],
   vendors: [
     "bank", "blacklist_reason", "blacklist_until", "class_flags", "code", "created_at", "created_by",
-    "expiry_return_days", "first_payment_allowed_at", "gstin", "gstin_verified_at", "id", "legal_name", "msme_class",
+    // STORES S5a (#1115): three nullable supplier fields for KYC levels and e-invoicing.
+    "einvoice_applicable", "expiry_return_days", "first_payment_allowed_at", "gst_unregistered_reason", "gstin",
+    "gstin_verified_at", "id", "legal_name", "msme_activity", "msme_class",
     "msme_udyam_no", "pan", "payment_terms_days", "status", "trade_name", "updated_at", "updated_by",
   ],
   vendor_documents: [

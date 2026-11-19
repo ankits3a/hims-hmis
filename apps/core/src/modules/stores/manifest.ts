@@ -52,6 +52,13 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * department, `accounts_officer`, `materials_head`, `biomedical_engineer`) signs or objects to a condemnation or a loss;
  * the HOD at the department or biomedical proposes one. The phone signs at `/stores/condemn`.
  *
+ * S5a (#1115, decision 16) adds four: `stores.purchase.request` (department; `department_store_incharge` and
+ * `department_head`) asks to buy a non-stock or capital item; `stores.buying.manage` (hospital; the materials head and
+ * the new `purchase_officer`) raises the store's requests, lifts a band and keeps the supplier's Stores fields;
+ * `stores.budget.manage` (hospital; `accounts_officer` and the owner) sets the departments' month budgets;
+ * `stores.grn.qc` (the materials head and `biomedical_engineer` at hospital scope, `department_head` at its department)
+ * signs a non-drug GRN's QC with no pharmacist. The phone and desk screen is `/stores/buy` (its own menu row).
+ *
  * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -65,6 +72,7 @@ export const storesManifest: ModuleManifest = {
     { label: "Gate", path: "/stores/gate", permission: "stores.gatepass.scan" },
     { label: "Control tower", path: "/stores/tower", permission: "stores.tower.read" },
     { label: "Assets", path: "/stores/assets", permission: "stores.assets.read" },
+    { label: "Buying", path: "/stores/buy", permission: "stores.buying.manage" },
   ],
   permissions: [
     "stores.masters.manage",
@@ -82,6 +90,10 @@ export const storesManifest: ModuleManifest = {
     "stores.assets.read",
     "stores.assets.export",
     "stores.assets.condemn",
+    "stores.purchase.request",
+    "stores.buying.manage",
+    "stores.budget.manage",
+    "stores.grn.qc",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */

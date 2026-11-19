@@ -59,6 +59,9 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   // Stores UX pass (walk finding 5/6) — a Stores ticket notice (Approved, On the way, Delivered, To approve) opens the
   // ticket's timeline, whose header links the step this reader can act on.
   store_indent: (refId) => ({ to: `/stores/tickets/${encodeURIComponent(refId)}`, search: {} }),
+  // STORES S5a (#1115) — "Purchase to approve", "Buy now", Approved: the request on the buying desk; a budget warning opens it too.
+  stores_purchase_request: (refId) => ({ to: "/stores/buy", search: { pr: refId } }),
+  stores_budget: () => ({ to: "/stores/buy", search: {} }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {
