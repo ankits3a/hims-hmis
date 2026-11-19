@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
 import { renderWithRouter } from "../../test-utils";
 import { StoresAssetPassport, StoresAssets } from "../stores-assets";
-import type { WireAssetPassport, WireAssetRegisterRow } from "@hmis/contracts";
+import type { WireAssetPassportFull, WireAssetRegisterRow } from "@hmis/contracts";
 
 /**
  * ACCEPTANCE — issue #1114, spec docs/specs/1114-stores-asset-passport.md (owner APPROVED 2026-11-19, decision 0100):
@@ -12,7 +12,7 @@ import type { WireAssetPassport, WireAssetRegisterRow } from "@hmis/contracts";
  */
 type Call = { method: string; path: string; body: unknown };
 
-const PASSPORT: WireAssetPassport = {
+const PASSPORT: WireAssetPassportFull = {
   access: "full", tagReplaced: false,
   unit: { id: "u1", tagNo: "AST2611000001", last4: "0001", name: "Patient monitor with a long model name that must not wrap", itemId: "i1", serial: "SN-001", make: "Philips", model: "MX450", liveTags: ["AST2611000001"], origin: "grn" },
   status: "in_use", out: null, transfer: null,

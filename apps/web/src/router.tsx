@@ -73,6 +73,7 @@ import { StoresShelf } from "./screens/stores-shelf";
 import { StoresApprove, StoresPick, StoresPorter, StoresReceive, StoresTicketTimeline } from "./screens/stores-tickets";
 import { StoresGate, StoresPasses } from "./screens/stores-gate";
 import { StoresTower } from "./screens/stores-tower";
+import { StoresAssetPassport, StoresAssets, StoresTagUnits, StoresVerificationRound } from "./screens/stores-assets";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -292,6 +293,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/stores/passes", label: "nav.storesPasses", permission: "stores.gatepass.raise", group: "admin" },
   // STORES S3 (#1113) — the control tower (16:9 wall; at 390 px the owner's one line), `storesManifest.menu`'s row.
   { to: "/stores/tower", label: "nav.storesTower", permission: "stores.tower.read", group: "admin" },
+  // STORES S4a (#1114) — the assets desk (Register, Due, Verification, Condemnation, Exports), `storesManifest.menu`'s row.
+  // Biomedical (manage) and accounts (export) reach it too. The phone passport `/stores/asset` is opened by a scan.
+  { to: "/stores/assets", label: "nav.storesAssets", permission: "stores.assets.read", group: "admin", anyScope: ["stores.assets.manage", "stores.assets.export"] },
   { to: "/stores/gate", label: "nav.storesGate", permission: "stores.gatepass.scan", group: "desk" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
@@ -1925,6 +1929,25 @@ const storesPorterRoute = createRoute({ getParentRoute: () => authedRoute, path:
 const storesGateRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/gate", component: StoresGate });
 const storesPassesRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/passes", component: StoresPasses });
 const storesTowerRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/tower", component: StoresTower });
+// STORES S4a (#1114) — the asset passport: the desk (16:9), the phone passport (scan, `?code=` / `?unit=`), tag units
+// after a GRN line (`?grnLineId=`), and the verification round (`?roundId=`). Each grant is asked by the server.
+const str = (v: unknown): string | undefined => (typeof v === "string" && v !== "" ? v : undefined);
+const storesAssetsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/assets", component: StoresAssets });
+const storesAssetRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/stores/asset",
+  validateSearch: (s: Record<string, unknown>): { code?: string; unit?: string } => ({ code: str(s.code), unit: str(s.unit) }),
+  component: StoresAssetPassport,
+});
+const storesTagUnitsRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/stores/assets/tag",
+  validateSearch: (s: Record<string, unknown>): { grnLineId?: string } => ({ grnLineId: str(s.grnLineId) }),
+  component: StoresTagUnits,
+});
+const storesRoundRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/stores/assets/round",
+  validateSearch: (s: Record<string, unknown>): { roundId?: string } => ({ roundId: str(s.roundId) }),
+  component: StoresVerificationRound,
+});
 const storesTicketRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/stores/tickets/$indentId",
@@ -2038,7 +2061,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesTicketRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesAssetsRoute, storesAssetRoute, storesTagUnitsRoute, storesRoundRoute, storesTicketRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

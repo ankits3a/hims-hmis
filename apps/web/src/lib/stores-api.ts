@@ -73,7 +73,9 @@ export const approveTicket = (indentId: string, lines: { lineIdx: number; qtyBas
   api("POST", `/stores/tickets/${enc(indentId)}/approve`, { lines });
 export const declineTicket = (indentId: string, reason: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/decline`, { reason });
 export const claimTicket = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/claim`, {});
-export const issueTicket = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/issue`, {});
+/** S4 (#1114): a tagged line names the units the keeper scanned (`unitIds`); without lines the store issues what it can. */
+export const issueTicket = (indentId: string, lines?: { lineIdx: number; qtyBase: number; unitIds?: string[] }[]): Promise<WireTicket> =>
+  api("POST", `/stores/tickets/${enc(indentId)}/issue`, lines === undefined ? {} : { lines });
 
 /* ── S2b (#1112): the custody chain, the receipt, "Add to open ticket?" ── */
 export type DeliverLine = { lineIdx: number; accepted: number; short?: number; wrong?: number; damaged?: number };
