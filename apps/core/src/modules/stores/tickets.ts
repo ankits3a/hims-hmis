@@ -10,8 +10,10 @@ import {
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import {
-  addIndentLinesScoped, availableQtyByItem, issueIndent, issueIndentScoped, raiseIndentScoped, stampIndentApproval, stampIndentReview,
+  addIndentLinesScoped, availableQtyByItem, issueIndent, issueIndentScoped, raiseIndentScoped, sellableBatchesByItem, stampIndentApproval, stampIndentReview,
 } from "../materials";
+import { taggedBatchIds } from "./asset-rules";
+import { requireUnitsAt, unitsIntoTransit } from "./assets";
 import { chainsOf, holderOf, lastCustodianOf, legsOf, returningUndelivered } from "./chain";
 import {
   STORES_INDENTS_APPROVE, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_WORK, departmentOf, holds, isStoresStore, recordAct, requireShelf, requireShelfAct,
@@ -442,16 +444,22 @@ export async function claimPicking(db: Db, actor: Actor, indentId: string, now: 
  * refused while it waits for approval (`indent_not_approved`) and while another keeper's claim is live. The
  * night store's keepers issue through `issueIndentScoped` (decision 5). The requester is told "On the way".
  */
-export async function issueTicket(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<TicketView> {
+export async function issueTicket(
+  db: Db, actor: Actor, indentId: string, input: { lines?: { lineIdx: number; qtyBase: number; unitIds?: string[] }[] } = {}, now: Date = new Date(),
+): Promise<TicketView> {
   await withTx(db, async (tx) => {
     const t = await requireTicketRow(tx, indentId, true);
     const claim = await liveClaim(tx, indentId, now);
     if (claim !== null && claim.claimedBy !== actor.id) throw new StoresError("claimed_by_another", "taken by another keeper", { claimedBy: claim.claimedBy });
     const source = await storesStoreRow(tx, t.indent.toResourceId);
     const night = source.kind === "night" && (await holds(tx, actor, STORES_NIGHTSTORE_ISSUE));
+    // S4 (#1114, decision 5): a tagged line is picked by its units' scans (they choose the batches); a counted line of an
+    // item that also has tagged batches is kept off them. Everything else goes to materials as before.
+    const plan = await planUnitIssue(tx, t.indent.toResourceId, indentId, input, now);
     const view = night
-      ? await issueIndentScoped(tx as unknown as Db, actor, indentId, input, now)
-      : await issueIndent(tx as unknown as Db, actor, indentId, input, now);
+      ? await issueIndentScoped(tx as unknown as Db, actor, indentId, plan.input, now)
+      : await issueIndent(tx as unknown as Db, actor, indentId, plan.input, now);
+    if (view.transfer !== null) await unitsIntoTransit(tx, actor, plan.unitIds, view.transfer.id, now);
     await recordAct(tx, actor, now, {
       act: "issue_ticket", storeId: source.id, refId: indentId, after: { transferId: view.transfer?.id ?? null, night },
       lines: view.lines.map((l) => ({ itemId: l.itemId, asked: l.qtyBase, issued: l.qtyIssued })),
@@ -462,6 +470,59 @@ export async function issueTicket(db: Db, actor: Actor, indentId: string, input:
     await enqueuePrintJob(tx, { document: ISSUE_VOUCHER_DOCUMENT, params: { indentId }, dedupeKey: `stores-voucher:${indentId}`, requestedBy: actor.id });
   });
   return (await getTicket(db, indentId, now))!;
+}
+
+/**
+ * S4 (#1114, decision 5) — the issue of a ticket's tagged lines. For each line whose item is `tagged`, or has tagged
+ * batches at the source, or names units: the units must be live units of the item at the source (`requireUnitsAt`),
+ * their batches are the line's batches, and any counted remainder is taken FEFO from the item's untagged batches only.
+ * A tagged item issued without its units, or a counted remainder that only tagged stock could cover, is refused
+ * `units_required` before anything moves. Other lines pass through untouched (pharmacy never comes here).
+ */
+async function planUnitIssue(
+  tx: Tx, sourceId: string, indentId: string, input: { lines?: { lineIdx: number; qtyBase: number; unitIds?: string[] }[] }, now: Date,
+): Promise<{ input: IssueIndentInput; unitIds: string[] }> {
+  const lines = await tx.select().from(storeIndentLines).where(eq(storeIndentLines.indentId, indentId)).orderBy(asc(storeIndentLines.lineIdx));
+  const tagged = await taggedBatchIds(tx, lines.map((l) => l.itemId));
+  const given = new Map((input.lines ?? []).map((g) => [g.lineIdx, g]));
+  const out: NonNullable<IssueIndentInput["lines"]> = [];
+  const unitIds: string[] = [];
+  for (const l of lines) {
+    const g = given.get(l.lineIdx);
+    const item = await requireStoresItem(tx, l.itemId);
+    const sellable = (await sellableBatchesByItem(tx, sourceId, [l.itemId], now)).get(l.itemId) ?? [];
+    const named = g?.unitIds ?? [];
+    const unitLine = item.trackMode === "tagged" || named.length > 0 || sellable.some((b) => tagged.has(b.batchId));
+    if (!unitLine) {
+      if (g !== undefined) out.push({ lineIdx: g.lineIdx, qtyBase: g.qtyBase });
+      continue;
+    }
+    const units = await requireUnitsAt(tx, named, l.itemId, sourceId);
+    const counted = sellable.filter((b) => !tagged.has(b.batchId));
+    const countedAvail = counted.reduce((a, b) => a + b.available, 0);
+    const cap = l.qtyApproved ?? l.qtyBase;
+    // A tagged item asked for with nothing scanned: the picker scans its units (the screen switches the line to scanning).
+    if (item.trackMode === "tagged" && units.length === 0 && (g?.qtyBase ?? cap) > 0 && sellable.length > 0) {
+      throw new StoresError("units_required", "scan each tagged unit you issue", { lineIdx: l.lineIdx, itemId: l.itemId, scanned: 0, issuing: g?.qtyBase ?? cap });
+    }
+    const want = g?.qtyBase ?? (item.trackMode === "tagged" ? units.length : Math.min(cap, units.length + countedAvail));
+    if (units.length > want) throw new StoresError("bad_quantity", "more units scanned than the line issues", { lineIdx: l.lineIdx });
+    let rest = want - units.length;
+    if (rest > 0 && (item.trackMode === "tagged" || rest > countedAvail)) {
+      throw new StoresError("units_required", "scan each tagged unit you issue", { lineIdx: l.lineIdx, itemId: l.itemId, scanned: units.length, issuing: want });
+    }
+    const batches = new Map<string, number>();
+    for (const u of units) batches.set(u.unit.batchId, (batches.get(u.unit.batchId) ?? 0) + 1);
+    for (const b of counted) {
+      if (rest <= 0) break;
+      const take = Math.min(rest, b.available);
+      batches.set(b.batchId, (batches.get(b.batchId) ?? 0) + take);
+      rest -= take;
+    }
+    out.push(want === 0 ? { lineIdx: l.lineIdx, qtyBase: 0 } : { lineIdx: l.lineIdx, qtyBase: want, batches: [...batches].map(([batchId, qty]) => ({ batchId, qty })) });
+    unitIds.push(...units.map((u) => u.unit.id));
+  }
+  return { input: { lines: out.length === 0 && input.lines === undefined ? undefined : out }, unitIds };
 }
 
 // ═══════════════════════════════ reads ═══════════════════════════════

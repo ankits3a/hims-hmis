@@ -9,7 +9,9 @@ import {
 } from "../../kernel/db/schema";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
-import { availableQty, ensureOutOnPassStore, fefoPick, postMovements } from "../materials";
+import { availableQty, ensureOutOnPassStore, fefoPick, postMovements, sellableBatchesByItem } from "../materials";
+import { taggedBatchIds } from "./asset-rules";
+import { appendUnitEvents, requireUnitsAt, unitsAt } from "./assets";
 import { STORES_GATEPASS_RAISE, STORES_GATEPASS_SCAN, holds, recordAct, requireStoresStore } from "./access";
 import { scanClock } from "./custody";
 import { StoresError } from "./errors";
@@ -222,17 +224,37 @@ async function sourceRecord(db: Db | Tx, refType: GatePassRefType, refId: string
 }
 
 /** One line per item, in the order first named; quantities of a repeated item add up. */
-function mergeLines(lines: { itemId: string; qty: number }[]): { itemId: string; qty: number }[] {
-  const m = new Map<string, number>();
-  for (const l of lines) m.set(l.itemId, (m.get(l.itemId) ?? 0) + l.qty);
-  return [...m].map(([itemId, qty]) => ({ itemId, qty }));
+function mergeLines(lines: { itemId: string; qty: number; unitIds?: string[] }[]): { itemId: string; qty: number; unitIds?: string[] }[] {
+  const m = new Map<string, { qty: number; unitIds?: string[] }>();
+  for (const l of lines) {
+    const cur = m.get(l.itemId);
+    const units = [...(cur?.unitIds ?? []), ...(l.unitIds ?? [])];
+    m.set(l.itemId, { qty: (cur?.qty ?? 0) + l.qty, ...(units.length > 0 ? { unitIds: units } : {}) });
+  }
+  return [...m].map(([itemId, v]) => ({ itemId, ...v }));
+}
+
+/** Counted stock of an item at a store, off its tagged batches (S4, #1114: a counted line never takes a tagged unit). */
+async function countedPick(db: Db | Tx, storeId: string, itemId: string, qty: number, now: Date): Promise<{ batchId: string; qty: number }[]> {
+  const tagged = await taggedBatchIds(db, [itemId]);
+  if (tagged.size === 0) return fefoPick(db, storeId, itemId, qty, now);
+  const out: { batchId: string; qty: number }[] = [];
+  let want = qty;
+  for (const b of (await sellableBatchesByItem(db, storeId, [itemId], now)).get(itemId) ?? []) {
+    if (want <= 0) break;
+    if (tagged.has(b.batchId)) continue;
+    const take = Math.min(want, b.available);
+    out.push({ batchId: b.batchId, qty: take });
+    want -= take;
+  }
+  return out;
 }
 
 export async function raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassInput, now: Date = new Date()): Promise<GatePassView> {
   await requireRaiser(db, actor);
   const today = istDayString(now);
   let pass: Omit<PassRow, "id" | "passNo" | "raisedBy" | "raisedAt">;
-  let lines: { itemId: string; qty: number }[];
+  let lines: { itemId: string; qty: number; unitIds?: string[] }[];
 
   if (input.kind === "returnable") {
     const party = clean(input.party);
@@ -246,9 +268,17 @@ export async function raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassIn
       throw new StoresError("bad_quantity", "each line needs a whole quantity above zero");
     }
     for (const l of lines) {
-      await requireStoresItem(db, l.itemId);
+      const item = await requireStoresItem(db, l.itemId);
       const have = await availableQty(db, store.id, l.itemId, now);
       if (have < l.qty) throw new StoresError("more_than_on_hand", "more than the store holds", { itemId: l.itemId, onHand: have });
+      // S4 (#1114, decision 5): a tagged unit goes out by name; a counted line must be coverable off the tagged batches.
+      const units = l.unitIds ?? [];
+      if (units.length > 0 || item.trackMode === "tagged") {
+        if (units.length !== l.qty) throw new StoresError("units_required", "name each tagged unit that goes out", { itemId: l.itemId });
+        await requireUnitsAt(db, units, l.itemId, store.id);
+      } else if ((await countedPick(db, store.id, l.itemId, l.qty, now)).reduce((a, p) => a + p.qty, 0) < l.qty) {
+        throw new StoresError("units_required", "name each tagged unit that goes out", { itemId: l.itemId });
+      }
     }
     pass = { kind: "returnable", purpose: input.purpose, sourceStoreId: store.id, party, dueBack: input.dueBack, refType: null, refId: null, note: clean(input.note) };
   } else {
@@ -274,11 +304,11 @@ export async function raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassIn
     const passNo = await nextEpisodeNo(tx, "gate_pass", today);
     const outId = await ensureOutOnPassStore(tx);
     await tx.insert(storesGatePasses).values({ id: passId, passNo, ...pass, raisedBy: actor.id, raisedAt: now });
-    await tx.insert(storesGatePassLines).values(lines.map((l, i) => ({ passId, lineIdx: i, itemId: l.itemId, qty: l.qty })));
+    await tx.insert(storesGatePassLines).values(lines.map((l, i) => ({ passId, lineIdx: i, itemId: l.itemId, qty: l.qty, unitIds: l.unitIds ?? null })));
     await recordAct(tx, actor, now, {
       act: "raise_gate_pass", storeId: outId, refId: passId, reason: pass.note,
       after: { passNo, kind: pass.kind, purpose: pass.purpose, party: pass.party, dueBack: pass.dueBack, refType: pass.refType, refId: pass.refId },
-      lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty, storeId: pass.sourceStoreId })),
+      lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty, storeId: pass.sourceStoreId, ...(l.unitIds === undefined ? {} : { unitIds: l.unitIds }) })),
     });
     // Decision 6: the pass prints with its QR. The relay prints it; the store's own browser can print it too (`/print`).
     await enqueuePrintJob(tx, { document: GATE_PASS_DOCUMENT, params: { passId }, dedupeKey: `stores-gate-pass:${passId}`, requestedBy: actor.id });
@@ -394,10 +424,27 @@ export async function scanGatePass(db: Db, actor: Actor, input: GatePassScanInpu
     const crossed: { itemId: string; batchId: string | null; qty: number }[] = [];
     const base = { refType: GATE_PASS_REF, refId: row.id, occurredAt: clock.occurredAt };
 
+    const lineUnits = new Map((await tx.select().from(storesGatePassLines).where(eq(storesGatePassLines.passId, row.id)))
+      .filter((l) => l.unitIds !== null && l.unitIds.length > 0).map((l) => [l.itemId, l.unitIds!] as const));
+    const unitMoves: { unitId: string; kind: "out_on_pass" | "back"; storeId: string }[] = [];
     if (input.act === "exit") {
       for (const l of view.lines) {
         if (row.kind === "non_returnable") { crossed.push({ itemId: l.itemId, batchId: null, qty: l.qty }); continue; }
-        const picks = await fefoPick(tx, row.sourceStoreId, l.itemId, l.qty, now);
+        const named = lineUnits.get(l.itemId);
+        if (named !== undefined) {
+          // S4 (#1114): the named units go out, each on its own batch.
+          const units = await requireUnitsAt(tx, named, l.itemId, row.sourceStoreId);
+          const byBatch = new Map<string, number>();
+          for (const u of units) byBatch.set(u.unit.batchId, (byBatch.get(u.unit.batchId) ?? 0) + 1);
+          for (const [batchId, qty] of byBatch) {
+            movements.push({ resourceId: row.sourceStoreId, batchId, qtyDelta: -qty, reason: "issue", ...base });
+            movements.push({ resourceId: outId, batchId, qtyDelta: qty, reason: "issue", ...base });
+            crossed.push({ itemId: l.itemId, batchId, qty });
+          }
+          unitMoves.push(...units.map((u) => ({ unitId: u.unit.id, kind: "out_on_pass" as const, storeId: outId })));
+          continue;
+        }
+        const picks = await countedPick(tx, row.sourceStoreId, l.itemId, l.qty, now);
         if (picks.reduce((a, p) => a + p.qty, 0) < l.qty) throw new StoresError("more_than_on_hand", "the store no longer holds what the pass names", { itemId: l.itemId });
         for (const p of picks) {
           movements.push({ resourceId: row.sourceStoreId, batchId: p.batchId, qtyDelta: -p.qty, reason: "issue", ...base });
@@ -412,6 +459,21 @@ export async function scanGatePass(db: Db, actor: Actor, input: GatePassScanInpu
         : mergeLines(input.lines);
       if (asked.some((a) => !Number.isSafeInteger(a.qty) || a.qty <= 0)) throw new StoresError("bad_quantity", "each line needs a whole quantity above zero");
       for (const a of asked) {
+        if (lineUnits.has(a.itemId)) {
+          // S4 (#1114): the units still out on this pass come back, oldest tag first, each on its own batch.
+          const out = (await unitsAt(tx, outId)).filter((u) => u.placeEvent.refType === "gate_pass" && u.placeEvent.refId === row.id && u.unit.itemId === a.itemId);
+          if (out.length < a.qty) throw new StoresError("more_than_out", "more than is out on this pass", { itemId: a.itemId });
+          const back = out.slice(0, a.qty);
+          const byBatch = new Map<string, number>();
+          for (const u of back) byBatch.set(u.unit.batchId, (byBatch.get(u.unit.batchId) ?? 0) + 1);
+          for (const [batchId, qty] of byBatch) {
+            movements.push({ resourceId: outId, batchId, qtyDelta: -qty, reason: "receive", ...base });
+            movements.push({ resourceId: row.sourceStoreId, batchId, qtyDelta: qty, reason: "receive", ...base });
+            crossed.push({ itemId: a.itemId, batchId, qty });
+          }
+          unitMoves.push(...back.map((u) => ({ unitId: u.unit.id, kind: "back" as const, storeId: row.sourceStoreId })));
+          continue;
+        }
         const rows = left.filter((r) => r.itemId === a.itemId);
         if (rows.reduce((s, r) => s + r.qty, 0) < a.qty) throw new StoresError("more_than_out", "more than is out on this pass", { itemId: a.itemId });
         let want = a.qty;
@@ -433,6 +495,7 @@ export async function scanGatePass(db: Db, actor: Actor, input: GatePassScanInpu
       .returning({ id: storesGatePassScans.id });
     if (won.length === 0) return true;
     if (movements.length > 0) await postMovements(tx, actor, movements);
+    await appendUnitEvents(tx, actor, now, unitMoves.map((m) => ({ unitId: m.unitId, kind: m.kind, storeId: m.storeId, refType: "gate_pass", refId: row.id, occurredAt: clock.occurredAt })));
     const outBefore = view.lines.reduce((a, l) => a + l.out, 0);
     const delta = crossed.reduce((a, c) => a + c.qty, 0);
     await recordAct(tx, actor, now, {

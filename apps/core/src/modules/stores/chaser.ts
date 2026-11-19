@@ -3,6 +3,7 @@ import { storesNudges } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { CARRIER_KINDS, chainsOf } from "./chain";
 import { sourceKeepers } from "./custody";
+import { runAssetReminders } from "./asset-reads";
 import { notifyOverdueGatePasses } from "./gate-pass";
 import { approversToTell, notify } from "./tickets";
 import { CLOCKS, boardCards } from "./tower";
@@ -39,7 +40,7 @@ export const CHASER_WORDS = {
   leg: ["Leg over 30 min", "30 मिनट से ज़्यादा"],
 } as const;
 
-export type ChaserRun = { approval: number; pick: number; leg: number; passes: number; failed: number };
+export type ChaserRun = { approval: number; pick: number; leg: number; passes: number; failed: number; /** S4 (#1114): asset reminders sent. */ assets?: number };
 
 const log = new Logger("stores-chaser");
 
@@ -90,6 +91,13 @@ export async function runStoresChaser(db: Db, now: Date = new Date()): Promise<C
       run.failed += 1;
       log.error(`stores chaser: ticket ${d.card.card.indentNo} step ${d.step} failed; the sweep goes on`, err instanceof Error ? err.stack : String(err));
     }
+  }
+  try {
+    // S4 (#1114, decision 7): AMC, warranty and calibration reminders, once each (source key), on the same minute sweep.
+    run.assets = await runAssetReminders(db, now);
+  } catch (err) {
+    run.failed += 1;
+    log.error("stores chaser: the asset reminders failed", err instanceof Error ? err.stack : String(err));
   }
   try {
     run.passes = await notifyOverdueGatePasses(db, now);

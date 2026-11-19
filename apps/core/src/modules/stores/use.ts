@@ -101,7 +101,7 @@ export async function recordShelfUse(
   const shelf = await requireShelf(db, input.shelfId);
   await requireShelfAct(db, actor, shelf, "work");
   const item = await requireStoresItem(db, input.itemId);
-  if (item.trackMode === "durable") throw new StoresError("durable_not_used", "not used up: return it", { itemId: item.id });
+  if (item.trackMode === "durable" || item.trackMode === "tagged") throw new StoresError("durable_not_used", "not used up: return it", { itemId: item.id });
   return withTx(db, async (tx) => {
     const before = await onHand(tx, shelf.id, item.id);
     const picked = await fefoPick(tx, shelf.id, item.id, input.qty, now);
@@ -177,7 +177,7 @@ export async function recordShelfCheck(
       lines.push({ itemId: item.id, before: book, after: l.counted });
       if (l.counted > book) { result.overBook.push({ itemId: item.id, book, counted: l.counted }); continue; }
       if (l.counted === book) continue;
-      if (item.trackMode === "durable") { result.shortDurable.push({ itemId: item.id, book, counted: l.counted }); continue; }
+      if (item.trackMode === "durable" || item.trackMode === "tagged") { result.shortDurable.push({ itemId: item.id, book, counted: l.counted }); continue; }
       const gap = book - l.counted;
       const picked = await fefoPick(tx, shelf.id, item.id, gap, now);
       for (const p of picked) {

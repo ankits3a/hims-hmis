@@ -7,6 +7,7 @@ import {
 import { STORES_ACT_EVENT } from "./events";
 import { StoresError } from "./errors";
 import { holds } from "./access";
+import { assetRedCards, equipmentReceivedByMonth } from "./asset-reads";
 import { CARRIER_KINDS, chainsOf } from "./chain";
 import { overdueGatePasses } from "./gate-pass";
 import { listShelves } from "./shelves";
@@ -322,6 +323,8 @@ export async function redCards(db: Db | Tx, now: Date, cards: readonly BoardCard
       push({ id: `over_book:${e.eventId}`, kind: "over_book", what: names.get(shelfId) ?? "", where: "", clock: null, indentId: null, shelfId, passId: null }, e.at);
     }
   }
+  // S4 (#1114): calibration overdue, AMC lapsed, a missing asset, units ≠ ledger.
+  out.push(...(await assetRedCards(db as Db, now)));
   return out.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)).map((c) => {
     const { at, ...card } = c;
     void at;
@@ -386,6 +389,8 @@ export async function departmentSpendByMonth(db: Db | Tx, month: string): Promis
     .where(and(
       sql`${stockLedger.costCenter} is not null`, eq(stockLedger.reason, "receive"), sql`${stockLedger.qtyDelta} > 0`,
       sql`${localAt} >= ${`${month}-01`}::timestamp`, sql`${localAt} < ${`${next}-01`}::timestamp`,
+      // S4 (#1114, decision 19): equipment is not monthly spend. A tagged unit's batch is "Equipment received", apart.
+      sql`not exists (select 1 from stores_asset_units u where u.batch_id = ${stockLedger.batchId})`,
     )).groupBy(stockLedger.costCenter);
   return new Map(rows.map((r) => [r.code!, Number(r.paise)] as const));
 }
@@ -433,7 +438,9 @@ export async function towerView(db: Db, actor: Actor, now: Date = new Date()): P
     floors: await floorMap(db, states),
     numbers: await numbersOf(db, now, cards),
   };
-  if (await holds(db, actor, STORES_SPEND_READ)) view.spend = await spendOf(db, now);
+  if (await holds(db, actor, STORES_SPEND_READ)) {
+    view.spend = { ...(await spendOf(db, now)), equipment: await equipmentReceivedByMonth(db, istDayString(now).slice(0, 7)) };
+  }
   return view;
 }
 

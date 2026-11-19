@@ -41,6 +41,13 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * one line and the "Stuck" Now card; `stores.spend.read` (hospital; the owner, the materials head, the medical
  * superintendent) adds the month's spend per department to the tower. Never a doctor (decision 0058).
  *
+ * S4a (#1114, decision 16) adds three: `stores.assets.manage` (hospital; biomedical and the materials head) tags units,
+ * records warranty, AMC/CMC, calibration, repairs and the device link, and runs the opening sweep; `stores.assets.read`
+ * (hospital; the materials head, biomedical, the medical superintendent, the stores auditor, the owner) reads every
+ * unit, cost included; `stores.assets.export` (hospital; `accounts_officer`) downloads the month's asset additions for
+ * Tally. A department's shelf-grant holders read their own units without any of the three. The desk is
+ * `/stores/assets` (its own menu row); the phone passport `/stores/asset` is opened by a scan.
+ *
  * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -53,6 +60,7 @@ export const storesManifest: ModuleManifest = {
     { label: "Gate passes", path: "/stores/passes", permission: "stores.gatepass.raise" },
     { label: "Gate", path: "/stores/gate", permission: "stores.gatepass.scan" },
     { label: "Control tower", path: "/stores/tower", permission: "stores.tower.read" },
+    { label: "Assets", path: "/stores/assets", permission: "stores.assets.read" },
   ],
   permissions: [
     "stores.masters.manage",
@@ -66,6 +74,9 @@ export const storesManifest: ModuleManifest = {
     "stores.gatepass.scan",
     "stores.tower.read",
     "stores.spend.read",
+    "stores.assets.manage",
+    "stores.assets.read",
+    "stores.assets.export",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */

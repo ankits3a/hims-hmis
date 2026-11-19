@@ -4,8 +4,9 @@
  */
 
 /** Decision 4: how a Stores item is kept at a department. `tagged` arrives with S4 (#1114). */
-export type TrackMode = "expensed" | "shelf" | "durable";
-export const TRACK_MODES: readonly TrackMode[] = ["expensed", "shelf", "durable"];
+/** S4 (#1114) adds `tagged`: one QR per unit, every unit a passport (medical equipment, under an `always` category). */
+export type TrackMode = "expensed" | "shelf" | "durable" | "tagged";
+export const TRACK_MODES: readonly TrackMode[] = ["expensed", "shelf", "durable", "tagged"];
 
 /**
  * Decision 2: the classes Stores registers. `drug` (pharmacy) and `implant` (patient-billable, ruling
@@ -218,7 +219,7 @@ export type TicketShort = {
 /** A scan from a phone: the label's ticket number (or its last four digits), a client idempotency key and the scan time. */
 export type ScanInput = { code: string; clientKey?: string | null; scannedAt?: string | null };
 
-export type DeliverLineInput = { lineIdx: number; accepted?: number; short?: number; wrong?: number; damaged?: number };
+export type DeliverLineInput = { lineIdx: number; accepted?: number; short?: number; wrong?: number; damaged?: number; /** S4 (#1114): the tagged units that arrived. */ unitIds?: string[] };
 export type DeliverInput = { lines?: DeliverLineInput[]; clientKey?: string | null; scannedAt?: string | null };
 
 /** Decision 14: a scan older than 12 h is accepted and flagged; one in the future is stored at server time and flagged. */
@@ -299,7 +300,7 @@ export type GatePassRefType = "supplier_return" | "write_off";
 export type GatePassStatus = "raised" | "out" | "overdue" | "back" | "closed";
 
 export type RaiseGatePassInput =
-  | { kind: "returnable"; storeId: string; purpose: GatePassPurpose; party: string; dueBack: string; lines: { itemId: string; qty: number }[]; note?: string | null }
+  | { kind: "returnable"; storeId: string; purpose: GatePassPurpose; party: string; dueBack: string; lines: { itemId: string; qty: number; unitIds?: string[] }[]; note?: string | null }
   | { kind: "non_returnable"; refType?: GatePassRefType | null; refId?: string | null; note?: string | null };
 
 export type GatePassScanInput = {

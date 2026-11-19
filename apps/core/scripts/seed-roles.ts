@@ -818,6 +818,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.audit.read",
       // STORES S3 (#1113, decisions 5, 15, 16) — the control tower (its phone line "3 stuck · 4B, OT") and its spend tile.
       "stores.tower.read", "stores.spend.read",
+      // STORES S4a (#1114, decision 16) — the asset register, every unit's passport, cost included.
+      "stores.assets.read",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -971,6 +973,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.indents.approve", "stores.audit.read",
       // STORES S3 (#1113, decisions 5, 15) — the control tower and its spend tile.
       "stores.tower.read", "stores.spend.read",
+      // STORES S4a (#1114, decision 16) — the asset register and every unit's passport.
+      "stores.assets.read",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1237,6 +1241,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // the engineer, which is the §10 bundling matrix working as designed. This is a second
       // holder, not a transfer.
       "ops.interface.manage",
+      // STORES S4a (#1114, decision 16) — the asset passport: tag units, record warranty, AMC/CMC and calibration, open
+      // and close repairs, link a unit to its radiology or lab device, run the go-live opening sweep; read every unit.
+      "stores.assets.manage", "stores.assets.read",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1339,6 +1346,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.gatepass.raise",
       // STORES S3 (#1113, decisions 5, 13, 15) — the control tower, its "Stuck" Now card, and the month's spend tile.
       "stores.tower.read", "stores.spend.read",
+      // STORES S4a (#1114, decision 16) — tag units, contracts, calibration, repairs, the opening sweep; read every passport.
+      "stores.assets.manage", "stores.assets.read",
     ],
   },
   {
@@ -2037,7 +2046,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    *   · `stores_auditor` — the internal auditor's seat: reads the Stores audit pack and nothing else.
    */
   { roleKey: "nursing_supervisor", permissions: ["stores.nightstore.issue"] },
-  { roleKey: "stores_auditor", permissions: ["stores.audit.read"] },
+  { roleKey: "stores_auditor", permissions: ["stores.audit.read", "stores.assets.read"] },
   /**
    * STORES S2b (#1112, decision 7) — the porter: `support_staff`, the IPD train's (#967) key and title, whichever lands
    * second merges its grants into this row at rebase. Here it holds only `stores.carry`: take custody of an issued
@@ -2051,6 +2060,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * Assigned by nobody.
    */
   { roleKey: "security_guard", permissions: ["stores.gatepass.scan"] },
+  /**
+   * STORES S4a (#1114, decision 16) — the accounts seat: `accounts_officer`, the key and title S5 and S6 use (whichever
+   * lands second merges its grants into this row at rebase). Here it holds only `stores.assets.export`: the month's
+   * asset additions for Tally's fixed-asset register (cost, GST, put-to-use date, GRN and bill). Assigned by nobody.
+   */
+  { roleKey: "accounts_officer", permissions: ["stores.assets.export"] },
 ];
 
 /**
@@ -2322,6 +2337,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
   // STORES S2c (#1119) — the IPD train's exact key and title.
   security_guard: "Security Guard (scans attendant and visitor passes at the ward door)",
+  // STORES S4a (#1114) — the accounts seat S5 and S6 also use.
+  accounts_officer: "Accounts Officer (accounts: the month's asset additions for Tally)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

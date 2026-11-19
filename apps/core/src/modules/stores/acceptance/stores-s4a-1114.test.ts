@@ -11,7 +11,7 @@ import { ALL_MANIFESTS } from "../../../kernel/modules/manifests";
 import { KERNEL_RESOURCE_KINDS } from "../../../kernel/resources/kinds";
 import { createResource } from "../../../kernel/resources/registry";
 import {
-  MaterialsError, balances, captureGrn, postGrn, postMovements, registerMaterialsApprovalTypes, registerVendor, runGateQc,
+  MaterialsError, activateVendor, addVendorDocument, balances, captureGrn, postGrn, postMovements, registerMaterialsApprovalTypes, registerVendor, runGateQc,
 } from "../../materials";
 import { RADIOLOGY_RESOURCE_KINDS } from "../../radiology";
 import { storesManifest } from "../manifest";
@@ -22,7 +22,7 @@ import {
   reportFault, reportFoundHere, retag, runStoresChaser, scanGatePass, scanVerification, seedStoresMasters, startVerification, tagUnits, towerView,
   voidTag,
 } from "../index";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, WireAssetPassportFull } from "@hmis/contracts";
 import type { Db } from "../../../kernel/db/client";
 
 /**
@@ -121,6 +121,9 @@ describe("Stores S4a: the asset passport (spec #1114)", () => {
     ({ shelfId: shelfB } = await createShelf(db, head.actor, { code: "W4-F1", name: "Ward 4 shelf", floorId: floor1, departmentId: deptB.id, suppliedBy: genMain }));
     ({ shelfId: shelfB2 } = await createShelf(db, head.actor, { code: "W4-F1B", name: "Ward 4 nurses' station", floorId: floor1, departmentId: deptB.id, suppliedBy: genMain }));
     ({ vendorId } = await withTx(db, (tx) => registerVendor(tx, head.actor, { code: "V-MEDEQ", legalName: "Medequip Pvt Ltd" })));
+    await withTx(db, (tx) => addVendorDocument(tx, head.actor, vendorId, { type: "gst_certificate", number: "g" }));
+    await withTx(db, (tx) => addVendorDocument(tx, head.actor, vendorId, { type: "pan", number: "p" }));
+    await withTx(db, (tx) => activateVendor(tx, head.actor, vendorId, at(-200)));
   });
 
   /* ─────────────────────────────── fixtures ─────────────────────────────── */
@@ -177,7 +180,9 @@ describe("Stores S4a: the asset passport (spec #1114)", () => {
     }
     throw new Error("expected a refusal");
   }
-  const passport = async (who: Who, unitId: string, when: Date = at(60)) => assetPassport(db, who.actor, { unitId }, when);
+  /** The full passport (these readers all see it in full; D18 pins the foreign view). */
+  const passport = async (who: Who, unitId: string, when: Date = at(60)): Promise<WireAssetPassportFull> =>
+    (await assetPassport(db, who.actor, { unitId }, when)) as WireAssetPassportFull;
 
   /* ─────────────────────────────── D1–D10, D15, D16, D18 ─────────────────────────────── */
 
