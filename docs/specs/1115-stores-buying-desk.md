@@ -395,7 +395,7 @@ Where S5c's build differs from the text above, or decides what the text left ope
 - **Advances** (decision 11): requested at the desk, approved by the owner; paying them is S6's (#1116).
 - **Not built:** splitting ONE request line across two groups (flow 4's "or splits one"): a line moves whole. A split
   needs a quantity on the group move and through every read after it (RFQ lines, the comparative, the award, the
-  delivery share); it is owed as its own issue.
+  delivery share); owed as #1133.
 - **Spent** adds Stores POs at award value with GST from the PO's approval, less what was already delivered to the
   department (then S3's receipt rule counts it); a delivery ticket raised but not yet received counts in neither.
 

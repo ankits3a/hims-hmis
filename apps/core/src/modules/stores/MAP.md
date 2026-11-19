@@ -437,7 +437,7 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Now cards: `stores.purchase` ("Purchase to approve", waiting kind `stores.purchaseToApprove`) and `stores.award`
   ("Award to sign", `stores.awardToSign`), both `waitingSelfGated` (department-scoped HOD).
 - TRAP (locked check): S3's acceptance D7 pins the Stores copilot intents at seven; a buyer intent in this manifest fails
-  it. Chat access to the drafts waits for the owner's `owner-approved-checks` label on a PR that moves that pin.
+  it. Chat access to the drafts waits for the owner's `owner-approved-checks` label on a PR that moves that pin (#1133).
 - Web: `/stores/buying` Grouping (Agent's groups), RFQs (Read PDF, Quotes to confirm → Quote entry: PDF left, lines right,
   Confirm line), "Draft by agent" on RFQ/PO, One supplier, Advance; sheets `?exception=`, `?po=` (advance). `/stores/buy`
   Budgets: On order, the over-budget list (`?tab=budgets&month=` from the owner's notice).
