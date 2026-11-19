@@ -1,6 +1,6 @@
 ---
 issue: 1119
-status: approved
+status: built
 approved: 2026-11-18
 ---
 # SPEC: Stores S2c, gate passes and the guard scan (#1119) — APPROVED by owner 2026-11-18

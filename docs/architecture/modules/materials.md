@@ -53,6 +53,7 @@ Source: `apps/core/src/modules/materials/`
   - `NEAR_EXPIRY_RETURN_DAYS`
   - `NON_SUPPLIER_VENDOR_CODES`
   - `OPENING_STOCK_SOURCE`
+  - `OUT_ON_PASS_STORE_CODE`
   - `PAYMENT_RUN_HORIZON_DAYS`
   - `PO_HEAD_APPROVAL_LIMIT_PAISE`
   - `PO_RECEIPT_TOLERANCE_BPS`
@@ -291,6 +292,7 @@ Source: `apps/core/src/modules/materials/`
   - types: `CatalogueItem`, `LossBooking`, `StockInKind`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`
 - `stores.ts`
   - `createStore(tx: Tx, actor: Actor, input: { code: string; name: string; parentId?: string | null; siteId?: string; attributes?: Record<strin…`
+  - `ensureOutOnPassStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureTransitStore(tx: Tx, siteId = "main"): Promise<string>`
   - `findStoreByCode(db: Db | Tx, code: string, siteId = "main"): Promise<StoreRow | undefined>`

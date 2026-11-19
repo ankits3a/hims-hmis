@@ -13,12 +13,14 @@ Source: `apps/core/src/modules/stores/`
 
 - **Depends on modules:** `materials`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `printing`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `printing`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
 - `access.ts`
   - `STORES_AUDIT_READ`
+  - `STORES_GATEPASS_RAISE`
+  - `STORES_GATEPASS_SCAN`
   - `STORES_INDENTS_APPROVE`
   - `STORES_MASTERS`
   - `STORES_NIGHTSTORE_ISSUE`
@@ -63,6 +65,20 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_EVENTS`
   - `storesActRecorded`
   - types: `StoresAct`
+- `gate-pass-print.ts`
+  - `renderGatePass(db: Db, params: Record<string, unknown>): Promise<RenderedDocument | null>`
+- `gate-pass.ts`
+  - `GATE_PASS_DOCUMENT`
+  - `closeGatePass(db: Db, actor: Actor, passId: string, reason: string, now: Date = new Date()): Promise<GatePassView>`
+  - `gatePassForm(db: Db, actor: Actor): Promise<{ stores: { id: string; code: string; name: string }[]; sources: GatePassSource[] }>`
+  - `gatePassLookup(db: Db, actor: Actor, code: string, now: Date = new Date()): Promise<GatePassLookup>`
+  - `gatePassSources(db: Db, actor: Actor): Promise<GatePassSource[]>`
+  - `getGatePass(db: Db | Tx, passId: string, now: Date = new Date()): Promise<GatePassView | null>`
+  - `listGatePasses(db: Db, actor: Actor, now: Date = new Date()): Promise<GatePassView[]>`
+  - `notifyOverdueGatePasses(db: Db, now: Date = new Date()): Promise<number>`
+  - `overdueGatePasses(db: Db | Tx, now: Date = new Date()): Promise<GatePassView[]>`
+  - `raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassInput, now: Date = new Date()): Promise<GatePassView>`
+  - `scanGatePass(db: Db, actor: Actor, input: GatePassScanInput, now: Date = new Date()): Promise<GatePassScanResult>`
 - `items.ts`
   - `CENTRAL_STORE_CODE`
   - `NIGHT_STORE_CODE`
@@ -141,12 +157,12 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_item_requests`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_ticket_details`, `stores_transit_resolutions`
+`stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_ticket_details`, `stores_transit_resolutions`
 
 Foreign keys into: `materials`, `resources`
 
 ## HTTP routes
 
-- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/transit-losses`
+- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/transit-losses`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`
