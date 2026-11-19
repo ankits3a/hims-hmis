@@ -440,6 +440,7 @@ export class StoresController {
       const pack = await storesAuditPack(this.db, actor, {
         ...(q.ticketId === undefined ? {} : { ticketId: q.ticketId }), ...(q.itemId === undefined ? {} : { itemId: q.itemId }),
         ...(q.personId === undefined ? {} : { personId: q.personId }), ...(q.storeId === undefined ? {} : { storeId: q.storeId }),
+        ...(q.unitId === undefined ? {} : { unitId: q.unitId }),
         from: new Date(q.from), to: new Date(q.to),
         ...(q.afterSeq === undefined ? {} : { afterSeq: q.afterSeq }), ...(q.limit === undefined ? {} : { limit: q.limit }),
       }, new Date());

@@ -80,7 +80,7 @@ function MyShelves(): React.ReactElement {
   );
 }
 
-type RoleLink = { to: "/stores/approve" | "/stores/pick" | "/stores/receive" | "/stores/porter" | "/stores/passes" | "/stores/gate"; label: string };
+type RoleLink = { to: "/stores/approve" | "/stores/pick" | "/stores/receive" | "/stores/porter" | "/stores/passes" | "/stores/gate" | "/stores/asset" | "/stores/assets"; label: string };
 
 /**
  * UX pass (walk finding 13) — each person's own Stores screens, by the grants they hold at ANY scope (an HOD's
@@ -97,6 +97,9 @@ function useRoleLinks(): RoleLink[] {
   if (any("stores.carry")) out.push({ to: "/stores/porter", label: "stores.ux.porter" });
   if (can("stores.gatepass.raise")) out.push({ to: "/stores/passes", label: "nav.storesPasses" });
   if (any("stores.gatepass.scan")) out.push({ to: "/stores/gate", label: "nav.storesGate" });
+  // S4a (#1114): the phone passport for a department's holders and biomedical; the assets desk for its readers.
+  if (any("stores.shelf.read") || any("stores.shelf.work") || can("stores.assets.manage")) out.push({ to: "/stores/asset", label: "stores.assets.scanTitle" });
+  if (can("stores.assets.read") || can("stores.assets.manage") || can("stores.assets.export")) out.push({ to: "/stores/assets", label: "nav.storesAssets" });
   return out;
 }
 

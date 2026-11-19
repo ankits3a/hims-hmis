@@ -11,6 +11,7 @@ import {
 } from "../../kernel/db/schema";
 import { STOCK_ADJUSTMENT_APPROVAL_TYPE } from "./approval-types";
 import { TRANSIT_STORE_CODE } from "./config";
+import { isStoresPlace } from "./stores";
 import { MaterialsError } from "./errors";
 import { stockWriteOffPosted, stockWriteOffRefused, stockWriteOffRequested } from "./events";
 import { istDay } from "./grn";
@@ -45,8 +46,13 @@ import type { Db, Tx } from "../../kernel/db/client";
 const WRITEOFFS_MANAGE = "materials.writeoffs.manage";
 const WRITEOFF_READERS = [WRITEOFFS_MANAGE, "materials.stock.read", "approvals.requests.decide"];
 
-export type WriteOffReason = "expiry" | "damage" | "recall";
-export const WRITE_OFF_REASONS: readonly WriteOffReason[] = ["expiry", "damage", "recall"];
+/**
+ * STORES S4b (#1114, decision 14) adds `condemned`: a condemned or lost tagged unit, raised by the Stores condemnation
+ * intents once every committee seat has signed. Refused at any store that is not a Stores place, so pharmacy can never
+ * pick it; nothing else about a write-off changes (the same approval, the same disposal CHECK).
+ */
+export type WriteOffReason = "expiry" | "damage" | "recall" | "condemned";
+export const WRITE_OFF_REASONS: readonly WriteOffReason[] = ["expiry", "damage", "recall", "condemned"];
 export type WriteOffStatus = "requested" | "posted" | "refused";
 export type WriteOffLineInput = { batchId: string; qtyBase: number };
 export type DisposalInput = { disposalAgency?: string | null; manifestNo?: string | null; disposalDate?: string | null };
@@ -105,6 +111,7 @@ export async function raiseWriteOff(
   const [store] = await db.select().from(resources).where(eq(resources.id, input.storeResourceId));
   if (store === undefined || store.kind !== "store") throw new MaterialsError("unknown_store", `resource ${input.storeResourceId} is not a store`);
   if (store.code.toLowerCase() === TRANSIT_STORE_CODE.toLowerCase()) throw new MaterialsError("writeoff_invalid", "stock in transit is received first, then written off");
+  if (input.reason === "condemned" && !isStoresPlace(store)) throw new MaterialsError("writeoff_invalid", "a condemnation is written off at a Stores place only");
   const id = await withTx(db, async (tx) => {
     const batches = await tx.select().from(stockBatches).where(inArray(stockBatches.id, batchIds));
     const bals = await tx.select().from(stockBalances).where(and(eq(stockBalances.resourceId, store.id), inArray(stockBalances.batchId, batchIds)));

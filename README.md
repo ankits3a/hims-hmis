@@ -1743,6 +1743,46 @@ sweep nudges inside the hospital, once per ticket per step: the approvers at 45 
 late, the porter and the store when a leg passes 30 minutes. The copilot answers "where is my ticket" and six other
 Stores questions by keyword, and its one act, a shelf's reorder, raises a ticket only after the person taps Send.
 
+**Stores asset passport (decision 0099 Q3, 0101, S4a #1114, 2026-11-19).** Every unit of medical equipment, and
+every IT or furniture unit bought at ₹5,000 or more, carries one QR label from the day it is received; cheaper
+durables stay counted. The label opens the unit's passport on any phone: what it is, where it is, which department
+holds it, its warranty, AMC and calibration dates with a word each, and its last five events. Where a unit is and
+what it is doing is read from its events every time, never typed, and the units always agree with the stock books.
+`stores.assets.manage` is held by `biomedical_engineer` and `materials_head`; `stores.assets.read` by
+`materials_head`, `biomedical_engineer`, `medical_superintendent`, `stores_auditor` and `owner`;
+`stores.assets.export` by the new role `accounts_officer`, which holds nothing else here and is assigned by no seed.
+A department's own shelf staff read their own units without any of the three; anyone else who scans a unit sees only
+whose it is and "Found here".
+
+**Stores condemnation and disposal (decision 0101 Q5, S4b #1114, 2026-11-19).** A unit leaves the books only after the
+condemnation committee signs, each seat once and on the phone: the user department's HOD, accounts, the materials head,
+and biomedical for medical equipment. The medical superintendent then approves the write-off as today, and the owner
+too when the unit cost more than ₹50,000 or its cost is unknown. Disposal is a scrap sale, a buy-back or an e-waste
+recycler, and the guard's exit scan ends the unit's life; a lost unit is written off the same way, without a pass.
+`stores.assets.condemn` is held by `department_head` (at its department), `accounts_officer`, `materials_head` and
+`biomedical_engineer`.
+
+**Stores buying desk, front (decision 0101, S5a #1115, 2026-11-19).** A department asks to buy a non-stock or capital
+item on the phone and its HOD approves it in two taps, as a Stores ticket is approved; the medical superintendent stands
+in, and an HOD may hand the approval to a colleague for at most 30 days. The request is banded by value (one quote up to
+₹25,000, three quotes up to ₹5 lakh, the committee above that and for any medical equipment) and summed over 30 days so
+that splitting cannot lower a band. Finance sets each department's month budget: a warning at 80 % and at 100 %, never a
+refusal. A non-drug delivery's QC needs no pharmacist. A supplier "can quote" with PAN and GSTIN, and is "KYC complete"
+with its papers, a bank account past cooling-off and the category approved.
+`stores.purchase.request` is held by `department_store_incharge` and `department_head` (at their department);
+`stores.buying.manage` by `materials_head` and `purchase_officer`; `stores.budget.manage` by `accounts_officer` and
+`owner`; `stores.grn.qc` by `materials_head`, `biomedical_engineer` and `department_head` (at its department).
+
+**Stores buying desk, by hand (decision 0101, S5b #1115, 2026-11-19).** The buyer groups approved requests, takes one
+quote up to ₹25,000 (checked against the last price) or sends an RFQ to at least three suppliers, a tap that records
+who sent it and hands over one PDF per supplier: HMIS mails nothing. Quotes stay sealed until the reply-by date or until
+all are in; the comparative ranks landed cost with GST; an award that is not the lowest needs a reason, and only a
+supplier with complete KYC is awarded. Above ₹5 lakh and for medical equipment every committee seat signs, then the
+owner; any member may object or hand the seat over for a dated spell. The PO copies the award and is refused if it
+differs; its own approval tier is unchanged. When the goods pass QC the requester's delivery ticket is raised by itself.
+`stores.award.sign` is held by `materials_head`, `accounts_officer`, `medical_superintendent`, `biomedical_engineer` and
+`department_head` (at its department, the user HOD's seat).
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

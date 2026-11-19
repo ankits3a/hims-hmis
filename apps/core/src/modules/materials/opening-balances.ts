@@ -22,7 +22,11 @@ import type { Db, Tx } from "../../kernel/db/client";
  */
 export const OPENING_BALANCE_REF_TYPE = "opening_balance";
 
-export type OpeningLine = { itemId: string; qtyBase: number; unitCostPaise?: number | null; expiryDate?: string | null };
+export type OpeningLine = {
+  itemId: string; qtyBase: number; unitCostPaise?: number | null; expiryDate?: string | null;
+  /** STORES S4 (#1114, decision 11) — ADDITIVE: a tagged unit's own batch number (`OPEN-<store>-<tag>`), so two units of one item never collide. */
+  batchNo?: string;
+};
 
 export async function hasOpeningBalance(db: Db | Tx, resourceId: string): Promise<boolean> {
   const rows = await db.select({ id: stockLedger.id }).from(stockLedger)
@@ -41,7 +45,7 @@ export async function postOpeningBalances(
     const batchId = newId();
     const cost = l.unitCostPaise ?? null;
     await tx.insert(stockBatches).values({
-      id: batchId, itemId: l.itemId, batchNo: `OPEN-${store.code}`, expiryDate: l.expiryDate ?? null,
+      id: batchId, itemId: l.itemId, batchNo: l.batchNo ?? `OPEN-${store.code}`, expiryDate: l.expiryDate ?? null,
       landedCostPaise: cost ?? 0, estimatedCost: cost === null, ownership: "owned", createdBy: actor.id,
     });
     batchIds.push(batchId);

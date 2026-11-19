@@ -15,11 +15,13 @@ import {
 import { STORES_MASTERS, holds, isStoresStore, recordAct, requireShelf, requireShelfAct, toStoresStore } from "./access";
 import { carriersOf, chainOf, holderOf, lastCustodianOf, returningUndelivered } from "./chain";
 import { StoresError } from "./errors";
+import { proposeLossInTx } from "./condemnation";
 import { requireStoresItem } from "./items";
 import {
   WORDS, deliveredSentBack, deliveredShort, getTicket, keepsStore, notify, requireTicketRow, storesStoreRow, ticketViews,
 } from "./tickets";
 import { receiveAtShelf } from "./use";
+import { followTransit, unitsInTransitOn } from "./assets";
 import type { Chain } from "./chain";
 import type { TicketRow } from "./tickets";
 import type {
@@ -281,6 +283,14 @@ export async function takeOverCustody(db: Db, actor: Actor, indentId: string, re
 
 // ═══════════════════════════════ the receipt ═══════════════════════════════
 
+/** Transfer lines → their batches, for the units that follow a quantity out of IN-TRANSIT. */
+async function batchMoves(tx: Tx, rows: readonly { lineId: string; qty: number; to: string }[]): Promise<{ batchId: string; qty: number; toStoreId: string }[]> {
+  if (rows.length === 0) return [];
+  const tls = await tx.select({ id: transferLines.id, batchId: transferLines.batchId }).from(transferLines).where(inArray(transferLines.id, rows.map((r) => r.lineId)));
+  const byId = new Map(tls.map((t) => [t.id, t.batchId] as const));
+  return rows.flatMap((r) => (byId.has(r.lineId) ? [{ batchId: byId.get(r.lineId)!, qty: r.qty, toStoreId: r.to }] : []));
+}
+
 type LinePlan = {
   transferLineId: string; batchId: string; lineIdx: number; itemId: string;
   accepted: number; short: number; wrong: number; damaged: number;
@@ -323,6 +333,57 @@ async function planDelivery(tx: Tx, row: InTransit, input: DeliverInput): Promis
 }
 
 /**
+ * S4 (#1114, decision 5, edge case 1) — a line carrying tagged units is received BY UNIT: the receiver's scans name the
+ * units that arrived (`unitIds`); a unit not named is the short (or wrong, or damaged). Without scans the line must
+ * arrive whole. Each transfer line of a tagged batch then accepts exactly its arrived units, the counted rest is spread
+ * over the line's other batches, and the short / wrong / damaged quantities fill what is left. Returns the plan and
+ * the units that arrived.
+ */
+async function alignPlanToUnits(tx: Tx, transferId: string, plan: LinePlan[], input: DeliverInput): Promise<{ plan: LinePlan[]; arrived: string[] | undefined }> {
+  const inTransit = await unitsInTransitOn(tx, transferId);
+  if (inTransit.length === 0) return { plan, arrived: undefined };
+  const given = new Map((input.lines ?? []).map((g) => [g.lineIdx, g.unitIds]));
+  const out: LinePlan[] = [];
+  const arrived: string[] = [];
+  for (const lineIdx of [...new Set(plan.map((p) => p.lineIdx))]) {
+    const parts = plan.filter((p) => p.lineIdx === lineIdx);
+    const unitBatches = new Set(parts.map((p) => p.batchId));
+    const units = inTransit.filter((u) => unitBatches.has(u.unit.batchId));
+    if (units.length === 0) { out.push(...parts); continue; }
+    const total = (k: "accepted" | "short" | "wrong" | "damaged"): number => parts.reduce((a, p) => a + p[k], 0);
+    const issued = parts.reduce((a, p) => a + p.accepted + p.short + p.wrong + p.damaged, 0);
+    const accepted = total("accepted");
+    const named = given.get(lineIdx);
+    let came: typeof units;
+    if (named === undefined) {
+      if (accepted !== issued) throw new StoresError("units_required", "scan the tagged units that arrived", { lineIdx });
+      came = units;
+    } else {
+      const ids = new Set(named);
+      came = units.filter((u) => ids.has(u.unit.id));
+      if (came.length !== ids.size) throw new StoresError("unknown_unit", "a scanned unit is not on this line", { lineIdx });
+    }
+    const countedIssued = issued - units.length;
+    const countedAccepted = accepted - came.length;
+    if (countedAccepted < 0 || countedAccepted > countedIssued) throw new StoresError("bad_quantity", "the units scanned do not match the quantity accepted", { lineIdx });
+    let countedLeft = countedAccepted;
+    const rest = { short: total("short"), wrong: total("wrong"), damaged: total("damaged") };
+    for (const p of parts) {
+      const cap = p.accepted + p.short + p.wrong + p.damaged;
+      const unitsHere = units.filter((u) => u.unit.batchId === p.batchId).length;
+      let acc: number;
+      if (unitsHere > 0) acc = came.filter((u) => u.unit.batchId === p.batchId).length;
+      else { acc = Math.min(cap, countedLeft); countedLeft -= acc; }
+      let room = cap - acc;
+      const take = (k: keyof typeof rest): number => { const n = Math.min(room, rest[k]); rest[k] -= n; room -= n; return n; };
+      out.push({ ...p, accepted: acc, short: take("short"), wrong: take("wrong"), damaged: take("damaged") });
+    }
+    arrived.push(...came.map((u) => u.unit.id));
+  }
+  return { plan: out, arrived };
+}
+
+/**
  * Decision 8: the department receives, per line accepted / short / wrong / damaged. Only the accepted quantity
  * is received (`receiveAtShelf`: the shelf grant at the department, the cost centre, an expensed item used on
  * receipt). Wrong and damaged quantities are never charged: they stay in IN-TRANSIT, going back on the same chain
@@ -347,9 +408,13 @@ export async function deliverTicket(db: Db, actor: Actor, indentId: string, inpu
     // The receipt is dated (and charged) no earlier than the issue or the last hand-off, and never months back.
     clock = scanClock(input.scannedAt, now, scanFloor(locked));
     const occurredAt = clock.occurredAt;
-    const plan = await planDelivery(tx, locked, input);
+    const aligned = await alignPlanToUnits(tx, locked.transfer.id, await planDelivery(tx, locked, input), input);
+    const plan = aligned.plan;
     const quarantine = plan.some((p) => p.damaged > 0) ? await ensureQuarantineStore(tx) : null;
     await receiveAtShelf(tx as unknown as Db, actor, locked.transfer.id, occurredAt, plan.map((p) => ({ lineId: p.transferLineId, qtyReceived: p.accepted })), shelf.id);
+    // S4 (#1114): the units that arrived are placed at the shelf in the receipt's transaction; the rest stay in transit.
+    await followTransit(tx, actor, locked.transfer.id, plan.filter((p) => p.accepted > 0).map((p) => ({ batchId: p.batchId, qty: p.accepted, toStoreId: shelf.id })),
+      "placed", occurredAt, now, aligned.arrived);
     await tx.insert(storesDeliveryLines).values(plan.map((p) => ({
       transferLineId: p.transferLineId, transferId: locked.transfer.id, indentId, lineIdx: p.lineIdx, itemId: p.itemId,
       accepted: p.accepted, short: p.short, wrong: p.wrong, damaged: p.damaged, receivedBy: actor.id, receivedAt: occurredAt, atCounter,
@@ -431,6 +496,7 @@ export async function acceptReturn(db: Db, actor: Actor, indentId: string, now: 
     if (pending.length === 0) throw new StoresError("nothing_to_return", `nothing on ${locked.indent.indentNo} is coming back`);
     const [transfer] = await tx.select().from(transfers).where(eq(transfers.id, locked.indent.transferId));
     await returnInTransit(tx, actor, locked.indent.transferId, pending.map((p) => ({ lineId: p.transferLineId, qty: p.qty, toResourceId: p.toResourceId ?? locked.indent.toResourceId })), now);
+    await followTransit(tx, actor, locked.indent.transferId, await batchMoves(tx, pending.map((p) => ({ lineId: p.transferLineId, qty: p.qty, to: p.toResourceId ?? locked.indent.toResourceId }))), "moved", now, now);
     for (const p of pending) {
       await tx.update(storesTransitResolutions).set({ status: "posted", postedBy: actor.id, postedAt: now }).where(eq(storesTransitResolutions.id, p.id));
     }
@@ -479,10 +545,25 @@ export async function resolveShort(
     if (input.resolution === "found") {
       const shelf = await requireShelf(tx, t.details.shelfId);
       await receiveLate(tx, actor, transferId, shorts.map((s) => ({ lineId: s.transferLineId, qty: s.short })), now, undefined, { costCenter: shelf.departmentCode, throughStores: true });
+      await followTransit(tx, actor, transferId, await batchMoves(tx, shorts.map((s) => ({ lineId: s.transferLineId, qty: s.short, to: shelf.id }))), "placed", now, now);
     } else if (input.resolution === "returned") {
       await returnInTransit(tx, actor, transferId, shorts.map((s) => ({ lineId: s.transferLineId, qty: s.short, toResourceId: t.indent.toResourceId })), now, undefined,
         { authorisedBy: "stores" });
+      await followTransit(tx, actor, transferId, await batchMoves(tx, shorts.map((s) => ({ lineId: s.transferLineId, qty: s.short, to: t.indent.toResourceId }))), "moved", now, now);
     } else {
+      // S4 (#1114): a tagged unit lost in transit is a loss for the committee, never a transit adjustment (S4b: one loss
+      // proposal per unit still in transit on this line; the committee signs it like a condemnation, reason "lost").
+      const lineItems = new Set(shorts.map((x) => x.itemId));
+      const lostUnits = (await unitsInTransitOn(tx, transferId)).filter((u) => lineItems.has(u.unit.itemId));
+      if (lostUnits.length > 0) {
+        const proposals: string[] = [];
+        for (const u of lostUnits) proposals.push(await proposeLossInTx(tx, actor, u.unit.id, note, now));
+        await recordAct(tx, actor, now, {
+          act: "resolve_short", storeId: t.indent.toResourceId, refId: indentId, after: "lost_to_committee", reason: note,
+          lines: lostUnits.map((u, i) => ({ itemId: u.unit.itemId, unitId: u.unit.id, condemnationId: proposals[i] })),
+        });
+        return null;
+      }
       const qty = shorts.reduce((a, s) => a + s.short, 0);
       ({ approvalId: approval } = await requestApproval(tx, actor, {
         typeKey: STOCK_ADJUSTMENT_APPROVAL_TYPE, subject: { type: "stores_transit_loss", id: `${indentId}:${String(input.lineIdx)}` },

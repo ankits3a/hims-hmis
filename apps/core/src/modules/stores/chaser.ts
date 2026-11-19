@@ -3,8 +3,11 @@ import { storesNudges } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { CARRIER_KINDS, chainsOf } from "./chain";
 import { sourceKeepers } from "./custody";
+import { runAssetReminders } from "./asset-reads";
 import { notifyOverdueGatePasses } from "./gate-pass";
+import { runLossProposals, settleCondemnations } from "./condemnation";
 import { approversToTell, notify } from "./tickets";
+import { sweepBudgetWarnings } from "./budgets";
 import { CLOCKS, boardCards } from "./tower";
 import type { BoardCard } from "./tower";
 import type { Db } from "../../kernel/db/client";
@@ -39,7 +42,7 @@ export const CHASER_WORDS = {
   leg: ["Leg over 30 min", "30 मिनट से ज़्यादा"],
 } as const;
 
-export type ChaserRun = { approval: number; pick: number; leg: number; passes: number; failed: number };
+export type ChaserRun = { approval: number; pick: number; leg: number; passes: number; failed: number; /** S4 (#1114): asset reminders sent. */ assets?: number; /** S4b (#1114): condemnations settled, loss proposals made. */ condemnations?: number; losses?: number; /** S5a (#1115): budget warnings raised. */ budgets?: number };
 
 const log = new Logger("stores-chaser");
 
@@ -92,10 +95,33 @@ export async function runStoresChaser(db: Db, now: Date = new Date()): Promise<C
     }
   }
   try {
+    // S4 (#1114, decision 7): AMC, warranty and calibration reminders, once each (source key), on the same minute sweep.
+    run.assets = await runAssetReminders(db, now);
+  } catch (err) {
+    run.failed += 1;
+    log.error("stores chaser: the asset reminders failed", err instanceof Error ? err.stack : String(err));
+  }
+  try {
+    // S4b (#1114, decisions 12, 13): the approvals of raised condemnations read back, then each unit a round did not see
+    // for 30 days proposed as a loss (once; no ledger row).
+    run.condemnations = await settleCondemnations(db, now);
+    run.losses = await runLossProposals(db, now);
+  } catch (err) {
+    run.failed += 1;
+    log.error("stores chaser: the condemnation sweep failed", err instanceof Error ? err.stack : String(err));
+  }
+  try {
     run.passes = await notifyOverdueGatePasses(db, now);
   } catch (err) {
     run.failed += 1;
     log.error("stores chaser: the overdue gate-pass notices failed", err instanceof Error ? err.stack : String(err));
+  }
+  try {
+    // S5a (#1115, decision 15): a department past 80 % / 100 % of its month's budget is told once each, within a minute.
+    run.budgets = await sweepBudgetWarnings(db, now);
+  } catch (err) {
+    run.failed += 1;
+    log.error("stores chaser: the budget warnings failed", err instanceof Error ? err.stack : String(err));
   }
   return run;
 }

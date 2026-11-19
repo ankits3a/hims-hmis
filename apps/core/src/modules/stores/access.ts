@@ -31,6 +31,17 @@ export const STORES_GATEPASS_RAISE = "stores.gatepass.raise";
 /** S2c (#1119, decision 3) — scan a pass out and in at the gate: the security guard. Never the pass's raiser. */
 export const STORES_GATEPASS_SCAN = "stores.gatepass.scan";
 
+/** S5a (#1115, decision 16) — ask to buy a non-stock or capital item: the department's in-charge and its head, at the department. */
+export const STORES_PURCHASE_REQUEST = "stores.purchase.request";
+/** S5a (#1115, decision 16) — the buying desk: raise the store's requests, band, supplier fields. The materials head and `purchase_officer`. */
+export const STORES_BUYING_MANAGE = "stores.buying.manage";
+/** S5a (#1115, decision 15) — set a department's month budget: the accounts officer and the owner. */
+export const STORES_BUDGET_MANAGE = "stores.budget.manage";
+/** S5a (#1115, decision 14) — sign a non-drug GRN's QC: the materials head and biomedical (hospital), the HOD (department). */
+export const STORES_GRN_QC = "stores.grn.qc";
+/** S5b (#1115, decision 16) — sign an award in a committee seat (and the materials head's band B approval): the seat holders. */
+export const STORES_AWARD_SIGN = "stores.award.sign";
+
 export async function holds(db: Db | Tx, actor: Actor, permission: string, departmentId?: string): Promise<boolean> {
   if (actor.type !== "user") return false;
   return departmentId === undefined

@@ -61,6 +61,12 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   store_indent: (refId) => ({ to: `/stores/tickets/${encodeURIComponent(refId)}`, search: {} }),
   // #1065 (ruling 0097) — the owner's 08:00 pharmacy digest opens that day's Exceptions page.
   pharmacy_exceptions_day: (refId) => ({ to: "/pharmacy/office", search: { view: "reports", page: "exceptions", day: refId } }),
+  // STORES S5a (#1115) — "Purchase to approve", "Buy now", Approved: the request on the buying desk; a budget warning opens it too.
+  stores_purchase_request: (refId) => ({ to: "/stores/buy", search: { pr: refId } }),
+  // STORES S5b (#1115): "Award to sign" / "PO to approve" open the phone sheet.
+  stores_award: (refId) => ({ to: "/stores/buying", search: { award: refId } }),
+  stores_po: (refId) => ({ to: "/stores/buying", search: { po: refId } }),
+  stores_budget: () => ({ to: "/stores/buy", search: {} }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {

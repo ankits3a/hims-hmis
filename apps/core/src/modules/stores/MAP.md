@@ -16,7 +16,8 @@ with a module name, `kernel/`, `packages/` or `apps/`. Citations name a file and
 Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials core), 0081 (done-means tests).
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
-`docs/specs/1113-stores-control-tower.md` (S3, built).
+`docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
+`docs/specs/1115-stores-buying-desk.md` (S5: S5a and S5b built, S5c to come).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -243,6 +244,168 @@ department shelves every department (housekeeping included) receives from. Pharm
   inside natural Stores questions; every Stores phrase must out-score them by 2. Run the eval set after any cue change.
 - Not built: the porter's end-of-shift red card (no shift-end source yet: attendance does not publish one).
 
+## 10b. The asset passport (S4a #1114, `asset-rules.ts`, `assets.ts`, `asset-reads.ts`, `verification.ts`, `asset-label.ts`)
+- What gets a tag (decision 1): `item_categories.tag_rule` `always` (seeded `MEQ` "Medical equipment", items
+  `track_mode = 'tagged'`; `checkStoresItem` refuses any other pairing), `from_value` (ITP, FUR: a `durable` item's GRN
+  line at ≥ ₹5,000 per unit before GST is tagged, else counted), `never`. A sub-category takes the stronger of its own and
+  its top's rule (`categoryRules`); `needs_calibration` the same way. Migration 0242 sets ITP/FUR on existing rows.
+- CONFIRMED in code before building: a GRN line with an empty batch number already minted its own batch
+  (`findOrCreateBatch`); a typed one was reused. `materials/grn.ts` `opensOwnBatch` (additive) now mints one per line for
+  a `tagged` item and a `durable` item under a rule, typed number or not, so a counted and a tagged chair never share a pile.
+- The per-line decision is a row (`stores_tag_decisions`, append-only, threshold frozen) written by `tagDecisionFor` the
+  first time Stores reads the line (tagging screen, `tagUnits` — before its own transaction, so a refusal still leaves
+  "counted" on file). TRAP: nothing writes it at `postGrn` (materials cannot import stores); a decision read later is
+  judged against the threshold of that day.
+- Units: `stores_asset_units` written once (tag `AST`+yymm+6 digits from `episode_series` key `asset_tag`, one row per IST
+  month; serial unique per item; cost ex-GST from the GRN line, null = "Cost unknown" for an opening unit). Every later
+  fact is a `stores_asset_unit_events` row (append-only); a tag number is bound once in the house (unique index on
+  `data->>'tagNo'` over `tagged`/`retagged`). Place = the latest row with `store_id` (`PLACE_KINDS`); status, holder,
+  dues and put-to-use are derived (`derive`, `statusOf`, `duesOf`), never stored.
+- Units ride the ledger (decision 5): `tickets.ts` `planUnitIssue` turns scanned units into named batches (materials
+  `IssueIndentInput.lines[].batches`, additive) and keeps counted lines off tagged batches; a tagged item without its
+  units is `units_required`. Issue → `moved` to IN-TRANSIT (ref transfer); `custody.ts` `alignPlanToUnits` makes a tagged
+  line received by unit (`unitIds`; none = the whole line), `followTransit` places / moves units with every quantity that
+  leaves IN-TRANSIT (receipt, accepted send-back, short found / returned). A lost short carrying a unit is refused
+  `unit_loss_needs_committee` (S4b's loss path). Gate passes name `unit_ids` per line (new column); exit / entry write
+  `out_on_pass` / `back`; counted lines use `countedPick`.
+- `assetLedgerCheck`: per FULLY tagged batch (units ≥ what entered by GRN or opening) and store, live units vs
+  `stock_balances`. Read only. Tower red card `units_ledger`; also `calibration`, `amc`, `missing` (`assetRedCards`, called
+  inside `redCards`). TRAP: both read every unit's events on each tower read; fine at hundreds of units, index it before thousands.
+- Transfer (decision 17): `proposeUnitTransfer` (holding dept's `stores.shelf.work`) → `acceptUnitTransfer` (receiving
+  dept, never the proposer: `own_transfer`): materials `issueStock` with the PROPOSER as issuer (materials refuses the
+  issuer as receiver) + `receiveAtShelf` by the acceptor, so ledger and cost centre move together.
+- Spend: `departmentChargeOn` and `departmentSpendByMonth` leave out every batch that carries a unit (decision 19);
+  `equipmentReceivedByMonth` lists them; the tower shows it as `equipment` beside `spend`.
+- Reminders ride `runStoresChaser` (`runAssetReminders`): AMC/warranty ≤ 30 days, calibration ≤ 15 days (and past), one
+  notice per unit/kind/date (source key) to `stores.assets.manage` + `stores.masters.manage` holders. "Replace?" = 3
+  faults inside 30 days, one notice keyed on the window's first fault.
+- Access: `seesUnit` = assets read/manage/masters, the home department's shelf grants, the receiving department of an
+  open transfer, the keeper of the store it sits in. Anyone else with a shelf grant gets the foreign view (name, tag,
+  "Belongs to", Found here); cost only with `stores.assets.read`.
+- Verification: `stores_asset_verifications` start/close rows; scans are `verified_seen` events (shelf in `data`); close
+  stores Not seen / Wrong place on its row; "Missing" = not seen by the latest closed round and nothing since.
+- Exports: `assetAdditions(month)` (GRN units put to use in the IST month; installed date else first shelf day; GST =
+  cost × item GST rate; input credit blank until S6), one `asset_export` act per call.
+
+## 10c. Condemnation, loss and disposal (S4b #1114, `condemnation.ts`; ruling 0101 Q5)
+- Tables (migration 0243, all append-only by the 0242 trigger function): `stores_condemnations` (one proposal, written
+  once: kind `condemn` | `loss`, reason, the SEATS frozen on the row, cost judged on, `needs_owner`, `holds_data`,
+  `replaces_id`, `round_id`), `stores_condemnation_signatures` (one row per seat, one per person: `sign` | `object`),
+  `stores_condemnation_steps` (`raised` | `approved` | `rejected` | `posted`, one each), `stores_scrap_sales` (the
+  disposal: scrap sale, buy-back or e-waste, bids, wipe certificate, the write-off). Status is DERIVED (`statusOfFull`).
+- Seats are filled BY ROLE (`SEAT_ROLE`: `department_head` AT the unit's department, `accounts_officer`,
+  `materials_head`, `biomedical_engineer` for `tag_rule = always`), and the role must hold `stores.assets.condemn`
+  (`seatHolders`). No user department (a unit in a store) = no HOD seat. A seat with no holder refuses the proposal
+  (`committee_seat_empty`, `detail.seat`). One act per person per proposal (`already_signed`).
+- The last signature (`raiseAfterSeats`, in the signature's tx and its ONE act): the books move to the materials
+  `CONDEMNED` hold (`ensureCondemnedStore`, a Stores system store; two ledger rows, the transit leg keeps `ref_type =
+  'transfer'` so `inTransitByLine` sees it leave), a `moved` unit event with `data.hold` (`condemned` → "Withdrawn",
+  `loss` → "Missing"), then materials `raiseWriteOff` (reason `condemned`, raised AS the materials-head seat's signer:
+  it holds `materials.writeoffs.manage`; the requester of `materials_stock_adjustment`), and when `needs_owner` the new
+  approval type `stores_condemnation_owner` (approver owner; in `MATERIALS_APPROVAL_TYPES`, so the seed registers it).
+- `settleCondemnations` reads the two approvals back (chaser minute sweep, every condemnation read, the passport's
+  read): both granted → step `approved` + unit event `condemned` (a loss: none, it stays Missing); either rejected →
+  step `rejected`, `condemn_objected`, and the books go back to where they stood (the `raised` step's `data`). It is NOT
+  an act (D17: one act per person's act); the unit events carry the approver as actor. TRAP: a write-off the MS granted
+  whose owner then rejected stays "requested, granted" in materials; its CONDEMNED stock is gone back, so it cannot post.
+- Disposal (`disposeUnit`, `stores.masters.manage`): refuses `regulator_paper_needed` (item `regulated_by` without a
+  `regulator_paper` event), `wipe_certificate_needed` (`holds_data`; default true for a top category `ITP`),
+  `bids_required` (scrap sale above ₹25,000: three distinct bidders, the buyer the highest), `not_approved` above ₹5
+  lakh without the owner's grant. One tx: `postWriteOff` (buyer = agency, invoice or recycler certificate = manifest,
+  today), the sale row, step `posted`, and the non-returnable pass (`raiseGatePassInTx(..., { quiet: true })`, ref
+  `scrap_sale` for a sale/buy-back, `write_off` for e-waste) when the actor holds `stores.gatepass.raise`; the act is
+  `dispose_unit` and names the pass. The guard's exit scan writes `disposed` for the line's `unit_ids`.
+- Ledger check: a sold unit is off the books from its sale row until the exit scan (`stores_scrap_sales` excluded from
+  `live`); an opening row whose `ref_id` is a write-off (`markFound`) is not a new unit (excluded from `entered`).
+- Loss: `runLossProposals` (chaser) proposes each unit a closed round did not see, 30 days on, with nothing placing or
+  seeing it since and no open proposal (actor `system:stores-loss-sweep`); S4a's lost short of a tagged unit routes to
+  `proposeLossInTx` (one per unit, no transit resolution row). `writeOffLoss` posts with agency "lost" and the inquiry
+  note's number, writes `written_off`; no pass (gate sources leave loss write-offs out). `markFound` = `found` + one
+  `opening_balance` row on the unit's own batch naming the write-off; the write-off row is untouched.
+- Withdrawn (decision 7): `withdrawUnit` / `returnToUse` are `moved` events AT the same shelf with `data.hold`, no
+  ledger row; the HOD (condemn + indents.approve at the department), the in-charge or biomedical.
+- Audit pack `{unitId}`: the unit's own acts (refId = the unit) plus every record its events name (GRN line, transfers
+  and their tickets, passes, condemnations). Removals export: `assetRemovals(month)` by the `posted` step's IST day.
+- Now cards: "Faults to see" (`stores.faults`, newest fault after the last repair act) and "Condemnation to sign"
+  (`stores.condemn`, also the waiting kind `stores.condemnToSign`: the HOD's seat is department-scoped). Web
+  `/stores/condemn` (the signer's phone), the Condemnation tab (Propose, dispose, write off), Removals in Exports.
+- A refusal of the passport carries `detail.ask` (the home department's in-charges, else the materials head); the
+  phone shows "Not your department: ask <names>". A fault may carry a photo (document store key on the event).
+- Receive: a ticket line's `units` (still in transit) let the receiver scan what arrived; `unitIds` go with the line.
+
+## 10d. The buying desk's front (S5a #1115; ruling 0099 Q4, decision 0101)
+- Purchase request (`purchase-requests.ts`, migration 0244): `stores_purchase_requests` + `_lines` written once; the
+  decision is ONE `stores_purchase_request_stamps` row (unique per request: approved / declined / cancelled), so the stamp
+  is write-once by the unique index and the append-only trigger. Status is derived. Number `MPR`+yymmdd+4 from
+  `episode_series` key `stores_purchase_request` (no kernel series entry). Lines name an `items` row (`item_required`);
+  a department never asks for a stock item (`stock_item` = a level at a central/sub Stores store). The estimate per base
+  unit is frozen at raise: open rate contract (`contractRatesFor`, cheapest) > last paid receipt > the requester's figure
+  (`estimate_required`). "Medical equipment" = category tag rule `always`; a department line needs the three answers.
+- Approval: department = the S2 rule (`stores.indents.approve` AT the department; hospital scope = the MS stand-in) or
+  a live delegation (`forRole` hod / ms / delegate / materials); central = `stores.masters.manage`. Never the requester
+  (`own_request`), nor a delegate acting for the requester. Bulk (`bulkApprovePurchaseRequests`): materials head or the
+  owner role, all-or-none in one tx, each its own stamp and act.
+- Bands (`bands.ts`): A ≤ ₹25,000 < B ≤ ₹5 lakh < C; any equipment line = C. Contract lines order as A and stay out of
+  every sum. Split check is computed ON READ over the 30 days before `now` (declined/cancelled out): department = same
+  department + same category; central/planner = same item. `setPurchaseRequestBand` lifts only (`band_lowered`).
+- Budgets (`budgets.ts`): newest `stores_department_budgets` row per (department, month); annual = 12 equal months, the
+  paise remainder on the last. Spent = S3's spend rule, MOVED unchanged to `spend.ts` (tickets.ts reads budgets and
+  tower.ts imports tickets.ts: a cycle with tower's top-level `CLOCKS`). S5b adds PO value. Warnings via the notice source
+  key `stores-budget:<dept>:<month>:80|100` (HODs else the stand-in, and `accounts_officer` holders), from approvals and
+  the chaser's minute sweep. Never refused: a PR stamp carries `over_budget` when spent + its value > budget (equipment
+  adds 0); a ticket gets a `stores_over_budget_marks` row when the month is used up (`approval.overBudget`, absent else).
+- Delegation (`delegations.ts`): `stores_delegations` scope `hod_approval` only (S5b adds committee seats), ≤ 30 days
+  (DB CHECK too), by an HOD assigned AT the department; refused to the buyer (`delegate_is_buyer`) or to anyone with an
+  open request/ticket of that department (`delegate_is_requester`); any other scope `not_delegable`. A delegate whose
+  window has passed is `delegation_ended`. `ticketsToApprove` and `requireApprover` (tickets) honour it too.
+- Non-drug QC (`grn-qc.ts`): `stores.grn.qc` (hospital scope for now) runs materials `runGateQc` / `postGrn` in its own
+  tx for a GRN whose EVERY line is a Stores item; any pharmacy line = `not_stores_line`. The 2 % price check is
+  materials' capture rule, unchanged. TRAP: the department nominee's scope waits for S5b's GRN → PR link.
+- KYC (`suppliers.ts`): levels derived from rows (`supplierKyc`): can quote = PAN + (GSTIN or unregistered reason) +
+  not suspended/blacklisted; complete adds GST/PAN paper, bank past `first_payment_allowed_at`, a
+  `stores_vendor_category_approvals` row (own category or its top), and for an MSME the Udyam paper, class, activity.
+  New nullable `vendors` columns go through materials `updateVendor` (three named fields, additive).
+- Web `/stores/buy` (`apps/web/src/screens/stores-buy.tsx`): tabs by grant (Ask, To approve, My requests, Hand over, Budgets, Suppliers, QC);
+  notices `stores_purchase_request` open it with `?pr=`.
+
+## 10e. The buying desk by hand (S5b #1115; ruling 0101 Q3, Q4, Q7)
+- Groups (`buy-groups.ts`, migration 0245): `stores_buy_groups` + `stores_buy_group_moves` (newest move per request line =
+  its group; null = out). The band is DERIVED: highest of its requests' `bandOf` (split check, lifts) and of its own sum;
+  FROZEN on the RFQ. A group with an RFQ or an award is locked (`group_locked`). "Buy now" = approved urgent/emergency
+  requests not yet ordered, a read (no job).
+- Money (`buying-common.ts` `lineMoney`): materials' own rounding (`netRatePaise`, `lineGstPaise`), so a PO made from an
+  award prices to the paisa what the comparative showed. Freight/other spread over a supplier's lines by value (`apportion`).
+- RFQ (`rfq.ts`): `RFQ`+yymmdd+4 (`episode_series` `stores_rfq`), lines summed by item, one RFQ per group. Invitees "can
+  quote" (`cannot_quote` + `detail.missing`). `sendRfq` is the ONLY send: a `sent` step (who, channel, vendorIds) and one
+  `stores_rfq` print job per invitee not sent before (`stores_a4`; HMIS mails nothing). Reply-by moves once (`stores_rfq_steps`).
+- Quotes (`quotes.ts`): append-only versions per (group, supplier); `late` when entered after the reply-by; the materials
+  head's admission row lets it rank. Unsealed + an earlier version = negotiation: L1 only (`only_l1_negotiates`), lower
+  landed only (`negotiation_upward`). Technical marks (equipment): `hod` (indents.approve at a group department) and
+  `biomedical` (role `biomedical_engineer`); both Yes to rank, any No (with reason) out.
+- Comparative (`comparative.ts` `computeComparative`): recomputed every read; sealed = before reply-by AND fewer quoted than
+  invited. Ties: delivery days, then supplier code (scorecard joins in S5c).
+- Awards (`awards.ts`): one live award per RFQ (`already_proposed`); band A awards are made by `makePoFromGroup` (contract
+  lines need no quote; the 2 % rule via materials `judgePrice`). Band C seats are FROZEN on the row (`freezeSeats`): rows in
+  `stores_committee_seats` for materials head / accounts head / MS / biomedical (equipment), and the user HOD = the group's
+  departments' HODs (one seat, any one of them; DECIDED). Delegation scope `committee_seat` (`delegations.ts`
+  `seatDelegationFor`): the giver must still sit in the seat. Owner signs last (`awaiting_seats`). Status derived from
+  `stores_award_signatures` (unique per seat; object = sent back; a fresh proposal names `replaces_id`).
+- PO from award: materials `createPurchaseOrder(..., { awardId })` with "Pay after GRN" terms; the award check is
+  REGISTERED with materials at import (`registerAwardPoGuard`): submit refuses `po_differs_from_award`, send refuses
+  `award_not_approved`; a PO with no award never asks it, and one with an award and no check loaded is refused (fail
+  closed; `materials/stores-s5b-no-change.test.ts`). `approveAwardAndPo` writes the award stamp, then the PO approval only
+  when the person holds its tier (head ≤ ₹50,000, owner above). Bulk: POs and requests only (`bulk_not_allowed`).
+- Delivery (`purchase-delivery.ts`): `postStoresGrn` → accepted qty shared over the group's department lines, oldest first,
+  up to what each lacks (`stores_pr_deliveries`) → `tickets.ts` `raiseDeliveryTicketInTx` (no stamp, channel `agent`, the
+  act's `after.prId`) + "In store". The department nominee's non-drug QC follows the same GRN → PO → award link.
+- Audit pack `{prId}`: request, groups, RFQs, quotes, awards, POs (+ `purchase_order.*`), GRNs (+ `grn.*`), delivery tickets.
+- Web `/stores/buying` (`apps/web/src/screens/stores-buying.tsx`): the desk's one read `GET buying/desk`; notices
+  `stores_award` / `stores_po` open the phone sheet (`?award=`, `?po=`).
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
-staff app); choosing which porter to send; tagged units (S4); purchasing (S5).
+staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
+SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5a/S5b leave: the nightly central shortfall →
+PR job, the agent and the scorecard (S5c), the owner's monthly over-budget list, a Now card / waiting kind for "Purchase to
+approve" and "Award to sign" (notices open the screens), Stores PO value in a department's spent figure, splitting one
+request line across groups, a single-source certificate path and the emergency one-quote path (ruling 0101 Q4), advances.

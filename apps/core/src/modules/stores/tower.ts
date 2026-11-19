@@ -1,15 +1,17 @@
 import { and, asc, eq, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import {
-  events, itemStockLevels, opdEncounters, orgDepartments, resources, stockBalances, stockBatches, stockLedger, storeIndents, storesDeliveryLines,
+  events, itemStockLevels, opdEncounters, orgDepartments, resources, stockBalances, stockLedger, storeIndents, storesDeliveryLines,
   storesTicketDetails, transfers,
 } from "../../kernel/db/schema";
 import { STORES_ACT_EVENT } from "./events";
 import { StoresError } from "./errors";
 import { holds } from "./access";
+import { assetRedCards, equipmentReceivedByMonth } from "./asset-reads";
 import { CARRIER_KINDS, chainsOf } from "./chain";
 import { overdueGatePasses } from "./gate-pass";
 import { listShelves } from "./shelves";
+import { departmentSpendByMonth, nextMonthStart } from "./spend";
 import { EMERGENCY_REVIEW_MS, ticketViews } from "./tickets";
 import type { Chain } from "./chain";
 import type { TicketRow } from "./tickets";
@@ -322,6 +324,8 @@ export async function redCards(db: Db | Tx, now: Date, cards: readonly BoardCard
       push({ id: `over_book:${e.eventId}`, kind: "over_book", what: names.get(shelfId) ?? "", where: "", clock: null, indentId: null, shelfId, passId: null }, e.at);
     }
   }
+  // S4 (#1114): calibration overdue, AMC lapsed, a missing asset, units ≠ ledger.
+  out.push(...(await assetRedCards(db as Db, now)));
   return out.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)).map((c) => {
     const { at, ...card } = c;
     void at;
@@ -363,33 +367,7 @@ async function numbersOf(db: Db | Tx, now: Date, cards: readonly BoardCard[]): P
 
 /* ═══════════════════════════════ spend (decision 5) ═══════════════════════════════ */
 
-const IST = "Asia/Kolkata";
-
-/** `YYYY-MM` → the first day of the next month, `YYYY-MM-01`. */
-function nextMonthStart(month: string): string {
-  const [y, m] = month.split("-").map(Number) as [number, number];
-  return m === 12 ? `${String(y + 1)}-01-01` : `${String(y)}-${String(m + 1).padStart(2, "0")}-01`;
-}
-
-/**
- * A department's charge this IST month, at cost: Σ quantity × batch cost over the receive rows that carry its cost
- * centre — receipts INTO its shelves count +, a store's receipt of its return counts − (`departmentChargeOn`'s rule,
- * by month). `consume` rows carry the same cost centre and are never read: the charge is at receipt.
- */
-export async function departmentSpendByMonth(db: Db | Tx, month: string): Promise<Map<string, number>> {
-  const next = nextMonthStart(month).slice(0, 7);
-  const localAt = sql`(${stockLedger.occurredAt} at time zone ${IST})`;
-  const rows = await (db as Db).select({
-    code: stockLedger.costCenter,
-    paise: sql<string>`coalesce(sum(case when ${resources.attributes}->>'kind' = 'shelf' then 1 else -1 end * ${stockLedger.qtyDelta}::bigint * ${stockBatches.landedCostPaise}), 0)`,
-  }).from(stockLedger).innerJoin(stockBatches, eq(stockBatches.id, stockLedger.batchId)).innerJoin(resources, eq(resources.id, stockLedger.resourceId))
-    .where(and(
-      sql`${stockLedger.costCenter} is not null`, eq(stockLedger.reason, "receive"), sql`${stockLedger.qtyDelta} > 0`,
-      sql`${localAt} >= ${`${month}-01`}::timestamp`, sql`${localAt} < ${`${next}-01`}::timestamp`,
-    )).groupBy(stockLedger.costCenter);
-  return new Map(rows.map((r) => [r.code!, Number(r.paise)] as const));
-}
-
+// The month's spend rule lives in `spend.ts` (S5a: budgets read it too, and `tickets.ts` cannot import this file).
 async function spendOf(db: Db | Tx, now: Date): Promise<WireTowerSpend> {
   const month = istDayString(now).slice(0, 7);
   const byCode = await departmentSpendByMonth(db, month);
@@ -415,6 +393,8 @@ async function spendOf(db: Db | Tx, now: Date): Promise<WireTowerSpend> {
 
 /* ═══════════════════════════════ the reads ═══════════════════════════════ */
 
+export { departmentSpendByMonth };
+
 export async function requireTowerReader(db: Db | Tx, actor: Actor): Promise<void> {
   if (!(await holds(db, actor, STORES_TOWER_READ))) {
     throw new StoresError("not_permitted", "the control tower is the materials head's, the store's and the duty manager's", { permission: STORES_TOWER_READ });
@@ -433,7 +413,9 @@ export async function towerView(db: Db, actor: Actor, now: Date = new Date()): P
     floors: await floorMap(db, states),
     numbers: await numbersOf(db, now, cards),
   };
-  if (await holds(db, actor, STORES_SPEND_READ)) view.spend = await spendOf(db, now);
+  if (await holds(db, actor, STORES_SPEND_READ)) {
+    view.spend = { ...(await spendOf(db, now)), equipment: await equipmentReceivedByMonth(db, istDayString(now).slice(0, 7)) };
+  }
   return view;
 }
 

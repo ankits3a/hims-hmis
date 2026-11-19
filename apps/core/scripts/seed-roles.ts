@@ -818,6 +818,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.audit.read",
       // STORES S3 (#1113, decisions 5, 15, 16) — the control tower (its phone line "3 stuck · 4B, OT") and its spend tile.
       "stores.tower.read", "stores.spend.read",
+      // STORES S4a (#1114, decision 16) — the asset register, every unit's passport, cost included.
+      "stores.assets.read",
+      // STORES S5a (#1115, decision 15) — sets the departments' month budgets beside finance (warned, never blocked).
+      "stores.budget.manage",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -974,6 +978,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.indents.approve", "stores.audit.read",
       // STORES S3 (#1113, decisions 5, 15) — the control tower and its spend tile.
       "stores.tower.read", "stores.spend.read",
+      // STORES S4a (#1114, decision 16) — the asset register and every unit's passport.
+      "stores.assets.read",
+      // STORES S5b (#1115, decision 9; ruling 0101 Q3) — the medical superintendent's seat of the purchase committee.
+      "stores.award.sign",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1240,6 +1248,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // the engineer, which is the §10 bundling matrix working as designed. This is a second
       // holder, not a transfer.
       "ops.interface.manage",
+      // STORES S4a (#1114, decision 16) — the asset passport: tag units, record warranty, AMC/CMC and calibration, open
+      // and close repairs, link a unit to its radiology or lab device, run the go-live opening sweep; read every unit.
+      "stores.assets.manage", "stores.assets.read",
+      // STORES S4b (#1114, decision 13) — the biomedical seat of the condemnation committee (medical equipment).
+      "stores.assets.condemn",
+      // STORES S5a (#1115, decision 14) — signs a non-drug GRN's QC (technical items), no pharmacist needed.
+      "stores.grn.qc",
+      // STORES S5b (#1115, decision 9; ruling 0101 Q3) — the biomedical seat of the purchase committee (medical equipment).
+      "stores.award.sign",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1342,6 +1359,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.gatepass.raise",
       // STORES S3 (#1113, decisions 5, 13, 15) — the control tower, its "Stuck" Now card, and the month's spend tile.
       "stores.tower.read", "stores.spend.read",
+      // STORES S4a (#1114, decision 16) — tag units, contracts, calibration, repairs, the opening sweep; read every passport.
+      "stores.assets.manage", "stores.assets.read",
+      // STORES S4b (#1114, decision 13) — the materials head's seat of the condemnation committee (and disposal).
+      "stores.assets.condemn",
+      // STORES S5a (#1115, decisions 14, 16) — the buying desk (the store's requests, bands, supplier fields) and the
+      // non-drug GRN QC that needs no pharmacist.
+      "stores.buying.manage", "stores.grn.qc",
+      // STORES S5b (#1115, decision 9) — the materials head's committee seat and its band B award approval.
+      "stores.award.sign",
     ],
   },
   {
@@ -2030,8 +2056,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    *   · `department_head` — reads the shelf (and approves the department's tickets in S2).
    * The materials head keeps the Stores masters (`stores.masters.manage`, in its own row above).
    */
-  { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work"] },
-  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve"] },
+  // STORES S5a (#1115, decision 16): + `stores.purchase.request` (asked AT the department), "Ask to buy".
+  { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work", "stores.purchase.request"] },
+  // STORES S4b (#1114, decision 13): + `stores.assets.condemn`, the user department's seat (asked AT the department).
+  // STORES S5a (#1115, decisions 14, 16): + `stores.purchase.request` and `stores.grn.qc` (the department's nominee), AT it.
+  // STORES S5b (#1115, decision 9): + `stores.award.sign`, the user HOD's committee seat (asked AT the department).
+  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve", "stores.assets.condemn", "stores.purchase.request", "stores.grn.qc", "stores.award.sign"] },
   /**
    * STORES S2a (#1112, decisions 3, 5, 16). `department_head` above approves its department's tickets
    * (`stores.indents.approve`, asked AT the department). Two more roles, assigned by nobody:
@@ -2040,7 +2070,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    *   · `stores_auditor` — the internal auditor's seat: reads the Stores audit pack and nothing else.
    */
   { roleKey: "nursing_supervisor", permissions: ["stores.nightstore.issue"] },
-  { roleKey: "stores_auditor", permissions: ["stores.audit.read"] },
+  { roleKey: "stores_auditor", permissions: ["stores.audit.read", "stores.assets.read"] },
   /**
    * STORES S2b (#1112, decision 7) — the porter: `support_staff`, the IPD train's (#967) key and title, whichever lands
    * second merges its grants into this row at rebase. Here it holds only `stores.carry`: take custody of an issued
@@ -2054,6 +2084,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * Assigned by nobody.
    */
   { roleKey: "security_guard", permissions: ["stores.gatepass.scan"] },
+  /**
+   * STORES S4a (#1114, decision 16) — the accounts seat: `accounts_officer`, the key and title S5 and S6 use (whichever
+   * lands second merges its grants into this row at rebase). Here it holds only `stores.assets.export`: the month's
+   * asset additions for Tally's fixed-asset register (cost, GST, put-to-use date, GRN and bill). Assigned by nobody.
+   */
+  // STORES S4b (#1114, decision 13): + `stores.assets.condemn`, the accounts seat of the condemnation committee.
+  // STORES S5a (#1115, decision 15): + `stores.budget.manage`, the departments' month budgets.
+  // STORES S5b (#1115, decision 9): + `stores.award.sign`, the accounts head's committee seat.
+  { roleKey: "accounts_officer", permissions: ["stores.assets.export", "stores.assets.condemn", "stores.budget.manage", "stores.award.sign"] },
+  /**
+   * STORES S5a (#1115, decision 16) — the buyer: `purchase_officer`, seeded with no holders (the materials head buys
+   * until one is appointed). The buying desk only: the store's requests, bands and the supplier's Stores fields. Never
+   * an approval: the buyer approves nothing it will buy (and is refused as an HOD's delegate).
+   */
+  { roleKey: "purchase_officer", permissions: ["stores.buying.manage"] },
 ];
 
 /**
@@ -2325,6 +2370,10 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
   // STORES S2c (#1119) — the IPD train's exact key and title.
   security_guard: "Security Guard (scans attendant and visitor passes at the ward door)",
+  // STORES S4a (#1114) — the accounts seat S5 and S6 also use.
+  accounts_officer: "Accounts Officer (accounts: the month's asset additions for Tally)",
+  // STORES S5a (#1115) — the buyer of the non-drug store.
+  purchase_officer: "Purchase Officer (the Stores buying desk: requests, quotes and suppliers; approves nothing)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

@@ -52,9 +52,12 @@ const CENSUS: Record<string, string[]> = {
     "shelf_life_days", "storage_class", "storage_max_c", "updated_at", "updated_by", "ved_class",
     // STORES S1 (#1111) — the non-drug Stores columns; nullable or defaulted, so every pharmacy row is unchanged.
     "category_id", "patient_billable", "search_aliases", "track_mode",
+    // STORES S4a (#1114, decision 18) — regulated equipment (radiation / ultrasound); null for everything else.
+    "regulated_by",
   ].sort(),
   /** STORES S1 (#1111) — the two-level non-drug category tree (`modules/stores/items.ts` is its only writer). */
-  item_categories: ["active", "code", "created_at", "created_by", "id", "name", "name_hi", "parent_id", "updated_at", "updated_by"],
+  // STORES S4a (#1114): `needs_calibration` and `tag_rule` (always / from_value / never), defaulted, so every row is unchanged.
+  item_categories: ["active", "code", "created_at", "created_by", "id", "name", "name_hi", "needs_calibration", "parent_id", "tag_rule", "updated_at", "updated_by"],
   /** PHARMACY P6 (hygiene) — one row per governed "merge item B into item A" (`modules/materials/item-merge.ts`). */
   item_merges: [
     "approval_id", "id", "merged_at", "merged_by", "merged_item_id", "moved", "reason", "refused_at", "requested_at", "requested_by",
@@ -68,7 +71,9 @@ const CENSUS: Record<string, string[]> = {
   ],
   vendors: [
     "bank", "blacklist_reason", "blacklist_until", "class_flags", "code", "created_at", "created_by",
-    "expiry_return_days", "first_payment_allowed_at", "gstin", "gstin_verified_at", "id", "legal_name", "msme_class",
+    // STORES S5a (#1115): three nullable supplier fields for KYC levels and e-invoicing.
+    "einvoice_applicable", "expiry_return_days", "first_payment_allowed_at", "gst_unregistered_reason", "gstin",
+    "gstin_verified_at", "id", "legal_name", "msme_activity", "msme_class",
     "msme_udyam_no", "pan", "payment_terms_days", "status", "trade_name", "updated_at", "updated_by",
   ],
   vendor_documents: [
@@ -141,7 +146,7 @@ const CENSUS: Record<string, string[]> = {
     "id", "item_id", "max_base", "min_base", "reorder_base", "store_resource_id", "updated_at", "updated_by",
   ],
   purchase_orders: [
-    "approval_id", "approval_tier", "approved_at", "approved_by", "cancel_reason", "cancelled_at", "cancelled_by",
+    "approval_id", "approval_tier", "approved_at", "approved_by", "award_id", "cancel_reason", "cancelled_at", "cancelled_by",
     "created_at", "created_by", "expected_date", "gst_paise", "id", "note", "po_no", "rejection_note", "sent_at",
     "sent_by", "source", "status", "store_resource_id", "submitted_at", "submitted_by", "subtotal_paise", "terms",
     "total_paise", "updated_at", "updated_by", "vendor_id",

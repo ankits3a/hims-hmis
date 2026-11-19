@@ -183,17 +183,27 @@ export const itemCategories = pgTable(
     nameHi: text("name_hi"),
     parentId: text("parent_id").references((): AnyPgColumn => itemCategories.id),
     active: boolean("active").notNull().default(true),
+    /**
+     * STORES S4 (#1114, ruling 0099 Q3) — what gets a QR tag. `always` (medical equipment: every unit, at any
+     * value), `from_value` (IT, furniture: a GRN line at ₹5,000 or more per unit before GST is tagged, the rest
+     * counted), `never`. A sub-category inherits its top category's rule when its own is weaker
+     * (`stores/asset-rules.ts`). Pharmacy reads neither column.
+     */
+    tagRule: text("tag_rule").notNull().default("never"),
+    /** STORES S4 — measuring and therapeutic equipment carries a calibration due date (inherited like `tag_rule`). */
+    needsCalibration: boolean("needs_calibration").notNull().default(false),
     ...auditColumns,
   },
   (t) => [
     uniqueIndex("item_categories_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("item_categories_parent_idx").on(t.parentId),
     check("item_categories_not_own_parent_ck", sql`${t.parentId} is null or ${t.parentId} <> ${t.id}`),
+    check("item_categories_tag_rule_ck", sql`${t.tagRule} in ('always', 'from_value', 'never')`),
   ],
 );
 
-/** STORES S1 — how a Stores item is kept at a department (decision 4 of the spec). `tagged` arrives with S4. */
-export const ITEM_TRACK_MODE_VALUES = ["expensed", "shelf", "durable"] as const;
+/** STORES S1 — how a Stores item is kept at a department (decision 4 of the spec). S4 (#1114) adds `tagged`: one QR per unit. */
+export const ITEM_TRACK_MODE_VALUES = ["expensed", "shelf", "durable", "tagged"] as const;
 
 export const items = pgTable(
   "items",
@@ -274,11 +284,18 @@ export const items = pgTable(
     trackMode: text("track_mode"),
     searchAliases: text("search_aliases").array().notNull().default(sql`'{}'::text[]`),
     patientBillable: boolean("patient_billable").notNull().default(false),
+    /**
+     * STORES S4 (#1114, decision 18) — regulated equipment: `radiation` (X-ray, CT: the radiation regulator's
+     * approval before a transfer or disposal) or `ultrasound` (PC-PNDT: the district authority's intimation). Set
+     * by biomedical; null for everything else, pharmacy included.
+     */
+    regulatedBy: text("regulated_by"),
     ...auditColumns,
   },
   (t) => [
     index("items_category_idx").on(t.categoryId),
-    check("items_track_mode_ck", sql`${t.trackMode} is null or ${t.trackMode} in ('expensed', 'shelf', 'durable')`),
+    check("items_track_mode_ck", sql`${t.trackMode} is null or ${t.trackMode} in ('expensed', 'shelf', 'durable', 'tagged')`),
+    check("items_regulated_by_ck", sql`${t.regulatedBy} is null or ${t.regulatedBy} in ('radiation', 'ultrasound')`),
     /** A code is read off a label and case is not identity — the `formulary_salts_name_lower_ux` precedent. */
     uniqueIndex("items_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("items_class_active_idx").on(t.class, t.active),
@@ -417,6 +434,12 @@ export const vendors = pgTable(
     pan: text("pan"),
     msmeUdyamNo: text("msme_udyam_no"),
     msmeClass: text("msme_class"), // micro | small | medium — 14b's MSME clock (R-099) reads it
+    /** STORES S5a (#1115, decision 12) — maker | service | trader; nullable, additive (pharmacy never reads it). */
+    msmeActivity: text("msme_activity"),
+    /** STORES S5a (#1115, decision 12) — the supplier's own declaration that it issues e-invoices; S6 reads it. */
+    einvoiceApplicable: boolean("einvoice_applicable"),
+    /** STORES S5a (#1115, decision 12) — a supplier with no GSTIN declares why (unregistered); "can quote" reads it. */
+    gstUnregisteredReason: text("gst_unregistered_reason"),
     paymentTermsDays: integer("payment_terms_days"),
     /**
      * PARITY P4 — how many days after a batch's expiry this vendor still takes it back for credit
@@ -437,6 +460,7 @@ export const vendors = pgTable(
     uniqueIndex("vendors_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("vendors_status_idx").on(t.status),
     check("vendors_status_ck", sql`${t.status} in ('draft', 'active', 'suspended', 'blacklisted')`),
+    check("vendors_msme_activity_ck", sql`${t.msmeActivity} is null or ${t.msmeActivity} in ('maker', 'service', 'trader')`),
   ],
 );
 
@@ -465,7 +489,7 @@ export const vendorDocuments = pgTable(
   },
   (t) => [
     index("vendor_documents_vendor_type_idx").on(t.vendorId, t.type),
-    check("vendor_documents_type_ck", sql`${t.type} in ('drug_licence_20b', 'drug_licence_21b', 'gst_certificate', 'pan', 'cancelled_cheque', 'udyam', 'dpdp_processor_agreement', 'consignment_agreement', 'iso', 'aerb_type_approval')`),
+    check("vendor_documents_type_ck", sql`${t.type} in ('drug_licence_20b', 'drug_licence_21b', 'gst_certificate', 'pan', 'cancelled_cheque', 'udyam', 'dpdp_processor_agreement', 'consignment_agreement', 'iso', 'aerb_type_approval', 'payment_terms_agreement')`),
   ],
 );
 
@@ -985,10 +1009,18 @@ export const purchaseOrders = pgTable(
     cancelledBy: text("cancelled_by"),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
+    /**
+     * STORES S5b (#1115, decision 10) — the Stores award this order was made from; null for every pharmacy order (and
+     * for any order made by hand). Plain text (the `approval_id` precedent): materials knows no Stores table. When set,
+     * `submitPurchaseOrder` asks the registered award check (`registerAwardPoGuard`) and refuses a PO that differs from
+     * its award; a null leaves every existing path exactly as it was.
+     */
+    awardId: text("award_id"),
     ...auditColumns,
   },
   (t) => [
     uniqueIndex("purchase_orders_po_no_ux").on(t.poNo),
+    index("purchase_orders_award_idx").on(t.awardId),
     index("purchase_orders_vendor_idx").on(t.vendorId, t.status),
     index("purchase_orders_status_idx").on(t.status, t.expectedDate),
     check("purchase_orders_status_ck", sql`${t.status} in ('draft', 'pending_approval', 'approved', 'sent', 'part_received', 'received', 'cancelled')`),
@@ -1760,7 +1792,7 @@ export const stockWriteOffs = pgTable(
     uniqueIndex("stock_write_offs_write_off_no_ux").on(t.writeOffNo),
     index("stock_write_offs_approval_idx").on(t.approvalId),
     index("stock_write_offs_status_idx").on(t.status),
-    check("stock_write_offs_reason_ck", sql`${t.reason} in ('expiry', 'damage', 'recall')`),
+    check("stock_write_offs_reason_ck", sql`${t.reason} in ('expiry', 'damage', 'recall', 'condemned')`),
     check("stock_write_offs_status_ck", sql`${t.status} in ('requested', 'posted', 'refused')`),
     check("stock_write_offs_value_ck", sql`${t.totalValuePaise} >= 0`),
     check("stock_write_offs_posted_ck", sql`(${t.status} = 'posted') = (${t.postedAt} is not null) and (${t.postedAt} is null) = (${t.postedBy} is null) and (${t.status} <> 'posted' or (${t.disposalAgency} is not null and ${t.manifestNo} is not null and ${t.disposalDate} is not null))`),

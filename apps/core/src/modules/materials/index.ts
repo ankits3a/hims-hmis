@@ -76,6 +76,9 @@ export { QUARANTINE_STORE_CODE } from "./config";
 // STORES S2c (#1119) — goods out on a returnable gate pass: a real store, created on first use (additive).
 export { OUT_ON_PASS_STORE_CODE } from "./config";
 export { ensureOutOnPassStore } from "./stores";
+// STORES S4b (#1114) — the hold for condemned and lost tagged units: a real store, created on first use (additive).
+export { CONDEMNED_STORE_CODE } from "./config";
+export { ensureCondemnedStore } from "./stores";
 export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
 // ── PHARMACY GAP A6b — indents: a sub-store asks, the supplying store answers with a transfer ──
 export { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";
@@ -105,7 +108,7 @@ export { expiringBatches, sweepBatchExpiry, thresholdToAnnounce } from "./expiry
 /** Plan 14c, second slice — booking a count's variance with a second key. */
 export { ADJUSTMENT_REASONS, listAdjustments, postAdjustments, requestCountAdjustment } from "./adjustments";
 export type { AdjustmentReason, AdjustmentView } from "./adjustments";
-export { STOCK_ADJUSTMENT_APPROVAL_TYPE } from "./approval-types";
+export { CONDEMNATION_OWNER_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE } from "./approval-types";
 export { cancelCount, closeCount, countSheet, countVariancesBetween, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
 export type { CountFlag, CountHeader, CountReview, CountReviewLine, CountSheet, CountSheetLine, CountStatus, SubmitCountInput } from "./counts";
 export type { ExpiringBatch } from "./expiry";
@@ -116,12 +119,12 @@ export {
 } from "./approval-types";
 export { PO_HEAD_APPROVAL_LIMIT_PAISE, PO_RECEIPT_TOLERANCE_BPS, PRICE_CHECK_THRESHOLD_BPS } from "./config";
 export {
-  OPEN_PO_STATUSES, allowedReceiptBase, approvalTierFor, assertNotPoApprover, purchaseOrderOfGrn, cancelPurchaseOrder, createPurchaseOrder, decidePurchaseOrder,
+  OPEN_PO_STATUSES, allowedReceiptBase, netRatePaise, approvalTierFor, assertNotPoApprover, purchaseOrderOfGrn, cancelPurchaseOrder, createPurchaseOrder, decidePurchaseOrder,
   getPurchaseOrder, lastPurchaseByItem, lineGstPaise, listPurchaseOrders, onOrderAt, overduePurchaseOrders,
-  purchasableVendors, purchaseOrdersAwaiting, receivableLines, sendPurchaseOrder, setStockLevel, settlePurchaseOrders, writeStockLevel,
+  purchasableVendors, purchaseOrdersAwaiting, receivableLines, registerAwardPoGuard, sendPurchaseOrder, setStockLevel, settlePurchaseOrders, writeStockLevel,
   stockLevelsAt, submitPurchaseOrder, updatePurchaseOrder,
 } from "./purchase-orders";
-export type { LastPurchase, PoFilter, PoInput, PoLineInput, PoLineView, PoStatus, PoSummary, PoView, StockLevel } from "./purchase-orders";
+export type { AwardPoGuard, LastPurchase, PoFilter, PoInput, PoLineInput, PoLineView, PoStatus, PoSummary, PoView, StockLevel } from "./purchase-orders";
 /** Owner 2026-10-04 — a vendor's rate contract: quoted rates per item, what orders to that vendor are priced at. */
 export { contractRatesFor, endVendorRate, setVendorRates, vendorRates } from "./vendor-rates";
 export {

@@ -24,6 +24,7 @@ Source: `apps/core/src/modules/materials/`
   - `requestCountAdjustment(db: Db, actor: Actor, countId: string, input: { lines: { lineId: string; reasonCode: AdjustmentReason }[]; note?: st…`
   - types: `AdjustmentReason`, `AdjustmentView`
 - `approval-types.ts`
+  - `CONDEMNATION_OWNER_APPROVAL_TYPE`
   - `MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
   - `MRP_REVISION_APPROVAL_TYPE`
   - `NEAR_EXPIRY_APPROVAL_TYPE`
@@ -41,6 +42,7 @@ Source: `apps/core/src/modules/materials/`
   - `BLACKLIST_REASONS`
   - `BLACKLIST_YEARS`
   - `CASH_PAYMENT_DAILY_LIMIT_PAISE`
+  - `CONDEMNED_STORE_CODE`
   - `DEEMED_SUPPLY_DAYS`
   - `DEFAULT_SUPPLIER_TERMS_DAYS`
   - `EXPIRY_REPORT_PRESET_DAYS`
@@ -229,18 +231,20 @@ Source: `apps/core/src/modules/materials/`
   - `approvalTierFor(totalPaise: number): "head" | "owner"`
   - `assertNotPoApprover(db: Db, actor: Actor, poId: string): Promise<void>`
   - `cancelPurchaseOrder(db: Db, actor: Actor, poId: string, reason: string, now: Date = new Date()): Promise<PoView>`
-  - `createPurchaseOrder(db: Db, actor: Actor, input: PoInput, opts: { source?: "manual" | "agent"; now?: Date } = {}): Promise<PoView>`
+  - `createPurchaseOrder(db: Db, actor: Actor, input: PoInput, opts: { source?: "manual" | "agent"; now?: Date; awardId?: string | null } = {}):…`
   - `decidePurchaseOrder(db: Db, actor: Actor, poId: string, verdict: "approve" | "reject", note: string, now: Date = new Date()): Promise<PoVie…`
   - `getPurchaseOrder(db: Db, actor: Actor, poId: string): Promise<PoView>`
   - `lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, LastPurchase>>`
   - `lineGstPaise(lineTotalPaise: number, gstRateBps: number): number`
   - `listPurchaseOrders(db: Db, actor: Actor, filter: PoFilter = {}): Promise<PoSummary[]>`
+  - `netRatePaise(listRatePaise: number, discountBps: number): number`
   - `onOrderAt(db: Db | Tx, storeResourceId: string, itemIds: readonly string[]): Promise<Map<string, { onOrderBase: number; inDraftBase: number…`
   - `overduePurchaseOrders(db: Db, actor: Actor, now: Date = new Date()): Promise<PoSummary[]>`
   - `purchasableVendors(db: Db, actor: Actor): Promise<{ id: string; code: string; name: string }[]>`
   - `purchaseOrderOfGrn(db: Db, grnId: string): Promise<string | null>`
   - `purchaseOrdersAwaiting(db: Db, actor: Actor): Promise<PoSummary[]>`
   - `receivableLines(db: Db, actor: Actor, poId: string): Promise<{ purchaseOrder: PoSummary; lines: { itemId: string; itemCode: string; itemNam…`
+  - `registerAwardPoGuard(guard: AwardPoGuard): () => void`
   - `sendPurchaseOrder(db: Db, actor: Actor, poId: string, now: Date = new Date()): Promise<PoView>`
   - `setStockLevel(db: Db, actor: Actor, input: { itemId: string; storeResourceId: string } & StockLevel, now: Date = new Date()): Promise<Stock…`
   - `settlePurchaseOrders(db: Db, now: Date = new Date(), poIds?: readonly string[]): Promise<number>`
@@ -248,7 +252,7 @@ Source: `apps/core/src/modules/materials/`
   - `submitPurchaseOrder(db: Db, actor: Actor, poId: string, now: Date = new Date()): Promise<PoView>`
   - `updatePurchaseOrder(db: Db, actor: Actor, poId: string, patch: Partial<PoInput>, now: Date = new Date()): Promise<PoView>`
   - `writeStockLevel(tx: Tx, actor: Actor, input: { itemId: string; storeResourceId: string } & StockLevel, now: Date = new Date()): Promise<Sto…`
-  - types: `LastPurchase`, `PoFilter`, `PoInput`, `PoLineInput`, `PoLineView`, `PoStatus`, `PoSummary`, `PoView`, `StockLevel`
+  - types: `AwardPoGuard`, `LastPurchase`, `PoFilter`, `PoInput`, `PoLineInput`, `PoLineView`, `PoStatus`, `PoSummary`, `PoView`, `StockLevel`
 - `qc.ts`
   - `daysBetween(from: string, to: string): number`
   - `nearExpiryMinDays(shelfLifeDays: number | null): number`
@@ -292,6 +296,7 @@ Source: `apps/core/src/modules/materials/`
   - types: `CatalogueItem`, `LossBooking`, `StockInKind`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`
 - `stores.ts`
   - `createStore(tx: Tx, actor: Actor, input: { code: string; name: string; parentId?: string | null; siteId?: string; attributes?: Record<strin…`
+  - `ensureCondemnedStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureOutOnPassStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureTransitStore(tx: Tx, siteId = "main"): Promise<string>`

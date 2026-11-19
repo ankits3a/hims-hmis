@@ -7,7 +7,7 @@ approved: 2026-11-18
 # Stores & Procurement: the programme — APPROVED by owner 2026-11-18 (decision 0099)
 
 Non-drug master stock, movement tracking and purchasing for the whole hospital. Pharmacy stays separate.
-This file is the overview. The slice specs are docs/specs/1111 to 1113 and 1119 (S1–S3, with S2's gate passes in 1119); S4–S7 are outlines in the appendix, and the five owner questions are in
+This file is the overview. The slice specs are docs/specs/1111 to 1113 and 1119 (S1–S3, with S2's gate passes in 1119); S4–S7 are docs/specs/1114 to 1117 (decision 0101; the appendix keeps their first outlines), and the five owner questions are in
 decision 0099. Public-scrub rules apply to every file here: no staff names, patient data, IPs,
 server names, supplier names, supplier rates or security findings.
 
@@ -340,13 +340,12 @@ The owner accepted every recommended default below ("Go with your recommendation
 | **S2 #1112** | Tickets: approval, priority, picking, custody chain, porter scan, delivery, shorts, returns, night store, the three Now cards | S1 | none (Q2's extra levels add later) | yes, one per PR (S2a: indent stamps, ticket details, claims; S2b: hand-offs) | 4 + porter and `stores_auditor` roles | XL (two PRs: S2a tickets + approval + Now cards; S2b custody, shorts, wrong/damaged, returns) |
 | **S2c #1119** | Gate passes: returnable and non-returnable, guard scan, OUT-ON-PASS | S2b | none | yes (passes, pass scans) | 2 + security role | M |
 | **S3 #1113** | Control tower, Stuck Now card, concierge (7 intents, 1 act), chaser | S2, S2c | none (Q5 pharmacy tile and Q2 budget line add later) | small (nudge log) | 2 | L |
-| S4 #1114 | Item passport: QR per unit, holder and location, AMC and calibration, condemnation | S1, S2 | **Q3** | yes | ~2 | L |
-| S5 #1115 | Buying desk and buyer agent: grouping, RFQ, comparative, award, scorecard, KYC, approval upgrades, non-drug GRN QC | S1 | **Q2, Q4** | yes | ~3 | XL |
-| S6 #1116 | Paying desk and auditor: service bills, TDS and GST on bill, MSME clock, holds and release, UTR | S5 (or the existing GRN path) | **Q4**, Q2 | yes | ~2 | L |
-| S7 #1117 | Stock planner: central reorder, par suggestions, warnings, top-up and PO drafts | S1, S2 (8+ weeks of use history), S5 | Q2 (budgets); data | maybe | ~1 | M |
+| S4 #1114 (`docs/specs/1114-stores-asset-passport.md`) | Item passport: QR per unit, holder and location, AMC and calibration, condemnation | S1, S2 | Q3; ruled (0101) | yes | ~2 | L |
+| S5 #1115 (`docs/specs/1115-stores-buying-desk.md`) | Buying desk and buyer agent: grouping, RFQ, comparative, award, scorecard, KYC, approval upgrades, non-drug GRN QC | S1 | Q2, Q4; ruled (0101) | yes | ~3 | XL |
+| S6 #1116 (`docs/specs/1116-stores-paying-desk.md`) | Paying desk and auditor: service bills, TDS and GST on bill, MSME clock, holds and release, UTR | S5 (or the existing GRN path) | Q4, Q2; ruled (0101) | yes | ~2 | L |
+| S7 #1117 (`docs/specs/1117-stores-stock-planner.md`) | Stock planner: central reorder, par suggestions, warnings, top-up and PO drafts | S1, S2 (8+ weeks of use history), S5 | Q2 (budgets); ruled (0101); data | maybe | ~1 | M |
 
-S1–S3 are the first wave and can start on the owner's yes to their specs. S4–S7 are outlines until their
-questions are answered.
+S1–S3 are the first wave and can start on the owner's yes to their specs. S4–S7 have approved full specs (docs/specs/1114 to 1117, ruled in decision 0101, 2026-11-19).
 
 ## 11. Risks: shared files, migrations, permission counts, other lanes
 
@@ -420,7 +419,7 @@ questions are answered.
 20. Web first at 390 px and 16:9. The staff app's native screens follow as their own issue.
 
 
-## Appendix: outlines of S4–S7 (each needs a full spec before its build)
+## Appendix: outlines of S4–S7 (superseded by the approved specs docs/specs/1114 to 1117)
 
 ### OUTLINE: Stores S4, the item passport for tagged units 
 

@@ -161,6 +161,12 @@ export const QUARANTINE_STORE_CODE = "QUARANTINE";
  * The guard's exit scan moves stock here; the entry scan moves it back to the source.
  */
 export const OUT_ON_PASS_STORE_CODE = "OUT-ON-PASS";
+/**
+ * STORES S4b (#1114, edge case 10) — a condemned tagged unit (or a lost one) waits here, off every shelf and never
+ * issued, until its write-off is posted: a real place with real balances, created on first use
+ * (`ensureCondemnedStore`), like the transit store. Only the Stores condemnation intents move stock into or out of it.
+ */
+export const CONDEMNED_STORE_CODE = "CONDEMNED";
 
 // ═══ PLAN 14c, FIRST SLICE — COUNTS (phase doc `docs/superpowers/plans/2026-09-17-phase-materials-counts.md`) ═══
 

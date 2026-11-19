@@ -10,8 +10,12 @@ import {
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import {
-  addIndentLinesScoped, availableQtyByItem, issueIndent, issueIndentScoped, raiseIndentScoped, stampIndentApproval, stampIndentReview,
+  addIndentLinesScoped, availableQtyByItem, issueIndent, issueIndentScoped, raiseIndentScoped, sellableBatchesByItem, stampIndentApproval, stampIndentReview,
 } from "../materials";
+import { taggedBatchIds } from "./asset-rules";
+import { markTicketOverBudget, ticketsOverBudget, warnBudget } from "./budgets";
+import { delegationFor, liveDelegatedDepartments } from "./delegations";
+import { requireUnitsAt, unitsIntoTransit, unitsOnTransfers } from "./assets";
 import { chainsOf, holderOf, lastCustodianOf, legsOf, returningUndelivered } from "./chain";
 import {
   STORES_INDENTS_APPROVE, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_WORK, departmentOf, holds, isStoresStore, recordAct, requireShelf, requireShelfAct,
@@ -188,6 +192,33 @@ async function raise(db: Db, actor: Actor, input: RaiseTicketInput, now: Date, o
   return indent.id;
 }
 
+/**
+ * S5b (#1115, decision 10) — THE DELIVERY TICKET FROM A PURCHASE REQUEST, raised in the caller's transaction (the GRN's
+ * post) for the requester's shelf. It rides on the request's HOD approval (as S2's re-ask rides on the first ticket's):
+ * no stamp to wait for, no approver told, and the poster — not a holder of the department's shelf grant — raises it on
+ * the request's behalf. The act names the request (`after.prId`); issue, carry and receipt are S2's, unchanged.
+ */
+export async function raiseDeliveryTicketInTx(
+  tx: Tx, actor: Actor, input: { shelfId: string; lines: { itemId: string; qtyBase: number }[]; priority: TicketPriority; prId: string; prNo: string },
+  now: Date,
+): Promise<{ id: string; indentNo: string }> {
+  const shelf = await requireShelf(tx, input.shelfId);
+  if (shelf.suppliedBy === null) throw new StoresError("unknown_store", `${shelf.code} names no supplying store`, { storeId: shelf.id });
+  const { source, night } = await sourceFor(tx, shelf.suppliedBy, input.priority, now);
+  const note = `Purchase ${input.prNo}`;
+  const made = await raiseIndentScoped(tx, actor, { fromResourceId: shelf.id, toResourceId: source.id, lines: input.lines, note }, now, null);
+  await tx.insert(storesTicketDetails).values({
+    indentId: made.indentId, departmentId: shelf.departmentId, shelfId: shelf.id, priority: input.priority, channel: "agent",
+    emergencyReason: input.priority === "emergency" ? note : null, night, clockFrom: now,
+  });
+  await recordAct(tx, actor, now, {
+    act: "raise_ticket", storeId: shelf.id, refId: made.indentId,
+    after: { indentNo: made.indentNo, priority: input.priority, sourceId: source.id, night, origin: null, prId: input.prId },
+    lines: input.lines.map((l) => ({ itemId: l.itemId, qtyBase: l.qtyBase })),
+  });
+  return { id: made.indentId, indentNo: made.indentNo };
+}
+
 /** Decision 3: a declined ticket re-raises in one call with its lines, linked to the first and on the first's clock. */
 export async function reRaiseTicket(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView> {
   const first = await requireTicketRow(db, indentId);
@@ -321,13 +352,20 @@ export async function requireTicketRow(db: Db | Tx, indentId: string, lock = fal
  * hospital-scoped holding — the medical superintendent's — satisfies any department, and is the stand-in:
  * `forHod`). Never the requester.
  */
-async function requireApprover(tx: Tx, actor: Actor, t: TicketRow): Promise<{ forHod: boolean }> {
+async function requireApprover(tx: Tx, actor: Actor, t: TicketRow, now: Date): Promise<{ forHod: boolean; delegationId: string | null }> {
   if (!(await holds(tx, actor, STORES_INDENTS_APPROVE, t.details.departmentId))) {
+    // S5a (#1115, decision 11): a delegate of the department's HOD, inside the delegation's window, approves "for HOD".
+    const d = actor.type === "user" ? await delegationFor(tx, actor.id, t.details.departmentId, now) : { live: null, ended: false };
+    if (d.live !== null) {
+      if (t.indent.requestedBy === actor.id || d.live.fromUserId === t.indent.requestedBy) throw new StoresError("own_ticket", "your own ticket goes to another approver");
+      return { forHod: true, delegationId: d.live.id };
+    }
+    if (d.ended) throw new StoresError("delegation_ended", "your delegation for this department has ended", { departmentId: t.details.departmentId });
     throw new StoresError("not_permitted", "not your department", { permission: STORES_INDENTS_APPROVE, departmentId: t.details.departmentId });
   }
   if (t.indent.requestedBy === actor.id) throw new StoresError("own_ticket", "your own ticket goes to another approver");
   const deptOwn = (await holdersOf(tx, STORES_INDENTS_APPROVE, { departmentId: t.details.departmentId })).includes(actor.id);
-  return { forHod: !deptOwn };
+  return { forHod: !deptOwn, delegationId: null };
 }
 
 function requireOpen(t: TicketRow): void {
@@ -340,7 +378,7 @@ function requireOpen(t: TicketRow): void {
 export async function approveTicket(db: Db, actor: Actor, indentId: string, input: ApproveTicketInput = {}, now: Date = new Date()): Promise<TicketView> {
   await withTx(db, async (tx) => {
     const t = await requireTicketRow(tx, indentId, true);
-    const { forHod } = await requireApprover(tx, actor, t);
+    const { forHod, delegationId } = await requireApprover(tx, actor, t, now);
     requireOpen(t);
     const lines = await tx.select().from(storeIndentLines).where(eq(storeIndentLines.indentId, indentId)).orderBy(asc(storeIndentLines.lineIdx));
     const given = new Map<number, number>();
@@ -356,11 +394,15 @@ export async function approveTicket(db: Db, actor: Actor, indentId: string, inpu
     await stampIndentApproval(tx, indentId, {
       decision: "approved", by: actor.id, at: now, reason: null, forHod, lines: approved.map((a) => ({ lineIdx: a.line.lineIdx, qtyApproved: a.qty })),
     });
+    // S5a (#1115, decision 15): never refused for budget; a ticket approved when the month is used up carries "over budget".
+    const overBudget = await markTicketOverBudget(tx, indentId, t.details.departmentId, now);
     await recordAct(tx, actor, now, {
-      act: "approve_ticket", storeId: t.details.shelfId, refId: indentId, after: { forHod },
+      act: "approve_ticket", storeId: t.details.shelfId, refId: indentId,
+      after: { forHod, ...(delegationId === null ? {} : { delegationId }), ...(overBudget ? { overBudget } : {}) },
       lines: approved.map((a) => ({ itemId: a.line.itemId, asked: a.line.qtyBase, approved: a.qty })),
     });
     await notify(tx, t.indent.requestedBy, WORDS.approved, t.indent, "approved", now);
+    await warnBudget(tx, t.details.departmentId, now);
   });
   return (await getTicket(db, indentId, now))!;
 }
@@ -371,7 +413,7 @@ export async function declineTicket(db: Db, actor: Actor, indentId: string, reas
   if (why === null) throw new StoresError("reason_required", "a decline says why");
   await withTx(db, async (tx) => {
     const t = await requireTicketRow(tx, indentId, true);
-    const { forHod } = await requireApprover(tx, actor, t);
+    const { forHod } = await requireApprover(tx, actor, t, now);
     requireOpen(t);
     await stampIndentApproval(tx, indentId, { decision: "declined", by: actor.id, at: now, reason: why, forHod });
     await recordAct(tx, actor, now, { act: "decline_ticket", storeId: t.details.shelfId, refId: indentId, after: { forHod }, reason: why });
@@ -386,7 +428,7 @@ export async function reviewEmergency(
 ): Promise<TicketView> {
   await withTx(db, async (tx) => {
     const t = await requireTicketRow(tx, indentId, true);
-    await requireApprover(tx, actor, t);
+    await requireApprover(tx, actor, t, now);
     if (!t.indent.issueBeforeApproval || t.indent.status !== "issued") throw new StoresError("not_emergency", `${t.indent.indentNo} is not an emergency issued before approval`);
     if (t.indent.approvalDecision !== null || t.indent.reviewDecision !== null) throw new StoresError("already_reviewed", `${t.indent.indentNo} is already answered`);
     const note = cleanText(input.note);
@@ -442,16 +484,22 @@ export async function claimPicking(db: Db, actor: Actor, indentId: string, now: 
  * refused while it waits for approval (`indent_not_approved`) and while another keeper's claim is live. The
  * night store's keepers issue through `issueIndentScoped` (decision 5). The requester is told "On the way".
  */
-export async function issueTicket(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<TicketView> {
+export async function issueTicket(
+  db: Db, actor: Actor, indentId: string, input: { lines?: { lineIdx: number; qtyBase: number; unitIds?: string[] }[] } = {}, now: Date = new Date(),
+): Promise<TicketView> {
   await withTx(db, async (tx) => {
     const t = await requireTicketRow(tx, indentId, true);
     const claim = await liveClaim(tx, indentId, now);
     if (claim !== null && claim.claimedBy !== actor.id) throw new StoresError("claimed_by_another", "taken by another keeper", { claimedBy: claim.claimedBy });
     const source = await storesStoreRow(tx, t.indent.toResourceId);
     const night = source.kind === "night" && (await holds(tx, actor, STORES_NIGHTSTORE_ISSUE));
+    // S4 (#1114, decision 5): a tagged line is picked by its units' scans (they choose the batches); a counted line of an
+    // item that also has tagged batches is kept off them. Everything else goes to materials as before.
+    const plan = await planUnitIssue(tx, t.indent.toResourceId, indentId, input, now);
     const view = night
-      ? await issueIndentScoped(tx as unknown as Db, actor, indentId, input, now)
-      : await issueIndent(tx as unknown as Db, actor, indentId, input, now);
+      ? await issueIndentScoped(tx as unknown as Db, actor, indentId, plan.input, now)
+      : await issueIndent(tx as unknown as Db, actor, indentId, plan.input, now);
+    if (view.transfer !== null) await unitsIntoTransit(tx, actor, plan.unitIds, view.transfer.id, now);
     await recordAct(tx, actor, now, {
       act: "issue_ticket", storeId: source.id, refId: indentId, after: { transferId: view.transfer?.id ?? null, night },
       lines: view.lines.map((l) => ({ itemId: l.itemId, asked: l.qtyBase, issued: l.qtyIssued })),
@@ -462,6 +510,59 @@ export async function issueTicket(db: Db, actor: Actor, indentId: string, input:
     await enqueuePrintJob(tx, { document: ISSUE_VOUCHER_DOCUMENT, params: { indentId }, dedupeKey: `stores-voucher:${indentId}`, requestedBy: actor.id });
   });
   return (await getTicket(db, indentId, now))!;
+}
+
+/**
+ * S4 (#1114, decision 5) — the issue of a ticket's tagged lines. For each line whose item is `tagged`, or has tagged
+ * batches at the source, or names units: the units must be live units of the item at the source (`requireUnitsAt`),
+ * their batches are the line's batches, and any counted remainder is taken FEFO from the item's untagged batches only.
+ * A tagged item issued without its units, or a counted remainder that only tagged stock could cover, is refused
+ * `units_required` before anything moves. Other lines pass through untouched (pharmacy never comes here).
+ */
+async function planUnitIssue(
+  tx: Tx, sourceId: string, indentId: string, input: { lines?: { lineIdx: number; qtyBase: number; unitIds?: string[] }[] }, now: Date,
+): Promise<{ input: IssueIndentInput; unitIds: string[] }> {
+  const lines = await tx.select().from(storeIndentLines).where(eq(storeIndentLines.indentId, indentId)).orderBy(asc(storeIndentLines.lineIdx));
+  const tagged = await taggedBatchIds(tx, lines.map((l) => l.itemId));
+  const given = new Map((input.lines ?? []).map((g) => [g.lineIdx, g]));
+  const out: NonNullable<IssueIndentInput["lines"]> = [];
+  const unitIds: string[] = [];
+  for (const l of lines) {
+    const g = given.get(l.lineIdx);
+    const item = await requireStoresItem(tx, l.itemId);
+    const sellable = (await sellableBatchesByItem(tx, sourceId, [l.itemId], now)).get(l.itemId) ?? [];
+    const named = g?.unitIds ?? [];
+    const unitLine = item.trackMode === "tagged" || named.length > 0 || sellable.some((b) => tagged.has(b.batchId));
+    if (!unitLine) {
+      if (g !== undefined) out.push({ lineIdx: g.lineIdx, qtyBase: g.qtyBase });
+      continue;
+    }
+    const units = await requireUnitsAt(tx, named, l.itemId, sourceId);
+    const counted = sellable.filter((b) => !tagged.has(b.batchId));
+    const countedAvail = counted.reduce((a, b) => a + b.available, 0);
+    const cap = l.qtyApproved ?? l.qtyBase;
+    // A tagged item asked for with nothing scanned: the picker scans its units (the screen switches the line to scanning).
+    if (item.trackMode === "tagged" && units.length === 0 && (g?.qtyBase ?? cap) > 0 && sellable.length > 0) {
+      throw new StoresError("units_required", "scan each tagged unit you issue", { lineIdx: l.lineIdx, itemId: l.itemId, scanned: 0, issuing: g?.qtyBase ?? cap });
+    }
+    const want = g?.qtyBase ?? (item.trackMode === "tagged" ? units.length : Math.min(cap, units.length + countedAvail));
+    if (units.length > want) throw new StoresError("bad_quantity", "more units scanned than the line issues", { lineIdx: l.lineIdx });
+    let rest = want - units.length;
+    if (rest > 0 && (item.trackMode === "tagged" || rest > countedAvail)) {
+      throw new StoresError("units_required", "scan each tagged unit you issue", { lineIdx: l.lineIdx, itemId: l.itemId, scanned: units.length, issuing: want });
+    }
+    const batches = new Map<string, number>();
+    for (const u of units) batches.set(u.unit.batchId, (batches.get(u.unit.batchId) ?? 0) + 1);
+    for (const b of counted) {
+      if (rest <= 0) break;
+      const take = Math.min(rest, b.available);
+      batches.set(b.batchId, (batches.get(b.batchId) ?? 0) + take);
+      rest -= take;
+    }
+    out.push(want === 0 ? { lineIdx: l.lineIdx, qtyBase: 0 } : { lineIdx: l.lineIdx, qtyBase: want, batches: [...batches].map(([batchId, qty]) => ({ batchId, qty })) });
+    unitIds.push(...units.map((u) => u.unit.id));
+  }
+  return { input: { lines: out.length === 0 && input.lines === undefined ? undefined : out }, unitIds };
 }
 
 // ═══════════════════════════════ reads ═══════════════════════════════
@@ -479,10 +580,16 @@ async function ticketRows(db: Db | Tx, where: ReturnType<typeof and>): Promise<T
 
 /** "Indents to approve": pending tickets of the departments the reader approves for; never their own. */
 export async function ticketsToApprove(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]> {
-  if (actor.type !== "user" || !(await holdsAnywhere(db, actor.id, STORES_INDENTS_APPROVE))) return [];
+  if (actor.type !== "user") return [];
+  const holder = await holdsAnywhere(db, actor.id, STORES_INDENTS_APPROVE);
+  // S5a (#1115, decision 11): a delegate sees the departments it approves for, inside the window.
+  const delegated = await liveDelegatedDepartments(db, actor.id, now);
+  if (!holder && delegated.size === 0) return [];
   const rows = (await ticketRows(db, and(eq(storeIndents.status, "requested"), eq(storeIndents.approvalRequired, true), isNull(storeIndents.approvalDecision))))
     .filter((r) => r.indent.requestedBy !== actor.id);
-  return ticketViews(db, await filterByDepartment(db, actor, rows, STORES_INDENTS_APPROVE), now);
+  const own = holder ? await filterByDepartment(db, actor, rows, STORES_INDENTS_APPROVE) : [];
+  const ownIds = new Set(own.map((r) => r.indent.id));
+  return ticketViews(db, [...own, ...rows.filter((r) => !ownIds.has(r.indent.id) && delegated.has(r.details.departmentId))], now);
 }
 
 /** "To pick": approved (or emergency) tickets of the stores the reader keeps, sorted by floor, then clock. */
@@ -571,6 +678,8 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
   const transferIds = rows.map((r) => r.indent.transferId).filter((x): x is string => x !== null);
   const transferRows = new Map(transferIds.length === 0 ? [] : (await db.select({ id: transfers.id, status: transfers.status, issuedBy: transfers.issuedBy })
     .from(transfers).where(inArray(transfers.id, transferIds))).map((t) => [t.id, t] as const));
+  // S4b (#1114, edge case 1): the tagged units still on their way on each open transfer, so the receiver scans what arrived.
+  const onWay = await unitsOnTransfers(db, [...transferRows.values()].filter((t) => t.status === "in_transit").map((t) => t.id));
   const chains = await chainsOf(db, ids);
   const chainPeople = [...chains.values()].flatMap((c) => [...c.handoffs.flatMap((h) => [h.fromUserId, h.toUserId]), ...c.delivery.map((d) => d.receivedBy),
     ...c.resolutions.flatMap((r) => [r.requestedBy, r.postedBy])]);
@@ -580,6 +689,7 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
   const nameOf = new Map((await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, people)))
     .map((u) => [u.id, u.fullName] as const));
   const transferStatus = new Map([...transferRows.values()].map((t) => [t.id, t.status] as const));
+  const overBudget = await ticketsOverBudget(db, ids);
   const originIds = rows.map((r) => r.details.originIndentId).filter((x): x is string => x !== null);
   const originNo = new Map(originIds.length === 0 ? [] : (await db.select({ id: storeIndents.id, no: storeIndents.indentNo })
     .from(storeIndents).where(inArray(storeIndents.id, originIds))).map((o) => [o.id, o.no] as const));
@@ -615,6 +725,8 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
         state: !i.approvalRequired ? "not_needed" : i.approvalDecision === null ? "pending" : (i.approvalDecision as "approved" | "declined"),
         by: i.approvalBy === null ? null : person(i.approvalBy), at: i.approvalAt?.toISOString() ?? null,
         forHod: i.approvalForHod === true, reason: i.approvalReason,
+        // S5a (#1115, decision 15): present only when the stamp carries "over budget".
+        ...(overBudget.has(i.id) ? { overBudget: true as const } : {}),
       },
       review: i.reviewDecision === null || i.reviewedBy === null || i.reviewedAt === null ? null
         : { decision: i.reviewDecision as "agree" | "query", by: person(i.reviewedBy), at: i.reviewedAt.toISOString(), note: i.reviewNote },
@@ -623,6 +735,10 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
       lines: lines.filter((l) => l.line.indentId === i.id).map((l) => ({
         lineIdx: l.line.lineIdx, itemId: l.line.itemId, itemCode: l.itemCode, itemName: l.itemName, baseUom: l.baseUom,
         qtyBase: l.line.qtyBase, qtyApproved: l.line.qtyApproved, qtyIssued: l.line.qtyIssued,
+        ...(() => {
+          const u = i.transferId === null ? [] : (onWay.get(i.transferId) ?? []).filter((x) => x.itemId === l.line.itemId);
+          return u.length === 0 ? {} : { units: u.map((x) => ({ id: x.id, tagNo: x.tagNo })) };
+        })(),
       })),
       custody: issuedBy === null || lastCustodian === null ? null : {
         holder: closed ? null : person(holderOf(issuedBy, chain)), legs: legsOf(chain), lastCustodian,

@@ -5,7 +5,7 @@ import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import {
-  consignmentLots, grnLines, grns, purchaseOrders, stockBatches, vendorDocuments, vendors,
+  consignmentLots, grnLines, grns, itemCategories, items, purchaseOrders, stockBatches, vendorDocuments, vendors,
 } from "../../kernel/db/schema";
 import { applyReceiptToPo, assertReceivableAgainstPo } from "./purchase-orders";
 import { DEEMED_SUPPLY_DAYS, EXPIRY_IS_A_MONTH_CLASSES } from "./config";
@@ -733,6 +733,25 @@ export async function postGrn(
 }
 
 /**
+ * STORES S4 (#1114, decision 1) — ADDITIVE: a GRN line of a Stores item under a tag rule ALWAYS OPENS ITS OWN BATCH,
+ * whatever batch number was typed. Medical equipment (`track_mode = 'tagged'`) is tagged unit by unit on its own
+ * batch; an IT or furniture item (`durable` under a `from_value` category) is tagged or counted per GRN line by its
+ * unit cost, so the ₹4,800 chair and the ₹5,200 chair must never share a pile. Pharmacy items carry no track mode
+ * and are never touched; the rule is read from the category and its parent (the stronger wins).
+ */
+async function opensOwnBatch(tx: Tx, itemId: string): Promise<boolean> {
+  const [row] = await tx.select({ mode: items.trackMode, own: itemCategories.tagRule, parentId: itemCategories.parentId })
+    .from(items).leftJoin(itemCategories, eq(itemCategories.id, items.categoryId)).where(eq(items.id, itemId));
+  if (row === undefined || row.mode === null) return false;
+  if (row.mode === "tagged") return true;
+  if (row.mode !== "durable") return false;
+  if (row.own === "from_value" || row.own === "always") return true;
+  if (row.parentId === null) return false;
+  const [parent] = await tx.select({ rule: itemCategories.tagRule }).from(itemCategories).where(eq(itemCategories.id, row.parentId));
+  return parent?.rule === "from_value" || parent?.rule === "always";
+}
+
+/**
  * **A14 — find-or-create on `(item, lower(batch_no), ownership)`, and REFUSE `batch_mismatch` when
  * the facts disagree.**
  *
@@ -762,7 +781,7 @@ async function findOrCreateBatch(
   mrpApprovalId: string | null = null,
 ): Promise<string> {
   const batchNo = (line.batchNo ?? "").trim();
-  if (batchNo === "") {
+  if (batchNo === "" || (await opensOwnBatch(tx, line.itemId))) {
     // A class exempt from rule 3 still needs a batch ROW to hang a balance on — the ledger is keyed
     // on `(resource, batch)` and has no "no batch" case. One is minted per GRN line, which is the
     // honest grain for stock nobody tracks by batch.

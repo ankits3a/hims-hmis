@@ -73,10 +73,13 @@ export const approveTicket = (indentId: string, lines: { lineIdx: number; qtyBas
   api("POST", `/stores/tickets/${enc(indentId)}/approve`, { lines });
 export const declineTicket = (indentId: string, reason: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/decline`, { reason });
 export const claimTicket = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/claim`, {});
-export const issueTicket = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/issue`, {});
+/** S4 (#1114): a tagged line names the units the keeper scanned (`unitIds`); without lines the store issues what it can. */
+export const issueTicket = (indentId: string, lines?: { lineIdx: number; qtyBase: number; unitIds?: string[] }[]): Promise<WireTicket> =>
+  api("POST", `/stores/tickets/${enc(indentId)}/issue`, lines === undefined ? {} : { lines });
 
 /* ── S2b (#1112): the custody chain, the receipt, "Add to open ticket?" ── */
-export type DeliverLine = { lineIdx: number; accepted: number; short?: number; wrong?: number; damaged?: number };
+/** S4b (#1114): `unitIds`, the tagged units the receiver scanned on a unit line (the rest of the line is the short). */
+export type DeliverLine = { lineIdx: number; accepted: number; short?: number; wrong?: number; damaged?: number; unitIds?: string[] };
 /** A key per post, so a retried tap records once (decision 14). */
 const clientKey = (): string => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 export const ticketsToReceive = (): Promise<{ tickets: WireTicket[] }> => api("GET", "/stores/tickets/to-receive");
@@ -110,7 +113,7 @@ export const addToOpenTicket = (indentId: string, lines: { itemId: string; qtyBa
 /* ── S2c (#1119): gate passes — the store raises, the guard scans ── */
 export type GatePassRaise =
   | { kind: "returnable"; storeId: string; purpose: "repair" | "calibration" | "refill" | "loan"; party: string; dueBack: string; lines: { itemId: string; qty: number }[]; note?: string | null }
-  | { kind: "non_returnable"; refType: "supplier_return" | "write_off"; refId: string; note?: string | null };
+  | { kind: "non_returnable"; refType: "supplier_return" | "write_off" | "scrap_sale"; refId: string; note?: string | null };
 export const listGatePasses = (): Promise<{ passes: WireGatePass[] }> => api("GET", "/stores/gate-passes");
 export const gatePassForm = (): Promise<WireGatePassForm> => api("GET", "/stores/gate-passes/form");
 export const raiseGatePass = (input: GatePassRaise): Promise<WireGatePass> => api("POST", "/stores/gate-passes", input);

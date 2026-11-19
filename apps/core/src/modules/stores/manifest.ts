@@ -41,6 +41,29 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * one line and the "Stuck" Now card; `stores.spend.read` (hospital; the owner, the materials head, the medical
  * superintendent) adds the month's spend per department to the tower. Never a doctor (decision 0058).
  *
+ * S4a (#1114, decision 16) adds three: `stores.assets.manage` (hospital; biomedical and the materials head) tags units,
+ * records warranty, AMC/CMC, calibration, repairs and the device link, and runs the opening sweep; `stores.assets.read`
+ * (hospital; the materials head, biomedical, the medical superintendent, the stores auditor, the owner) reads every
+ * unit, cost included; `stores.assets.export` (hospital; `accounts_officer`) downloads the month's asset additions for
+ * Tally. A department's shelf-grant holders read their own units without any of the three. The desk is
+ * `/stores/assets` (its own menu row); the phone passport `/stores/asset` is opened by a scan.
+ *
+ * S4b (#1114, decision 16) adds one: `stores.assets.condemn` (the committee's seats: `department_head` at its
+ * department, `accounts_officer`, `materials_head`, `biomedical_engineer`) signs or objects to a condemnation or a loss;
+ * the HOD at the department or biomedical proposes one. The phone signs at `/stores/condemn`.
+ *
+ * S5a (#1115, decision 16) adds four: `stores.purchase.request` (department; `department_store_incharge` and
+ * `department_head`) asks to buy a non-stock or capital item; `stores.buying.manage` (hospital; the materials head and
+ * the new `purchase_officer`) raises the store's requests, lifts a band and keeps the supplier's Stores fields;
+ * `stores.budget.manage` (hospital; `accounts_officer` and the owner) sets the departments' month budgets;
+ * `stores.grn.qc` (the materials head and `biomedical_engineer` at hospital scope, `department_head` at its department)
+ * signs a non-drug GRN's QC with no pharmacist. The phone and desk screen is `/stores/buy` (its own menu row).
+ *
+ * S5b (#1115, decision 16) adds `stores.award.sign`: a committee seat's signature on a band C award (the materials head,
+ * `accounts_officer`, `medical_superintendent`, `biomedical_engineer` at hospital scope; `department_head` at its department
+ * for the user HOD's seat) and, with `stores.masters.manage`, the materials head's band B approval. The desk (16:9: Buy
+ * now, Grouping, RFQs, Comparisons, Awards, POs) and the phone approval sheet are `/stores/buying` (its own menu row).
+ *
  * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -53,6 +76,9 @@ export const storesManifest: ModuleManifest = {
     { label: "Gate passes", path: "/stores/passes", permission: "stores.gatepass.raise" },
     { label: "Gate", path: "/stores/gate", permission: "stores.gatepass.scan" },
     { label: "Control tower", path: "/stores/tower", permission: "stores.tower.read" },
+    { label: "Assets", path: "/stores/assets", permission: "stores.assets.read" },
+    { label: "Buying", path: "/stores/buy", permission: "stores.buying.manage" },
+    { label: "Buying desk", path: "/stores/buying", permission: "stores.buying.manage" },
   ],
   permissions: [
     "stores.masters.manage",
@@ -66,6 +92,15 @@ export const storesManifest: ModuleManifest = {
     "stores.gatepass.scan",
     "stores.tower.read",
     "stores.spend.read",
+    "stores.assets.manage",
+    "stores.assets.read",
+    "stores.assets.export",
+    "stores.assets.condemn",
+    "stores.purchase.request",
+    "stores.buying.manage",
+    "stores.budget.manage",
+    "stores.grn.qc",
+    "stores.award.sign",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */

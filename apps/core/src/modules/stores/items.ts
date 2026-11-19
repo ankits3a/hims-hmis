@@ -5,6 +5,7 @@ import { raiseNotice } from "../../kernel/alerts/notices";
 import { itemCategories, itemUoms, items, storesItemRequests } from "../../kernel/db/schema";
 import { BATCH_MANDATORY_CLASSES, MaterialsError, createStore, findStoreByCode, registerItem, similarNames } from "../materials";
 import { recordAct, requireMasters, requireShelf, requireShelfAct } from "./access";
+import { categoryRules } from "./asset-rules";
 import { StoresError } from "./errors";
 import { STORES_ITEM_CLASSES, TRACK_MODES } from "./types";
 import type {
@@ -25,19 +26,22 @@ import type { Db, Tx } from "../../kernel/db/client";
 const SYSTEM: Actor = { type: "system", id: "stores-seed" };
 
 /** Decision 3: the twelve seeded top categories, English and Hindi. The materials head adds the sub-categories. */
-export const STORES_TOP_CATEGORIES: readonly { code: string; name: string; nameHi: string }[] = [
+export const STORES_TOP_CATEGORIES: readonly { code: string; name: string; nameHi: string; tagRule?: "always" | "from_value"; needsCalibration?: boolean }[] = [
   { code: "GEN", name: "General and sundries", nameHi: "सामान्य सामान" },
   { code: "HSK", name: "Housekeeping and sanitation", nameHi: "सफ़ाई और हाउसकीपिंग" },
   { code: "STN", name: "Stationery and printed forms", nameHi: "स्टेशनरी और छपे फ़ॉर्म" },
   { code: "ELE", name: "Electrical", nameHi: "बिजली का सामान" },
   { code: "PLM", name: "Plumbing and civil", nameHi: "प्लंबिंग और सिविल" },
-  { code: "ITP", name: "IT and peripherals", nameHi: "आईटी और उपकरण" },
-  { code: "FUR", name: "Furniture and fixtures", nameHi: "फ़र्नीचर और फ़िक्सचर" },
+  { code: "ITP", name: "IT and peripherals", nameHi: "आईटी और उपकरण", tagRule: "from_value" },
+  { code: "FUR", name: "Furniture and fixtures", nameHi: "फ़र्नीचर और फ़िक्सचर", tagRule: "from_value" },
   { code: "BME", name: "Biomedical spares", nameHi: "बायोमेडिकल पुर्ज़े" },
   { code: "PCC", name: "Non-billable patient-care consumables", nameHi: "मरीज़ देखभाल का सामान (बिल से बाहर)" },
   { code: "LIN", name: "Linen and uniforms", nameHi: "लिनन और वर्दी" },
   { code: "KIT", name: "Kitchen provisions (dry stock)", nameHi: "रसोई का सूखा सामान" },
   { code: "GAS", name: "Medical gases and lab reagents (non-billable)", nameHi: "मेडिकल गैस और लैब रीएजेंट" },
+  // S4 (#1114, ruling 0099 Q3): every unit of medical equipment is tagged, at any value; measuring and therapeutic
+  // equipment carries a calibration due date.
+  { code: "MEQ", name: "Medical equipment", nameHi: "चिकित्सा उपकरण", tagRule: "always", needsCalibration: true },
 ];
 
 /** Decision 6: the central non-drug store and the night store, seeded once per site. */
@@ -107,7 +111,8 @@ export async function seedStoresMasters(
     let categories = 0;
     for (const c of STORES_TOP_CATEGORIES) {
       const inserted = await tx.insert(itemCategories).values({
-        id: newId(), code: c.code, name: c.name, nameHi: c.nameHi, parentId: null, createdBy: actor.id, updatedBy: actor.id,
+        id: newId(), code: c.code, name: c.name, nameHi: c.nameHi, parentId: null, tagRule: c.tagRule ?? "never", needsCalibration: c.needsCalibration ?? false,
+        createdBy: actor.id, updatedBy: actor.id,
       }).onConflictDoNothing().returning({ id: itemCategories.id });
       categories += inserted.length;
     }
@@ -146,7 +151,12 @@ async function checkStoresItem(
   const [category] = await db.select({ id: itemCategories.id }).from(itemCategories).where(eq(itemCategories.id, input.categoryId));
   if (category === undefined) throw new StoresError("unknown_category", `category ${input.categoryId} not found`);
   if (input.trackMode === null || !(TRACK_MODES as readonly string[]).includes(input.trackMode)) {
-    throw new StoresError("track_mode_required", "a Stores item is expensed, shelf or durable");
+    throw new StoresError("track_mode_required", "a Stores item is expensed, shelf, durable or tagged");
+  }
+  // S4 (#1114, decision 1): medical equipment (an `always` category) is tagged unit by unit, and only it is.
+  const rule = (await categoryRules(db, input.categoryId)).tagRule;
+  if ((rule === "always") !== (input.trackMode === "tagged")) {
+    throw new StoresError("track_mode_required", rule === "always" ? "medical equipment is tagged, unit by unit" : "only medical equipment is tagged", { tagRule: rule });
   }
   return { klass: input.class, categoryId: input.categoryId, trackMode: input.trackMode as TrackMode };
 }
@@ -208,7 +218,8 @@ export async function updateStoresItem(
       await recordAct(tx, actor, now, { act: "category", itemId, before: item.categoryId, after: patch.categoryId, reason });
     }
     if (patch.trackMode !== undefined && patch.trackMode !== item.trackMode) {
-      if (!(TRACK_MODES as readonly string[]).includes(patch.trackMode)) throw new StoresError("track_mode_required", "expensed, shelf or durable");
+      if (!(TRACK_MODES as readonly string[]).includes(patch.trackMode)) throw new StoresError("track_mode_required", "expensed, shelf, durable or tagged");
+      await checkStoresItem(tx, { class: item.class, categoryId: patch.categoryId ?? item.categoryId, trackMode: patch.trackMode });
       await tx.update(items).set({ trackMode: patch.trackMode, updatedBy: actor.id, updatedAt: now }).where(eq(items.id, itemId));
       await recordAct(tx, actor, now, { act: "track_mode", itemId, before: item.trackMode, after: patch.trackMode, reason });
     }

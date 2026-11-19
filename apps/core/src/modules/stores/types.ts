@@ -4,8 +4,9 @@
  */
 
 /** Decision 4: how a Stores item is kept at a department. `tagged` arrives with S4 (#1114). */
-export type TrackMode = "expensed" | "shelf" | "durable";
-export const TRACK_MODES: readonly TrackMode[] = ["expensed", "shelf", "durable"];
+/** S4 (#1114) adds `tagged`: one QR per unit, every unit a passport (medical equipment, under an `always` category). */
+export type TrackMode = "expensed" | "shelf" | "durable" | "tagged";
+export const TRACK_MODES: readonly TrackMode[] = ["expensed", "shelf", "durable", "tagged"];
 
 /**
  * Decision 2: the classes Stores registers. `drug` (pharmacy) and `implant` (patient-billable, ruling
@@ -172,13 +173,19 @@ export type TicketView = {
     /** The medical superintendent's stand-in approval (decision 3): the timeline reads "for HOD". */
     forHod: boolean;
     reason: string | null;
+    /** S5a (#1115, decision 15): approved when the department's month was used up. Absent otherwise. */
+    overBudget?: true;
   };
   /** Decision 4: the HOD's look at an emergency issued before approval. */
   review: { decision: "agree" | "query"; by: TicketPerson; at: string; note: string | null } | null;
   /** Decision 6: the one picker, while the claim is live (30 idle minutes). */
   claim: { by: TicketPerson; at: string; lapsesAt: string } | null;
   transfer: { id: string; status: string } | null;
-  lines: { lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null }[];
+  lines: {
+    lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null;
+    /** S4b (#1114): the tagged units still on their way on this line (the receiver scans the ones that arrived). */
+    units?: { id: string; tagNo: string }[];
+  }[];
   /** S2b (decision 7): whose hands it is in, once issued. `holder` is null once the chain closed (delivered or returned). */
   custody: TicketCustody | null;
   /** S2b (decision 8): the receiver's per-line answer, once delivered. */
@@ -218,7 +225,7 @@ export type TicketShort = {
 /** A scan from a phone: the label's ticket number (or its last four digits), a client idempotency key and the scan time. */
 export type ScanInput = { code: string; clientKey?: string | null; scannedAt?: string | null };
 
-export type DeliverLineInput = { lineIdx: number; accepted?: number; short?: number; wrong?: number; damaged?: number };
+export type DeliverLineInput = { lineIdx: number; accepted?: number; short?: number; wrong?: number; damaged?: number; /** S4 (#1114): the tagged units that arrived. */ unitIds?: string[] };
 export type DeliverInput = { lines?: DeliverLineInput[]; clientKey?: string | null; scannedAt?: string | null };
 
 /** Decision 14: a scan older than 12 h is accepted and flagged; one in the future is stored at server time and flagged. */
@@ -267,6 +274,10 @@ export type TicketTimeline = { indentId: string; indentNo: string; steps: Timeli
 
 export type AuditPackFilter = {
   ticketId?: string; itemId?: string; personId?: string; storeId?: string; from: Date; to: Date;
+  /** S4b (#1114): one tagged unit's life: its acts, its tickets, passes, GRN line and condemnations. */
+  unitId?: string;
+  /** S5b (#1115, D18): a purchase request's chain, request to delivery ticket. */
+  prId?: string;
   /** The next page: rows with `seq` above this (the previous pack's `nextAfterSeq`). */
   afterSeq?: number;
   /** Rows per pack, at most `AUDIT_PACK_MAX_ROWS`. */
@@ -287,19 +298,19 @@ export type AuditPackRow = {
   reason: string | null;
 };
 
-export type AuditPack = { filter: { ticketId: string | null; itemId: string | null; personId: string | null; storeId: string | null; from: string; to: string }; rows: AuditPackRow[]; csv: string;
+export type AuditPack = { filter: { ticketId: string | null; itemId: string | null; personId: string | null; storeId: string | null; unitId?: string; from: string; to: string }; rows: AuditPackRow[]; csv: string;
   /** More rows matched than one pack holds: ask again with `afterSeq = nextAfterSeq`. The CSV says so on its last line. */
   truncated: boolean; nextAfterSeq: number | null };
 
 // ── S2c (#1119): gate passes ──
 export type GatePassKind = "returnable" | "non_returnable";
 export type GatePassPurpose = "repair" | "calibration" | "refill" | "loan";
-export type GatePassRefType = "supplier_return" | "write_off";
+export type GatePassRefType = "supplier_return" | "write_off" | "scrap_sale";
 /** Derived from the gate log, never stored: not out yet, out, out past its due-back day, all back, or closed. */
 export type GatePassStatus = "raised" | "out" | "overdue" | "back" | "closed";
 
 export type RaiseGatePassInput =
-  | { kind: "returnable"; storeId: string; purpose: GatePassPurpose; party: string; dueBack: string; lines: { itemId: string; qty: number }[]; note?: string | null }
+  | { kind: "returnable"; storeId: string; purpose: GatePassPurpose; party: string; dueBack: string; lines: { itemId: string; qty: number; unitIds?: string[] }[]; note?: string | null }
   | { kind: "non_returnable"; refType?: GatePassRefType | null; refId?: string | null; note?: string | null };
 
 export type GatePassScanInput = {

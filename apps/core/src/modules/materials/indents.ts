@@ -43,7 +43,17 @@ const RECENT_INDENTS = 100;
 export type IndentStatus = "requested" | "issued" | "rejected" | "cancelled";
 export type IndentLineInput = { itemId: string; qtyBase: number };
 export type RaiseIndentInput = { fromResourceId: string; toResourceId: string; lines: IndentLineInput[]; note?: string | null };
-export type IssueIndentInput = { lines?: { lineIdx: number; qtyBase: number }[] };
+export type IssueIndentInput = {
+  lines?: {
+    lineIdx: number; qtyBase: number;
+    /**
+     * STORES S4 (#1114, decision 5) — ADDITIVE: the batches this line is issued from, named by the caller (Stores, whose
+     * picker scanned tagged units, or which keeps counted stock off a tagged batch). They add up to `qtyBase`; each is
+     * an evented FEFO override. Pharmacy passes none, and FEFO picks as before.
+     */
+    batches?: { batchId: string; qty: number }[];
+  }[];
+};
 
 export type IndentView = {
   id: string;
@@ -256,9 +266,20 @@ async function issueIndentIn(tx: Tx, actor: Actor, userId: string, indentId: str
     bad(`nothing to issue on ${indent.indentNo} — the supplying store has none of it available; reject it with the reason instead`);
   }
 
+  const named = new Map((input.lines ?? []).filter((g) => g.batches !== undefined).map((g) => [g.lineIdx, g.batches!]));
+  for (const [lineIdx, batches] of named) {
+    if (batches.some((b) => !Number.isSafeInteger(b.qty) || b.qty <= 0) || batches.reduce((a, b) => a + b.qty, 0) !== given.get(lineIdx)) {
+      bad(`line ${String(lineIdx)}: the named batches add up to what is issued`, { lineIdx });
+    }
+  }
   const { transferId } = await issueStock(tx, actor, {
     fromResourceId: indent.toResourceId, toResourceId: indent.fromResourceId,
-    lines: plan.filter((p) => p.qty > 0).map((p) => ({ itemId: p.line.itemId, qtyBase: p.qty })),
+    lines: plan.filter((p) => p.qty > 0).flatMap((p) => {
+      const batches = named.get(p.line.lineIdx);
+      return batches === undefined
+        ? [{ itemId: p.line.itemId, qtyBase: p.qty }]
+        : batches.map((b) => ({ itemId: p.line.itemId, qtyBase: b.qty, batchId: b.batchId, overrideReason: "stores: named batch (tagged units or counted stock)" }));
+    }),
     note: `indent ${indent.indentNo}`, occurredAt: now,
   });
   for (const p of plan) {
