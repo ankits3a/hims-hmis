@@ -12,6 +12,19 @@ import type { Db, Tx } from "../../kernel/db/client";
 export type StoreRow = typeof resources.$inferSelect;
 
 /**
+ * STORES (pre-merge review S1) — the system stores only the Stores intents move stock through. They carry no
+ * `domain` (they are created by materials helpers) but are Stores places all the same: out of pharmacy's lists and
+ * refused on the materials transfer route, like every `domain = 'stores'` row.
+ */
+export const STORES_SYSTEM_STORE_CODES: readonly string[] = [QUARANTINE_STORE_CODE];
+
+/** A Stores place: a `domain = 'stores'` row or one of the Stores system stores. */
+export function isStoresPlace(row: { code: string; attributes: unknown }): boolean {
+  return ((row.attributes ?? {}) as Record<string, unknown>).domain === "stores"
+    || STORES_SYSTEM_STORE_CODES.some((c) => c.toLowerCase() === row.code.toLowerCase());
+}
+
+/**
  * PLAN 14 T5 / DD2, DD9 — stock LOCATIONS, which are registry resources of kind `store`.
  *
  * ═══ THERE IS NO `stores` TABLE, AND THAT IS THE WHOLE POINT ═══
@@ -248,12 +261,24 @@ export async function requireStore(db: Db | Tx, resourceId: string): Promise<Sto
  */
 export async function listStores(
   db: Db | Tx,
-  opts: { siteId?: string; includeTransit?: boolean } = {},
+  opts: {
+    siteId?: string; includeTransit?: boolean;
+    /**
+     * STORES (pre-merge review S1) — the non-drug Stores places (`attributes.domain = 'stores'`: the central and
+     * night stores and every department shelf) are NOT pharmacy places, so every pharmacy picker and list leaves
+     * them out by default. Only the Stores module asks for them.
+     */
+    includeStoresDomain?: boolean;
+  } = {},
 ): Promise<StoreRow[]> {
   const clauses = [eq(resources.kind, "store"), ne(resources.status, "retired")];
   if (opts.siteId !== undefined) clauses.push(eq(resources.siteId, opts.siteId));
   if (opts.includeTransit !== true) {
     clauses.push(sql`lower(${resources.code}) <> ${TRANSIT_STORE_CODE.toLowerCase()}`);
+  }
+  if (opts.includeStoresDomain !== true) {
+    clauses.push(sql`coalesce(${resources.attributes}->>'domain', '') <> 'stores'`);
+    clauses.push(sql`lower(${resources.code}) not in (${sql.join(STORES_SYSTEM_STORE_CODES.map((c) => sql`${c.toLowerCase()}`), sql`, `)})`);
   }
   return db.select().from(resources).where(and(...clauses)).orderBy(asc(resources.code));
 }

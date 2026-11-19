@@ -45,7 +45,7 @@ import {
   cancelGrn, captureGrn, getGrn, grnWorklist, mrpRevisionView, nearExpiryAcceptanceView, postGrn, requestMrpRevisionApproval,
   requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
-import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
+import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, refuseStoresPlacesOnMaterialsRoute, transferWorklist } from "./transfers";
 import type { TransferView } from "./transfers";
 import { consumptionsFor } from "./consumption";
 import {
@@ -1373,7 +1373,10 @@ export class MaterialsController {
   ): Promise<{ transferId: string; lines: unknown[] }> {
     const b = parsed(issueBody, body);
     try {
-      return await withTx(this.db, (tx) => issueStock(tx, actor, { ...b, occurredAt: new Date() }));
+      return await withTx(this.db, async (tx) => {
+        await refuseStoresPlacesOnMaterialsRoute(tx, [b.fromResourceId, b.toResourceId]);
+        return issueStock(tx, actor, { ...b, occurredAt: new Date() });
+      });
     } catch (e) { toHttp(e); }
   }
 
@@ -1384,7 +1387,13 @@ export class MaterialsController {
   ): Promise<{ status: string; shortfalls: unknown[] }> {
     const b = parsed(receiveBody, body);
     try {
-      return await withTx(this.db, (tx) => receiveStock(tx, actor, transferId, b.lines, new Date()));
+      return await withTx(this.db, async (tx) => {
+        // Pre-merge review S5: a Stores transfer (a ticket, a department return) is received through Stores, which
+        // asks the keeper and writes the department's cost centre; this route does neither.
+        const transfer = await getTransfer(tx, transferId);
+        if (transfer !== undefined) await refuseStoresPlacesOnMaterialsRoute(tx, [transfer.fromResourceId, transfer.toResourceId]);
+        return receiveStock(tx, actor, transferId, b.lines, new Date());
+      });
     } catch (e) { toHttp(e); }
   }
 

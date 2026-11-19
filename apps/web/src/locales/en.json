@@ -3357,6 +3357,7 @@
     "transfer_self_receipt": "You sent this transfer. Someone at the receiving store confirms it.",
     "not_store_keeper": "Only the receiving store's own staff confirm what reached it.",
     "shelf_receives_through_stores": "This is a department shelf; it receives through Stores.",
+    "moves_through_stores": "This is a Stores place; its stock moves through Stores.",
     "unknown_purchase_order": "No such purchase order",
     "po_wrong_status": "The purchase order is not in a state that allows this",
     "po_invalid": "The order has a line or detail it cannot carry — check quantities, rates and packs",

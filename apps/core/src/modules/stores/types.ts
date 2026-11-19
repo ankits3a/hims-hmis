@@ -265,7 +265,13 @@ export type TimelineStep = {
 
 export type TicketTimeline = { indentId: string; indentNo: string; steps: TimelineStep[] };
 
-export type AuditPackFilter = { ticketId?: string; itemId?: string; personId?: string; storeId?: string; from: Date; to: Date };
+export type AuditPackFilter = {
+  ticketId?: string; itemId?: string; personId?: string; storeId?: string; from: Date; to: Date;
+  /** The next page: rows with `seq` above this (the previous pack's `nextAfterSeq`). */
+  afterSeq?: number;
+  /** Rows per pack, at most `AUDIT_PACK_MAX_ROWS`. */
+  limit?: number;
+};
 
 export type AuditPackRow = {
   seq: number;
@@ -281,7 +287,9 @@ export type AuditPackRow = {
   reason: string | null;
 };
 
-export type AuditPack = { filter: { ticketId: string | null; itemId: string | null; personId: string | null; storeId: string | null; from: string; to: string }; rows: AuditPackRow[]; csv: string };
+export type AuditPack = { filter: { ticketId: string | null; itemId: string | null; personId: string | null; storeId: string | null; from: string; to: string }; rows: AuditPackRow[]; csv: string;
+  /** More rows matched than one pack holds: ask again with `afterSeq = nextAfterSeq`. The CSV says so on its last line. */
+  truncated: boolean; nextAfterSeq: number | null };
 
 // ── S2c (#1119): gate passes ──
 export type GatePassKind = "returnable" | "non_returnable";
