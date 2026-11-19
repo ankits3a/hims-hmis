@@ -132,9 +132,11 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/stores/condemn` | `apps/web/src/screens/stores-assets` |
 | `/stores/gate` | `apps/web/src/screens/stores-gate` |
 | `/stores/passes` | `apps/web/src/screens/stores-gate` |
+| `/stores/pay` | `apps/web/src/screens/stores-paying` |
 | `/stores/pick` | `apps/web/src/screens/stores-tickets` |
 | `/stores/porter` | `apps/web/src/screens/stores-tickets` |
 | `/stores/receive` | `apps/web/src/screens/stores-tickets` |
+| `/stores/services` | `apps/web/src/screens/stores-services` |
 | `/stores/shelf/$shelfId` | `apps/web/src/screens/stores-shelf` |
 | `/stores/tickets/$indentId` | `apps/web/src/screens/stores-tickets` |
 | `/stores/tower` | `apps/web/src/screens/stores-tower` |

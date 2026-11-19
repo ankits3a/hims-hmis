@@ -109,7 +109,7 @@ export { storesAwardSignDesk, storesPurchaseApproveDesk } from "./desk";
 // switches (off at merge) and their dry run, payables by item group and department, the desk's reads. Importing these
 // registers the service-entry reader and the payment-hold hooks with materials.
 export { STORES_HOLDS_RELEASE, STORES_SES_CONFIRM } from "./access";
-export { billDraftFromSes, confirmServiceEntry, getServiceEntry, previousMonth, readServiceEntry, servicesToConfirm, unbilledServiceEntries } from "./service-entries";
+export { billDraftFromSes, confirmServiceEntry, getServiceEntry, myServiceDepartments, previousMonth, readServiceEntry, servicesToConfirm, unbilledServiceEntries } from "./service-entries";
 export type { ServiceEntryInput, SesBillDraft } from "./service-entries";
 export { HOLD_RELEASE_LIMIT_PAISE, HOLD_WORDS, heldBillIds, holdsDryRun, holdsForBill, holdsToClear, keepHold, openHoldKinds, recheckBillHolds, releaseHold } from "./holds";
 export { PAYING_DEFAULTS, payingSettings, setPayingSettings } from "./paying-settings";

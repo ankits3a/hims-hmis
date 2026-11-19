@@ -146,6 +146,14 @@ export async function readServiceEntry(db: Db, actor: Actor, sesId: string): Pro
   throw new StoresError("not_permitted", "Not your department", { permission: STORES_SES_CONFIRM });
 }
 
+/** The departments this person confirms services for (their `stores.ses.confirm` grant; any for a hospital-scope holder). */
+export async function myServiceDepartments(db: Db, actor: Actor): Promise<{ id: string; code: string; name: string }[]> {
+  const all = await db.select({ id: orgDepartments.id, code: orgDepartments.code, name: orgDepartments.name }).from(orgDepartments).orderBy(asc(orgDepartments.code));
+  const out: { id: string; code: string; name: string }[] = [];
+  for (const d of all) if (await holds(db, actor, STORES_SES_CONFIRM, d.id)) out.push(d);
+  return out;
+}
+
 /** The previous calendar month of an IST day: key `yyyy-mm`, its first and last day. */
 export function previousMonth(day: string): { key: string; start: string; end: string } {
   const y = Number(day.slice(0, 4));

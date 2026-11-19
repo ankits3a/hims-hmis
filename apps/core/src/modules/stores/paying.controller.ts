@@ -10,7 +10,7 @@ import { holdsDryRun, holdsForBill, keepHold, releaseHold, requirePayingReader }
 import { bookDraft, bookFromDesk } from "./paying-book";
 import { decideRunFromPhone, payablesByGroup, payingDesk, runToAuthorise, submitRunFromDesk } from "./paying-reads";
 import { payingSettings, setPayingSettings } from "./paying-settings";
-import { confirmServiceEntry, readServiceEntry, servicesToConfirm } from "./service-entries";
+import { confirmServiceEntry, myServiceDepartments, readServiceEntry, servicesToConfirm } from "./service-entries";
 import { parsed, toHttp } from "./stores-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -137,6 +137,12 @@ export class StoresPayingController {
   async confirm(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const b = parsed(storesSesBody, body);
     try { return await confirmServiceEntry(this.db, actor, b); } catch (e) { toHttp(e); }
+  }
+
+  @Get("services/departments")
+  @Header("Cache-Control", "no-store")
+  async serviceDepartments(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await myServiceDepartments(this.db, actor); } catch (e) { toHttp(e); }
   }
 
   @Get("services/:sesId")
