@@ -119,7 +119,7 @@ flowchart LR
 | `retention.ts` | kernel | `retention_legal_holds` |
 | `roster.ts` | module roster | `roster_amendments`, `roster_assignments`, `roster_bed_allotments`, `roster_board_prints`, `roster_cover_requests`, `roster_cycle_entries`, `roster_cycle_overlays`, `roster_cycles`, `roster_delegations`, `roster_duty_windows`, `roster_escalation_targets`, `roster_findings`, `roster_flags`, `roster_holidays`, `roster_mode_declarations`, `roster_officiating`, `roster_periods`, `roster_positions`, `roster_requirements`, `roster_rule_profiles`, `roster_rules`, `roster_shift_defs`, `roster_team_memberships`, `roster_teams`, `staff_absences`, `staff_credentials` |
 | `search.ts` | kernel | `search_audit` |
-| `stores.ts` | module stores | `stores_item_requests`, `stores_picking_claims`, `stores_ticket_details` |
+| `stores.ts` | module stores | `stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_item_requests`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_ticket_details`, `stores_transit_resolutions` |
 | `tariff.ts` | module tariff | `adjustment_rules`, `gst_config`, `gst_settings`, `regulated_prices`, `services`, `tariff_items`, `tariff_versions` |
 | `worker.ts` | kernel | `event_dead_letters`, `event_deliveries`, `scheduler_heartbeats` |
 | `workflow.ts` | kernel | `workflow_definition_approvals`, `workflow_definitions`, `workflow_instances`, `workflow_timers`, `workflow_transitions` |

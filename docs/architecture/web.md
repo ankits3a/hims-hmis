@@ -124,5 +124,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/stores` | `apps/web/src/screens/stores-desk` |
 | `/stores/approve` | `apps/web/src/screens/stores-tickets` |
 | `/stores/pick` | `apps/web/src/screens/stores-tickets` |
+| `/stores/porter` | `apps/web/src/screens/stores-tickets` |
+| `/stores/receive` | `apps/web/src/screens/stores-tickets` |
 | `/stores/shelf/$shelfId` | `apps/web/src/screens/stores-shelf` |
 | `/stores/tickets/$indentId` | `apps/web/src/screens/stores-tickets` |

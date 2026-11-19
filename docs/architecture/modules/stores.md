@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/stores/`
 
 - **Depends on modules:** `materials`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `printing`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -26,6 +26,24 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_SHELF_WORK`
 - `audit-pack.ts`
   - `storesAuditPack(db: Db, actor: Actor, filter: AuditPackFilter, now: Date = new Date()): Promise<AuditPack>`
+- `custody.ts`
+  - `LATE_SCAN_MS`
+  - `STORES_CARRY`
+  - `acceptReturn(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
+  - `confirmLateScan(db: Db, actor: Actor, handoffId: string, now: Date = new Date()): Promise<{ ok: true }>`
+  - `deliverTicket(db: Db, actor: Actor, indentId: string, input: DeliverInput = {}, now: Date = new Date()): Promise<CustodyResult>`
+  - `handOver(db: Db, actor: Actor, scan: ScanInput & { fromUserId: string }, now: Date = new Date()): Promise<CustodyResult>`
+  - `lateScansToConfirm(db: Db, actor: Actor): Promise<LateScan[]>`
+  - `myCustody(db: Db, actor: Actor, now: Date = new Date()): Promise<PorterCardRow[]>`
+  - `postTransitLoss(db: Db, actor: Actor, approvalId: string, now: Date = new Date()): Promise<{ posted: number; refused: number }>`
+  - `raiseReturn(db: Db, actor: Actor, input: RaiseReturnInput, now: Date = new Date()): Promise<ReturnTicketView[]>`
+  - `receiveReturn(db: Db, actor: Actor, transferId: string, now: Date = new Date()): Promise<ReturnTicketView>`
+  - `resolveShort(db: Db, actor: Actor, indentId: string, input: { lineIdx: number; resolution: ShortResolution; note?: string | null }, now: Da…`
+  - `returnUndelivered(db: Db, actor: Actor, indentId: string, input: { clientKey?: string | null; scannedAt?: string | null } = {}, now: Date =…`
+  - `returnsToReceive(db: Db, actor: Actor): Promise<ReturnTicketView[]>`
+  - `scanClock(scannedAt: string | Date | null | undefined, now: Date): { phoneAt: Date | null; occurredAt: Date; flag: ScanFlag | null }`
+  - `takeCustody(db: Db, actor: Actor, scan: ScanInput, now: Date = new Date()): Promise<CustodyResult>`
+  - `takeOverCustody(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<CustodyResult>`
 - `desk.ts`
   - `STORES_DESK_PROVIDERS`
   - `storesApproveDesk: DeskProvider`
@@ -79,13 +97,17 @@ Source: `apps/core/src/modules/stores/`
 - `tickets.ts`
   - `CLAIM_IDLE_MS`
   - `EMERGENCY_REVIEW_MS`
+  - `ISSUE_VOUCHER_DOCUMENT`
+  - `addToOpenTicket(db: Db, actor: Actor, indentId: string, input: { lines: { itemId?: string | null; qtyBase: number }[] }, now: Date = new Da…`
   - `approveTicket(db: Db, actor: Actor, indentId: string, input: ApproveTicketInput = {}, now: Date = new Date()): Promise<TicketView>`
   - `claimPicking(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
   - `declineTicket(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<TicketView>`
   - `getTicket(db: Db | Tx, indentId: string, now: Date = new Date()): Promise<TicketView | undefined>`
   - `issueTicket(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<TicketView>`
+  - `openTicketFor(db: Db, actor: Actor, shelfId: string, now: Date = new Date()): Promise<TicketView | null>`
   - `overdueEmergencyReviews(db: Db | Tx, now: Date = new Date()): Promise<TicketView[]>`
   - `raiseTicket(db: Db, actor: Actor, input: RaiseTicketInput, now: Date = new Date()): Promise<TicketView>`
+  - `reAskShort(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
   - `reRaiseTicket(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
   - `reviewEmergency(db: Db, actor: Actor, indentId: string, input: { decision: "agree" | "query"; note?: string | null }, now: Date = new Date(…`
   - `ticketsToApprove(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
@@ -110,15 +132,18 @@ Source: `apps/core/src/modules/stores/`
   - `reverseShelfUse(db: Db, actor: Actor, rowId: string, reason: string, now: Date, expectShelfId?: string): Promise<{ ledgerEntryId: string }>`
   - `saveReorderDraft(db: Db, actor: Actor, shelfId: string, lines: readonly { itemId?: string | null; qty: number }[], now: Date): Promise<{ dr…`
   - `shelfReorderDraft(db: Db, actor: Actor, shelfId: string): Promise<{ lines: ReorderDraftLine[] }>`
+- `voucher.ts`
+  - `registerStoresPrinting(): () => void`
+  - `renderIssueVoucher(db: Db, params: Record<string, unknown>): Promise<RenderedDocument | null>`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_item_requests`, `stores_picking_claims`, `stores_ticket_details`
+`stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_item_requests`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_ticket_details`, `stores_transit_resolutions`
 
 Foreign keys into: `materials`, `resources`
 
 ## HTTP routes
 
-- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`
+- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/transit-losses`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`

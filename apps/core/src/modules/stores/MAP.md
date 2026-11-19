@@ -15,7 +15,7 @@ Hand-written notes: the WHY and the traps. Signatures, routes and tables are gen
 with a module name, `kernel/`, `packages/` or `apps/`. Citations name a file and a symbol, never a line number.
 Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials core), 0081 (done-means tests).
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
-`docs/specs/1112-stores-tickets-custody.md` (S2; S2a built here, S2b owed).
+`docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -96,13 +96,49 @@ department shelves every department (housekeeping included) receives from. Pharm
   (`waiting`, `waitingSelfGated` — the only way a DEPARTMENT-scoped HOD sees it; roster-leave precedent). Waiting kinds
   `stores.indentsToApprove|toPick|toReceive` live in `packages/contracts/src/waiting.ts`.
 - `ticketTimeline` (`timeline.ts`) derives raise, approve/decline ("for HOD"), claims, issue, review, reject, cancel,
-  receive from rows; minutes = since the step before. S2b adds hand-offs from `stores_custody_handoffs`.
+  receive from rows; minutes = since the step before. S2b adds the chain (take, hand_over, take_over, return_accepted),
+  deliver / collect ("Collected at store" = no carrier leg), send_back, return_undelivered and each short's resolution.
+  A hand-off whose phone time and server time differ by more than 5 min carries both (`phoneAt`, `recordedAt`).
 - `storesAuditPack` (`audit-pack.ts`) reads the events table only: `stores.act_recorded` + `material.*`, by window on
   `occurred_at`, filters ANDed. Writes ONE `audit_export` act per call, after the read. TRAP: an event dated by the
   wall clock falls outside a stated window — `materials/transfers.ts` now dates `material.issued/received/
   discrepancy_flagged` by the movement's `occurredAt` (S2a).
 
-## 9. Not built here
-Custody chain, porters, counter collection, delivery with wrong/damaged, shorts, back-order, undelivered and
-department returns, late scans, the delivered notices (S2b, #1112); "Add to open ticket?" on the raise sheet; the
-issue voucher + label QR print; gate passes (#1119); tower/concierge/"Stuck" (S3); tagged units (S4); purchasing (S5).
+## 9. The custody chain (S2b #1112, `custody.ts`, `chain.ts`)
+- `stores_custody_handoffs` is APPEND-ONLY in the database (migration 0239 trigger). Kinds: `take` (issuer or a
+  take-over holder → porter, the porter's scan), `hand_over` (porter → porter, the INCOMING porter's scan naming
+  `fromUserId`, which must be the holder), `take_over` (source keeper or `stores.masters.manage`, reason required,
+  names the holder it overrides), `return_accepted` (holder → source keeper). Holder = newest row's `to_user_id`,
+  else the transfer's issuer (`chain.ts` `holderOf`). The LEDGER IS UNTOUCHED by hand-offs.
+- The label QR carries the indent number only; the typed fallback is its last four digits, matched among tickets on
+  their way that the act admits (`ticketByCode`): none = `unknown_ticket`, two = `ambiguous_code`.
+- Scans: `stores_client_keys` (actor, key) records once; `scanClock` keeps the phone time (`phone_at`), dates the row
+  by it unless it is in the future (then server time), flags `late` (> 12 h) / `future`, and tells the source keepers
+  "Late scan to confirm" (`stores_scan_confirmations`, `confirmLateScan`).
+- `deliverTicket` refuses the issuer (`you_issued_it`) and every carrier (`you_carried_it`) BEFORE the shelf grant;
+  per ticket line accepted/short/wrong/damaged = issued, split over the batches (`planDelivery`). Only `accepted` goes
+  through `receiveAtShelf` (charged). Wrong/damaged become `sent_back` rows in `stores_transit_resolutions`
+  (wrong → source, damaged → materials `QUARANTINE`), moved by the source keeper's `acceptReturn`. Notice
+  precedence: sent back, then short, then "Delivered".
+- Shorts stay in IN-TRANSIT against the last custodian; `resolveShort` (materials head): found = materials
+  `receiveLate` into the shelf (charged then), returned = `returnInTransit` (`authorisedBy: "stores"`), lost =
+  `requestApproval(materials_stock_adjustment)` and NOTHING posts until `postTransitLoss` after the grant (one
+  `adjust` row, `ref_type = 'transit_loss'`). DECIDED: a Stores row, not a `stock_adjustments` row (that table needs
+  a count line).
+- Undelivered: the holder's `returnUndelivered` (pending rows) → the keeper's `acceptReturn` → transfer `returned`
+  (new value of `transfers_status_ck`, written by no pharmacy path). What is left in transit on a line is read off
+  the ledger (`materials.inTransitByLine`), never stored.
+- Back-order: `reAskShort` raises a linked `re_ask` ticket with NO approval stamp (`approval_required = false`, it
+  rides on the first's approval) on the first's clock; `ticketsToPick` lists it only when the store holds every line.
+- Department returns (`raiseReturn` / `receiveReturn`): a transfer shelf → supplier (defective → quarantine), note
+  `stores return …`; the store's receipt carries the department's cost centre, so `departmentChargeOn` nets it
+  (receipts into shelves +, into any other store −).
+- "Add to open ticket?": `openTicketFor` + `addToOpenTicket` (materials `addIndentLinesScoped`); an item already on
+  the ticket is left off (an item is once per indent; 0155's line guard forbids raising a quantity).
+- The issue voucher (`voucher.ts`, document `stores_issue_voucher`, destination `stores_a4`) is queued in
+  `issueTicket`'s transaction; renderer registered in `StoresModule.onModuleInit`.
+
+## 10. Not built here
+Gate passes (#1119); tower/concierge/"Stuck" and the end-of-shift red card (S3); an offline scan queue (native
+staff app); choosing which porter to send; a porter picker for the hand-off (the web card takes the outgoing
+porter's id); tagged units (S4); purchasing (S5).

@@ -57,6 +57,7 @@ Source: `apps/core/src/modules/materials/`
   - `PO_HEAD_APPROVAL_LIMIT_PAISE`
   - `PO_RECEIPT_TOLERANCE_BPS`
   - `PRICE_CHECK_THRESHOLD_BPS`
+  - `QUARANTINE_STORE_CODE`
   - `TRANSIT_STORE_CODE`
   - types: `BlacklistReason`
 - `consumption.ts`
@@ -115,6 +116,7 @@ Source: `apps/core/src/modules/materials/`
   - `runGateQc(tx: Tx, actor: Actor, grnId: string): Promise<{ status: string; verdicts: { grnLineId: string; verdict: string; rule?: RuleCode }…`
   - types: `CaptureLine`, `GrnLineRow`, `GrnRow`, `GrnWithLines`
 - `indents.ts`
+  - `addIndentLinesScoped(tx: Tx, indentId: string, lines: IndentLineInput[]): Promise<void>`
   - `cancelIndent(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<IndentView>`
   - `getIndent(db: Db | Tx, indentId: string, now: Date = new Date()): Promise<IndentView | undefined>`
   - `issueIndent(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<IndentView>`
@@ -289,6 +291,7 @@ Source: `apps/core/src/modules/materials/`
   - types: `CatalogueItem`, `LossBooking`, `StockInKind`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`
 - `stores.ts`
   - `createStore(tx: Tx, actor: Actor, input: { code: string; name: string; parentId?: string | null; siteId?: string; attributes?: Record<strin…`
+  - `ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureTransitStore(tx: Tx, siteId = "main"): Promise<string>`
   - `findStoreByCode(db: Db | Tx, code: string, siteId = "main"): Promise<StoreRow | undefined>`
   - `listStores(db: Db | Tx, opts: { siteId?: string; includeTransit?: boolean } = {}): Promise<StoreRow[]>`
@@ -351,10 +354,13 @@ Source: `apps/core/src/modules/materials/`
   - types: `CreditInput`, `DestroyCandidate`, `ExpiryPreset`, `ExpiryReport`, `ExpiryReportRow`, `ExpirySupplierRow`, `ReturnFilter`, `ReturnInput`, `ReturnLineInput`, `ReturnLineReason`, `ReturnLineView`, `ReturnPlan`, `ReturnPlanGroup`, `ReturnPlanLine`, `ReturnSource`, `ReturnStatus`, `ReturnSummary`, `ReturnVerdict`, `ReturnView`, `StandaloneCreditInput`, `StandaloneCreditKind`, `StandaloneCreditView`, `SupplierKind`
 - `transfers.ts`
   - `getTransfer(db: Db | Tx, transferId: string): Promise<TransferWithLines | undefined>`
+  - `inTransitByLine(db: Db | Tx, transferId: string, siteId?: string): Promise<Map<string, number>>`
   - `issueStock(tx: Tx, actor: Actor, input: { fromResourceId: string; toResourceId: string; lines: IssueLine[]; note?: string | null; occurredA…`
   - `listDiscrepancies(db: Db | Tx): Promise<TransferWithLines[]>`
   - `listTransfers(db: Db | Tx, filter: { status?: string; fromResourceId?: string; toResourceId?: string } = {}): Promise<TransferRow[]>`
+  - `receiveLate(tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qty: number }[], occurredAt: Date, siteId?: string, opts: { …`
   - `receiveStock(tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qtyReceived: number }[], occurredAt: Date, siteId?: string,…`
+  - `returnInTransit(tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qty: number; toResourceId?: string }[], occurredAt: Date…`
   - `transferWorklist(db: Db | Tx, filter: { storeId?: string }): Promise<{ awaiting: TransferView[]; recent: TransferView[] }>`
   - types: `IssueLine`, `TransferLineRow`, `TransferRow`, `TransferView`, `TransferWithLines`
 - `uom.ts`
