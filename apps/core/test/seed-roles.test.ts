@@ -961,7 +961,7 @@ const STORES_TOWER_PAIRS: readonly string[] = [
   "storekeeper/stores.tower.read",
 ];
 
-/** The README prose line authorising the asset passport grants (#1114 S4a, decisions 0099 Q3, 0100). Quoted, not paraphrased. */
+/** The README prose line authorising the asset passport grants (#1114 S4a, decisions 0099 Q3, 0101). Quoted, not paraphrased. */
 const STORES_ASSETS_README_PROSE =
   "`stores.assets.manage` is held by `biomedical_engineer` and `materials_head`; `stores.assets.read` by\n`materials_head`, `biomedical_engineer`, `medical_superintendent`, `stores_auditor` and `owner`;\n`stores.assets.export` by the new role `accounts_officer`, which holds nothing else here and is assigned by no seed.";
 
@@ -977,7 +977,7 @@ const STORES_ASSETS_PAIRS: readonly string[] = [
   "stores_auditor/stores.assets.read",
 ];
 
-/** The README prose line authorising the condemnation committee's grant (#1114 S4b, ruling 0100 Q5). Quoted, not paraphrased. */
+/** The README prose line authorising the condemnation committee's grant (#1114 S4b, ruling 0101 Q5). Quoted, not paraphrased. */
 const STORES_CONDEMN_README_PROSE =
   "`stores.assets.condemn` is held by `department_head` (at its department), `accounts_officer`, `materials_head` and\n`biomedical_engineer`.";
 
@@ -989,12 +989,12 @@ const STORES_CONDEMN_PAIRS: readonly string[] = [
   "materials_head/stores.assets.condemn",
 ];
 
-/** The README prose line authorising the buying desk's front grants (#1115 S5a, decision 0100). Quoted, not paraphrased. */
+/** The README prose line authorising the buying desk's front grants (#1115 S5a, decision 0101). Quoted, not paraphrased. */
 const STORES_BUYING_README_PROSE =
   "`stores.purchase.request` is held by `department_store_incharge` and `department_head` (at their department);\n`stores.buying.manage` by `materials_head` and `purchase_officer`; `stores.budget.manage` by `accounts_officer` and\n`owner`; `stores.grn.qc` by `materials_head`, `biomedical_engineer` and `department_head` (at its department).";
 
 /** STORES S5a (#1115) — asking to buy, the buying desk, budgets and the non-drug QC. */
-/** The README prose line authorising the committee seats' signature (#1115 S5b, decision 0100 Q3). Quoted, not paraphrased. */
+/** The README prose line authorising the committee seats' signature (#1115 S5b, decision 0101 Q3). Quoted, not paraphrased. */
 const STORES_AWARD_README_PROSE =
   "`stores.award.sign` is held by `materials_head`, `accounts_officer`, `medical_superintendent`, `biomedical_engineer` and\n`department_head` (at its department, the user HOD's seat).";
 
@@ -2757,7 +2757,7 @@ describe("approvals — every approver role can answer what is routed to it", ()
     // OWNER RULINGS 2026-09-30 (money): +2, `pharmacy_discount_incharge` (approver pharmacy_incharge, a sale discount above
     // 10% up to 25%) and `pharmacy_discount_owner` (approver owner, above 25% or over ₹25,000). Measured: `Received length: 28`.
     // #1047 (pharmacy stock-in go-live): +1, `materials_mrp_revision` (approver materials_head — a batch's new MRP at a GRN).
-    // STORES S4b (#1114, ruling 0100 Q5): +1, `stores_condemnation_owner` (approver owner — a condemnation above ₹50,000 or cost unknown).
+    // STORES S4b (#1114, ruling 0101 Q5): +1, `stores_condemnation_owner` (approver owner — a condemnation above ₹50,000 or cost unknown).
     expect(ALL_APPROVAL_TYPES).toHaveLength(30); // 18-S RS9b: +1, imaging_release_unpaid_owner (approver owner — a held imaging report released unpaid is credit); 18-S RS5: +1, imaging_gate_override (approver radiologist); pharmacy stage D5: +1, the restricted antimicrobial; pharmacy parity P3: +1, the supplier payment run; P2: +2, the purchase order's two tiers
     expect(new Set(ALL_APPROVAL_TYPES.map((t) => t.typeKey)).size).toBe(30);
   });

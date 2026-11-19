@@ -23,7 +23,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  */
 export const DELEGATION_MAX_DAYS = 30;
 export const DELEGATION_SCOPES = ["hod_approval", "committee_seat"] as const;
-/** S5b (#1115, decision 11; ruling 0100 Q3): the committee seats a member may hand over, with an end date. The owner's is not one. */
+/** S5b (#1115, decision 11; ruling 0101 Q3): the committee seats a member may hand over, with an end date. The owner's is not one. */
 export const DELEGABLE_SEATS = ["materials_head", "accounts_head", "medical_superintendent", "biomedical"] as const;
 
 export type DelegationInput = {

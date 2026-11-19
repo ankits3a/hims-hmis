@@ -3,7 +3,7 @@ issue: 1117
 status: approved
 approved: 2026-11-19
 ---
-# SPEC: Stores S7, the stock planner agent: cover, early warnings, top-up and purchase drafts, par suggestions (#1117) — APPROVED by owner 2026-11-19 (decision 0100)
+# SPEC: Stores S7, the stock planner agent: cover, early warnings, top-up and purchase drafts, par suggestions (#1117) — APPROVED by owner 2026-11-19 (decision 0101)
 
 Slice S7 of the Stores & Procurement programme (`docs/specs/stores-programme.md`). The programme's budget row is
 "stock-out without warning: 0, with the warning at least 24 h before". Decision 0099 Q2 gives the department
@@ -72,7 +72,7 @@ shortfalls into purchase requests. The agent drafts; people send, approve and re
    is sent as its own ticket), so a department with many shelves never trips the limit in decision 12.
 7. **Central store.** Reorder point = use per day × (lead time + safety days); order up to = reorder point + use per
    day × review period, less on order, rounded up to the purchase pack. Safety days and review period by ABC/VED
-   class. Ruled (decision 0100 Q8): safety days on top of lead time Vital 15, Essential 7, Desirable 3; order to cover 30 days for C-class items, 15 for B and 7 for A. Dated consumables: never order more than is used before expiry − 30 days at the
+   class. Ruled (decision 0101 Q8): safety days on top of lead time Vital 15, Essential 7, Desirable 3; order to cover 30 days for C-class items, 15 for B and 7 for A. Dated consumables: never order more than is used before expiry − 30 days at the
    expected use. Lead time is the item's `lead_time_days`, else the median of the last 3 PO-to-GRN days, else 7
    (DECIDED). Output: one `planner` PR per category per night (S5).
 8. **Par suggestions.** Quarterly, from 90 days of use: min = use per day × 1 day, reorder = use per day × (supply
@@ -99,7 +99,7 @@ shortfalls into purchase requests. The agent drafts; people send, approve and re
     planner or par warning for it ≥ 24 h earlier? Those without are counted on the tower and in the monthly line.
 14. **Who.** No new grant for reading: warnings and drafts reach the shelf's grant holders and the buyer. One new
     grant `stores.planner.manage` (materials head): pause per department, the T3 switch (with the owner), and
-    the safety-days table (ruled, decision 0100 Q8; the ruled figures are the defaults).
+    the safety-days table (ruled, decision 0101 Q8; the ruled figures are the defaults).
 
 ## Audit by construction
 

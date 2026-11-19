@@ -287,7 +287,7 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Exports: `assetAdditions(month)` (GRN units put to use in the IST month; installed date else first shelf day; GST =
   cost × item GST rate; input credit blank until S6), one `asset_export` act per call.
 
-## 10c. Condemnation, loss and disposal (S4b #1114, `condemnation.ts`; ruling 0100 Q5)
+## 10c. Condemnation, loss and disposal (S4b #1114, `condemnation.ts`; ruling 0101 Q5)
 - Tables (migration 0243, all append-only by the 0242 trigger function): `stores_condemnations` (one proposal, written
   once: kind `condemn` | `loss`, reason, the SEATS frozen on the row, cost judged on, `needs_owner`, `holds_data`,
   `replaces_id`, `round_id`), `stores_condemnation_signatures` (one row per seat, one per person: `sign` | `object`),
@@ -333,7 +333,7 @@ department shelves every department (housekeeping included) receives from. Pharm
   phone shows "Not your department: ask <names>". A fault may carry a photo (document store key on the event).
 - Receive: a ticket line's `units` (still in transit) let the receiver scan what arrived; `unitIds` go with the line.
 
-## 10d. The buying desk's front (S5a #1115; ruling 0099 Q4, decision 0100)
+## 10d. The buying desk's front (S5a #1115; ruling 0099 Q4, decision 0101)
 - Purchase request (`purchase-requests.ts`, migration 0244): `stores_purchase_requests` + `_lines` written once; the
   decision is ONE `stores_purchase_request_stamps` row (unique per request: approved / declined / cancelled), so the stamp
   is write-once by the unique index and the append-only trigger. Status is derived. Number `MPR`+yymmdd+4 from
@@ -368,7 +368,7 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Web `/stores/buy` (`apps/web/src/screens/stores-buy.tsx`): tabs by grant (Ask, To approve, My requests, Hand over, Budgets, Suppliers, QC);
   notices `stores_purchase_request` open it with `?pr=`.
 
-## 10e. The buying desk by hand (S5b #1115; ruling 0100 Q3, Q4, Q7)
+## 10e. The buying desk by hand (S5b #1115; ruling 0101 Q3, Q4, Q7)
 - Groups (`buy-groups.ts`, migration 0245): `stores_buy_groups` + `stores_buy_group_moves` (newest move per request line =
   its group; null = out). The band is DERIVED: highest of its requests' `bandOf` (split check, lifts) and of its own sum;
   FROZEN on the RFQ. A group with an RFQ or an award is locked (`group_locked`). "Buy now" = approved urgent/emergency
