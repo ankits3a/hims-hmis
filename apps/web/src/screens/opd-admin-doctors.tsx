@@ -216,7 +216,7 @@ export function DoctorsTab({
 
       {open !== null && !creating && (
         <DoctorPanel
-          key={open.id} doctor={open} departments={departments} rooms={rooms} focusRegn={focusRegn}
+          key={open.id} doctor={open} departments={departments} rooms={rooms} focusRegn={focusRegn} asking={ask !== null}
           error={ask === null ? panelError : null}
           onClose={() => { clearOutcome(); setOpenId(null); }}
           onSave={(patch) => save(open, patch)}
@@ -299,9 +299,9 @@ const orNull = (v: string): string | null => (v.trim() === "" ? null : v.trim())
  * ASKS: the writes that move bookings go through the parent's impact check first.
  */
 function DoctorPanel({
-  doctor, departments, rooms, focusRegn, error, onClose, onSave, onDeactivate, onReactivate, onSecondaryChanged, onError, onOpenSchedules,
+  doctor, departments, rooms, focusRegn, asking, error, onClose, onSave, onDeactivate, onReactivate, onSecondaryChanged, onError, onOpenSchedules,
 }: {
-  doctor: WireAdminDoctor; departments: WireDepartment[]; rooms: WireRoom[]; focusRegn: boolean; error: string | null;
+  doctor: WireAdminDoctor; departments: WireDepartment[]; rooms: WireRoom[]; focusRegn: boolean; asking: boolean; error: string | null;
   onClose: () => void; onSave: (patch: DoctorPatch) => Promise<void>; onDeactivate: () => void; onReactivate: () => Promise<void>;
   onSecondaryChanged: (said: string) => Promise<void>; onError: (message: string | null) => void; onOpenSchedules: () => void;
 }): React.ReactElement {
@@ -371,7 +371,8 @@ function DoctorPanel({
 
   return (
     <aside className="au-drawer wide od-drawer" role="dialog" aria-modal="false" aria-labelledby="od-panel-title" data-testid="doctor-panel"
-      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
+      /* While the check above it is open, Escape belongs to the check (DeskModal listens on window). */
+      onKeyDown={(e) => { if (e.key === "Escape" && !asking) { e.stopPropagation(); onClose(); } }}>
       <div className="dh">
         <span className="au-av" style={{ background: avatarColour(doctor.id, doctor.active) }} aria-hidden="true">{initials(doctor.displayName.replace(/^dr\.?\s+/i, ""))}</span>
         <div className="t">
@@ -550,13 +551,19 @@ function ImpactBody({ ask, error, onConfirm, onKeep }: {
         </>
       )}
       {error !== null && <p role="alert" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{error}</p>}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <SubmitButton plain type="button" className="pri" data-testid="doctor-impact-confirm" disabled={data === undefined}
-          style={ask.change.kind === "deactivate" ? { background: "var(--red)", borderColor: "var(--red)" } : undefined} onClick={onConfirm}>
-          {ask.change.kind === "deactivate" ? t("opdAdmin.doctors.ask.confirmDeactivate") : t("opdAdmin.doctors.ask.confirmMove")}
-        </SubmitButton>
-        <button type="button" className="sec" style={{ height: 40 }} onClick={onKeep}>{t("opdAdmin.doctors.ask.keep")}</button>
-      </div>
+      {/* The buttons arrive WITH the answer: confirming an unread check is not a choice, and a disabled
+          first button is where DeskModal's opening focus would silently fail, leaving Escape to the panel. */}
+      {(data !== undefined || impact.isError) && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {data !== undefined && (
+            <SubmitButton plain type="button" className="pri" data-testid="doctor-impact-confirm"
+              style={ask.change.kind === "deactivate" ? { background: "var(--red)", borderColor: "var(--red)" } : undefined} onClick={onConfirm}>
+              {ask.change.kind === "deactivate" ? t("opdAdmin.doctors.ask.confirmDeactivate") : t("opdAdmin.doctors.ask.confirmMove")}
+            </SubmitButton>
+          )}
+          <button type="button" className="sec" style={{ height: 40 }} onClick={onKeep}>{t("opdAdmin.doctors.ask.keep")}</button>
+        </div>
+      )}
     </div>
   );
 }

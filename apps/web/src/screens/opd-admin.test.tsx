@@ -339,6 +339,29 @@ describe("OpdAdmin", () => {
     confirm.mockRestore();
   });
 
+  /*
+    #1127 browser walk, 2026-11-19 — Escape on the deactivate check closed the PANEL behind it and left
+    the check open: the check's first button was disabled while it loaded, DeskModal's opening focus
+    failed on it, focus stayed on the panel, and the panel's Escape handler swallowed the key.
+  */
+  it("#1127 — Escape on the deactivate check closes the check and keeps the panel", async () => {
+    stubFetch({
+      ...MASTERS,
+      "GET /api/opd/doctors/doc-1/impact": { booked: 0, bookedByDate: [], waitingToday: 0 },
+    });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Doctors" }));
+    await user.click(await screen.findByTestId("doctor-open-doc-1"));
+    await user.click(within(await screen.findByTestId("doctor-panel")).getByTestId("doctor-deactivate"));
+    await screen.findByTestId("doctor-impact-ask");
+    await screen.findByTestId("doctor-impact-confirm");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("doctor-impact-ask")).toBeNull());
+    expect(screen.getByTestId("doctor-panel")).toBeInTheDocument();
+    expect(callsTo("PATCH", "/api/opd/doctors/doc-1")).toHaveLength(0);
+  });
+
   it("#914 — a covering doctor's schedule row names the department the session serves", async () => {
     const covering = [{ ...DOCTORS[0]!, secondary: { departmentId: "dep-2", fromDate: "2026-10-17", toDate: null } }];
     stubFetch({
