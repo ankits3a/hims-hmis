@@ -73,7 +73,7 @@ import { StoresShelf } from "./screens/stores-shelf";
 import { StoresApprove, StoresPick, StoresPorter, StoresReceive, StoresTicketTimeline } from "./screens/stores-tickets";
 import { StoresGate, StoresPasses } from "./screens/stores-gate";
 import { StoresTower } from "./screens/stores-tower";
-import { StoresAssetPassport, StoresAssets, StoresTagUnits, StoresVerificationRound } from "./screens/stores-assets";
+import { StoresAssetPassport, StoresAssets, StoresCondemnSign, StoresTagUnits, StoresVerificationRound } from "./screens/stores-assets";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -1948,6 +1948,12 @@ const storesRoundRoute = createRoute({
   validateSearch: (s: Record<string, unknown>): { roundId?: string } => ({ roundId: str(s.roundId) }),
   component: StoresVerificationRound,
 });
+// STORES S4b (#1114) — the committee's phone: the condemnations this person may sign (`?c=` puts one first).
+const storesCondemnRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/stores/condemn",
+  validateSearch: (s: Record<string, unknown>): { c?: string } => ({ c: str(s.c) }),
+  component: StoresCondemnSign,
+});
 const storesTicketRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/stores/tickets/$indentId",
@@ -2061,7 +2067,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesAssetsRoute, storesAssetRoute, storesTagUnitsRoute, storesRoundRoute, storesTicketRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesAssetsRoute, storesAssetRoute, storesTagUnitsRoute, storesRoundRoute, storesCondemnRoute, storesTicketRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { PhotoCapture } from "../components/photo-capture";
 import { QrScan, cameraScanPossible } from "../components/qr-scan";
 import { ApiError, apiDownload } from "../lib/api";
 import {
   acceptAssetTransfer, addAssetDetails, assetAdditions, assetById, assetFoundHere, assetLabel, assetLookup, assetRegister, assetsDue, closeAssetRepair,
   closeRound, getRound, myAssets, openAssetRepair, proposeAssetTransfer, reportAssetFault, scanRound, startRound, tagLine, tagLines, tagUnits,
-  verificationRounds,
+  verificationRounds, addRegulatorPaper, assetRemovals, condemnations, condemnationsToSign, disposalBuyers, disposeCondemned, objectCondemnation,
+  proposeCondemnation, returnToUse, signCondemnation, withdrawUnit, writeOffLoss,
 } from "../lib/assets-api";
 import { printDocumentHere, readPrintSetting } from "../lib/browser-print";
 import { listAllShelves, myShelves, storesErrorCode } from "../lib/stores-api";
@@ -15,8 +17,9 @@ import { useOnline } from "./stores-tickets";
 import "./stores.css";
 import type {
   StoresAssetStatus, StoresDueWord, WireAssetDue, WireAssetLookup, WireAssetNext, WireAssetPassportFull, WireAssetPassportForeign, WireAssetRegisterRow,
-  WireStoresShelf, WireTagLine, WireVerificationRound,
+  WireStoresShelf, WireTagLine, WireVerificationRound, StoresCondemnationReason, StoresCondemnationStatus, WireCondemnation,
 } from "@hmis/contracts";
+import type { DisposeBody } from "../lib/assets-api";
 
 /**
  * STORES S4a (#1114, spec "## Screens") — THE ASSET PASSPORT.
@@ -82,12 +85,24 @@ function GreyRows({ n = 3 }: { n?: number }): React.ReactElement {
   return <div aria-busy="true">{Array.from({ length: n }, (_, i) => <div key={i} aria-hidden="true" style={{ ...rowStyle, background: "var(--rule, #eee)", borderRadius: 4, marginBottom: 4 }} />)}</div>;
 }
 
+/** The names a refusal carries ("ask …"), so it is never a dead end (S4a UX, the server's `whoToAsk` names). */
+function askOf(e: unknown): string[] {
+  if (!(e instanceof ApiError)) return [];
+  const d = (e.body as { detail?: { ask?: unknown } } | null)?.detail;
+  return Array.isArray(d?.ask) ? d.ask.filter((x): x is string => typeof x === "string") : [];
+}
+
 /** A refusal's few words: the server's code, "No connection" when the network failed, else "Could not save". */
 function useRefusal(): (e: unknown) => string {
   const { t } = useTranslation();
   return (e) => {
     if (!(e instanceof ApiError)) return t("stores.ticket.offline");
     const code = storesErrorCode(e);
+    if (code === "not_permitted" && askOf(e).length > 0) return t("stores.assets.notYourDept", { names: askOf(e).join(", ") });
+    if (code === "committee_seat_empty") {
+      const seat = (e.body as { detail?: { seat?: unknown } } | null)?.detail?.seat;
+      return t(`stores.err.committee_seat_empty_${typeof seat === "string" ? seat : "accounts"}`, { defaultValue: t("stores.err.committee_seat_empty") });
+    }
     return code === null ? t("stores.err.failed") : t(`stores.err.${code}`, { defaultValue: t("stores.err.failed") });
   };
 }
@@ -139,15 +154,15 @@ export function StoresAssetPassport(): React.ReactElement {
   const [found, setFound] = useState<WireAssetLookup | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
-  const [refused, setRefused] = useState(false);
+  const [refused, setRefused] = useState<string[] | null>(null);
 
   const load = (p: Promise<WireAssetLookup>): void => {
     setNotice(null);
-    setRefused(false);
+    setRefused(null);
     setBusy(true);
     p.then(setFound).catch((e: unknown) => {
       setFound(null);
-      if (storesErrorCode(e) === "not_permitted") setRefused(true);
+      if (storesErrorCode(e) === "not_permitted") setRefused(askOf(e));
       else setNotice({ text: refusal(e), ok: false });
     }).finally(() => setBusy(false));
   };
@@ -175,7 +190,11 @@ export function StoresAssetPassport(): React.ReactElement {
           </section>
         ) : (
           <>
-            {refused && <p data-testid="asset-refused" style={{ margin: 0, fontWeight: 700 }}>{t("stores.assets.notYourDeptPlain")}</p>}
+            {refused !== null && (
+              <p data-testid="asset-refused" style={{ margin: 0, fontWeight: 700 }}>
+                {refused.length > 0 ? t("stores.assets.notYourDept", { names: refused.join(", ") }) : t("stores.assets.notYourDeptPlain")}
+              </p>
+            )}
             <ScanOrType onCode={(c) => load(assetLookup(c))} />
             <DepartmentAssets onOpen={(id) => load(assetById(id))} />
           </>
@@ -218,7 +237,7 @@ const money = (paise: number): string => `₹${(paise / 100).toLocaleString("en-
 function FullPassport({ p, onChange, onDone }: { p: WireAssetPassportFull; onChange: (p: WireAssetLookup) => void; onDone: () => void }): React.ReactElement {
   const { t, i18n } = useTranslation();
   const refusal = useRefusal();
-  const [sheet, setSheet] = useState<null | "fault" | "details" | "transfer" | "repair">(null);
+  const [sheet, setSheet] = useState<null | "fault" | "details" | "transfer" | "repair" | "withdraw" | "condemn" | "paper">(null);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const done = (next: WireAssetLookup, text: string): void => { onChange(next); setSheet(null); setNotice({ text, ok: true }); };
   const fail = (e: unknown): void => setNotice({ text: refusal(e), ok: false });
@@ -242,6 +261,14 @@ function FullPassport({ p, onChange, onDone }: { p: WireAssetPassportFull; onCha
       </div>
       {p.out !== null && <span>{`${t("stores.gate.dueBack", { date: assetDay(p.out.dueBack, i18n.language) })} · ${p.out.passNo.slice(-4)}`}</span>}
       {p.replace && <p style={{ margin: 0, fontWeight: 700 }}>{t("stores.assets.what.replace")}</p>}
+      {p.condemnation != null && (p.condemnation.status === "pending" || p.condemnation.status === "approved" || p.condemnation.status === "objected") && (
+        <Row testId="asset-condemnation" k={t(p.condemnation.kind === "loss" ? "stores.assets.cond.loss" : "stores.assets.cond.title")}
+          v={<><span style={dim}>{p.condemnation.condNo}</span><CondWord status={p.condemnation.status} /></>} />
+      )}
+      {p.regulatedBy != null && (
+        <Row k={t("stores.assets.cond.regulated")} v={<span style={{ ...word, borderStyle: p.regulatorPaper === true ? "solid" : "dashed" }}>
+          {t(p.regulatorPaper === true ? "stores.assets.cond.paperOnFile" : "stores.assets.cond.paperNeeded")}</span>} />
+      )}
       <Row k={t("stores.assets.place")} v={<span>{p.place.name}</span>} />
       <Row k={t("stores.assets.holder")} v={<span>{p.department?.name ?? "—"}</span>} />
       <Row k={t("stores.assets.putToUse")} v={<span>{p.putToUse === null ? t("stores.assets.noDate") : assetDay(p.putToUse, i18n.language)}</span>} />
@@ -264,11 +291,24 @@ function FullPassport({ p, onChange, onDone }: { p: WireAssetPassportFull; onCha
           {p.can.addDetails && <button type="button" style={btn} onClick={() => { setNotice(null); setSheet("repair"); }}>{t(p.status === "under_repair" ? "stores.assets.repaired" : "stores.assets.openRepair")}</button>}
           {p.can.transfer && <button type="button" style={btn} onClick={() => { setNotice(null); setSheet("transfer"); }}>{t("stores.assets.transfer")}</button>}
           {p.can.addDetails && <button type="button" style={btn} onClick={printLabel}>{t("stores.assets.printLabel")}</button>}
+          {p.can.withdraw === true && <button type="button" style={btn} onClick={() => { setNotice(null); setSheet("withdraw"); }}>{t("stores.assets.withdraw")}</button>}
+          {p.can.returnToUse === true && (
+            <button type="button" style={btn} onClick={() => returnToUse(p.unit.id).then((n) => done(n, t("stores.assets.backInUse"))).catch(fail)}>{t("stores.assets.returnToUse")}</button>
+          )}
+          {p.can.addDetails && p.regulatedBy != null && p.regulatorPaper !== true && (
+            <button type="button" style={btn} onClick={() => { setNotice(null); setSheet("paper"); }}>{t("stores.assets.cond.addPaper")}</button>
+          )}
+          {p.can.condemn === true && <button type="button" style={btn} onClick={() => { setNotice(null); setSheet("condemn"); }}>{t("stores.assets.cond.propose")}</button>}
         </div>
       )}
       {sheet === "fault" && <FaultSheet unitId={p.unit.id} onDone={(n) => done(n, t("stores.assets.faultDone"))} onFail={fail} onCancel={() => setSheet(null)} />}
       {sheet === "details" && <DetailsSheet unitId={p.unit.id} onDone={(n) => done(n, t("stores.assets.saved"))} onFail={fail} onCancel={() => setSheet(null)} />}
       {sheet === "repair" && <RepairSheet unitId={p.unit.id} open={p.status === "under_repair"} onDone={(n) => done(n, t("stores.assets.saved"))} onFail={fail} onCancel={() => setSheet(null)} />}
+      {sheet === "withdraw" && <WithdrawSheet unitId={p.unit.id} onDone={(n) => done(n, t("stores.assets.withdrawn"))} onFail={fail} onCancel={() => setSheet(null)} />}
+      {sheet === "paper" && <PaperSheet unitId={p.unit.id} onDone={(n) => done(n, t("stores.assets.saved"))} onFail={fail} onCancel={() => setSheet(null)} />}
+      {sheet === "condemn" && (
+        <CondemnSheet unitId={p.unit.id} onDone={() => { setSheet(null); setNotice({ text: t("stores.assets.cond.proposed"), ok: true }); }} onFail={fail} onCancel={() => setSheet(null)} />
+      )}
       {sheet === "transfer" && <TransferSheet unitId={p.unit.id} from={p.place.id} onDone={(n) => done(n, t("stores.assets.transferAsked"))} onFail={fail} onCancel={() => setSheet(null)} />}
       <h2 style={{ margin: "6px 0 0", fontSize: 15 }}>{t("stores.assets.events")}</h2>
       {p.events.map((e, i) => (
@@ -294,19 +334,126 @@ function FaultSheet({ unitId, onDone, onFail, onCancel }: SheetProps): React.Rea
   const { t } = useTranslation();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [withPhoto, setWithPhoto] = useState(false);
+  const send = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const b64 = photo === null ? null : await blobToBase64(photo);
+      onDone(await reportAssetFault(unitId, text.trim(), b64));
+    } catch (e) { onFail(e); } finally { setBusy(false); }
+  };
   return (
     <SheetFrame testId="asset-fault-sheet">
       <label style={stack}>
         <span>{t("stores.assets.whatWrong")}</span>
         <input aria-label={t("stores.assets.whatWrong")} maxLength={200} value={text} onChange={(e) => setText(e.target.value)} style={input} autoFocus />
       </label>
+      {withPhoto
+        ? <PhotoCapture facing="environment" onCapture={setPhoto} />
+        : <button type="button" style={{ ...btn, alignSelf: "flex-start" }} onClick={() => setWithPhoto(true)}>{t("stores.assets.addPhoto")}</button>}
       <div style={{ display: "flex", gap: 8 }}>
         <button type="button" style={{ ...primary, flex: 1, minHeight: 48 }} disabled={busy || text.trim() === ""}
-          onClick={() => { setBusy(true); reportAssetFault(unitId, text.trim()).then(onDone).catch(onFail).finally(() => setBusy(false)); }}>{t("stores.assets.send")}</button>
+          onClick={() => void send()}>{t("stores.assets.send")}</button>
         <button type="button" style={btn} onClick={onCancel}>{t("stores.assets.cancel")}</button>
       </div>
     </SheetFrame>
   );
+}
+
+/** The photo's bytes for the JSON body: base64 without the data-URL prefix. */
+function blobToBase64(b: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ""));
+    r.onerror = () => reject(r.error ?? new Error("read failed"));
+    r.readAsDataURL(b);
+  });
+}
+
+/** "Withdrawn": the HOD or in-charge takes the unit out of use, with one line of why. It stays on the shelf. */
+function WithdrawSheet({ unitId, onDone, onFail, onCancel }: SheetProps): React.ReactElement {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState("");
+  return (
+    <SheetFrame testId="asset-withdraw-sheet">
+      <label style={stack}>
+        <span>{t("stores.assets.why")}</span>
+        <input aria-label={t("stores.assets.why")} maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} style={input} autoFocus />
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" style={{ ...primary, flex: 1, minHeight: 48 }} disabled={reason.trim() === ""}
+          onClick={() => withdrawUnit(unitId, reason.trim()).then(onDone).catch(onFail)}>{t("stores.assets.withdraw")}</button>
+        <button type="button" style={btn} onClick={onCancel}>{t("stores.assets.cancel")}</button>
+      </div>
+    </SheetFrame>
+  );
+}
+
+/** Decision 18: the regulator's approval or intimation, its kind and number. */
+function PaperSheet({ unitId, onDone, onFail, onCancel }: SheetProps): React.ReactElement {
+  const { t } = useTranslation();
+  const [kind, setKind] = useState<"decommission" | "transfer" | "intimation">("decommission");
+  const [refNo, setRefNo] = useState("");
+  return (
+    <SheetFrame testId="asset-paper-sheet">
+      <label style={stack}>
+        <span>{t("stores.assets.cond.paperKind")}</span>
+        <select aria-label={t("stores.assets.cond.paperKind")} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} style={input}>
+          {(["decommission", "transfer", "intimation"] as const).map((k) => <option key={k} value={k}>{t(`stores.assets.cond.paper.${k}`)}</option>)}
+        </select>
+      </label>
+      <label style={stack}>
+        <span>{t("stores.assets.cond.refNo")}</span>
+        <input aria-label={t("stores.assets.cond.refNo")} maxLength={80} value={refNo} onChange={(e) => setRefNo(e.target.value)} style={input} />
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" style={{ ...primary, flex: 1, minHeight: 48 }} disabled={refNo.trim() === ""}
+          onClick={() => addRegulatorPaper(unitId, kind, refNo.trim()).then(onDone).catch(onFail)}>{t("stores.assets.save")}</button>
+        <button type="button" style={btn} onClick={onCancel}>{t("stores.assets.cancel")}</button>
+      </div>
+    </SheetFrame>
+  );
+}
+
+const REASONS: readonly StoresCondemnationReason[] = ["beyond_repair", "obsolete", "damaged", "lost"];
+
+/** Decision 13: the HOD or biomedical proposes, with a reason from the list (and, for IT, whether it held data). */
+function CondemnSheet({ unitId, onDone, onFail, onCancel }: { unitId: string; onDone: (c: WireCondemnation) => void; onFail: (e: unknown) => void; onCancel: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState<StoresCondemnationReason>("beyond_repair");
+  const [note, setNote] = useState("");
+  const [holdsData, setHoldsData] = useState(false);
+  return (
+    <SheetFrame testId="asset-condemn-sheet">
+      <div role="radiogroup" aria-label={t("stores.assets.cond.reason")} style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {REASONS.map((r) => (
+          <button key={r} type="button" role="radio" aria-checked={reason === r} style={{ ...(reason === r ? primary : btn), minHeight: 40 }} onClick={() => setReason(r)}>
+            {t(`stores.assets.cond.r.${r}`)}
+          </button>
+        ))}
+      </div>
+      <label style={stack}>
+        <span>{t("stores.assets.cond.note")}</span>
+        <input aria-label={t("stores.assets.cond.note")} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} style={input} />
+      </label>
+      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input type="checkbox" checked={holdsData} onChange={(e) => setHoldsData(e.target.checked)} style={{ width: 22, height: 22 }} />
+        <span>{t("stores.assets.cond.holdsData")}</span>
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" style={{ ...primary, flex: 1, minHeight: 48 }}
+          onClick={() => proposeCondemnation({ unitId, reason, note: note.trim() || null, holdsData }).then(onDone).catch(onFail)}>{t("stores.assets.propose")}</button>
+        <button type="button" style={btn} onClick={onCancel}>{t("stores.assets.cancel")}</button>
+      </div>
+    </SheetFrame>
+  );
+}
+
+/** A proposal's word: Pending, Objected, Approved, then Disposed or Written off. Dashed when it waits on someone. */
+function CondWord({ status }: { status: StoresCondemnationStatus }): React.ReactElement {
+  const { t } = useTranslation();
+  return <span data-cond={status} style={{ ...word, borderStyle: status === "pending" || status === "objected" ? "dashed" : "solid" }}>{t(`stores.assets.cond.status.${status}`)}</span>;
 }
 
 function DetailsSheet({ unitId, onDone, onFail, onCancel }: SheetProps): React.ReactElement {
@@ -754,13 +901,261 @@ function VerificationTab(): React.ReactElement {
   );
 }
 
-/** Condemnation is S4b: the tab is in place, its one primary waits. */
+/**
+ * S4b (#1114, decisions 13, 14) — the Condemnation tab: every proposal with its signatures and its word, open ones first.
+ * One primary, Propose (type the tag's last four, pick a reason). An approved condemnation opens its disposal (scrap
+ * sale, buy-back, e-waste recycler); an approved loss its write-off (the inquiry note's number).
+ */
 function CondemnationTab(): React.ReactElement {
   const { t } = useTranslation();
+  const qc = useQueryClient();
+  const refusal = useRefusal();
+  const q = useQuery({ queryKey: ["stores", "assets", "condemnations"], queryFn: condemnations, retry: false });
+  const rows = q.data?.rows ?? [];
+  const [proposing, setProposing] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
+  const refresh = (text: string): void => { setOpen(null); setProposing(false); setNotice({ text, ok: true }); void qc.invalidateQueries({ queryKey: ["stores", "assets"] }); };
+  const fail = (e: unknown): void => setNotice({ text: refusal(e), ok: false });
   return (
     <section style={stack}>
-      <div style={{ display: "flex" }}><span style={{ flex: 1 }} /><button type="button" style={primary} disabled>{t("stores.assets.propose")}</button></div>
-      <p style={{ margin: 0 }}>{t("stores.assets.nothingYet")}</p>
+      <div style={{ display: "flex" }}><span style={{ flex: 1 }} /><button type="button" style={primary} onClick={() => { setNotice(null); setProposing(true); }}>{t("stores.assets.propose")}</button></div>
+      <Notice n={notice} />
+      {proposing && <ProposeByTag onDone={() => refresh(t("stores.assets.cond.proposed"))} onFail={fail} onCancel={() => setProposing(false)} />}
+      <QueryState q={q} empty={rows.length === 0}>
+        <table data-testid="asset-condemnations" style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead><tr>{["no", "tag", "item", "reason", "signed", "status"].map((c) => <th key={c} style={th}>{t(`stores.assets.cond.col.${c}`)}</th>)}<th style={th} /></tr></thead>
+          <tbody>
+            {rows.map((c) => (
+              <CondRow key={c.id} c={c} open={open === c.id} onToggle={() => setOpen(open === c.id ? null : c.id)} onDone={refresh} onFail={fail} />
+            ))}
+          </tbody>
+        </table>
+      </QueryState>
+    </section>
+  );
+}
+
+function signedOf(c: WireCondemnation): string {
+  return `${String(c.seats.filter((x) => x.signed?.kind === "sign").length)}/${String(c.seats.length)}`;
+}
+
+function CondRow({ c, open, onToggle, onDone, onFail }: { c: WireCondemnation; open: boolean; onToggle: () => void; onDone: (text: string) => void; onFail: (e: unknown) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const act = c.can.dispose ? "stores.assets.cond.dispose" : c.can.writeOff ? "stores.assets.cond.writeOff" : c.can.sign ? "stores.assets.cond.sign" : null;
+  return (
+    <>
+      <tr>
+        <td style={td}>{c.condNo}</td>
+        <td style={td}><Link to="/stores/asset" search={{ unit: c.unit.id }}>{c.unit.last4}</Link></td>
+        <td style={td}>{c.unit.name}</td>
+        <td style={td}>{t(`stores.assets.cond.r.${c.reason}`)}</td>
+        <td style={td}>{signedOf(c)}</td>
+        <td style={td}><CondWord status={c.status} /></td>
+        <td style={td}>
+          {act === "stores.assets.cond.sign"
+            ? <Link to="/stores/condemn" search={{ c: c.id }} style={{ ...btn, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>{t(act)}</Link>
+            : act !== null && <button type="button" style={btn} onClick={onToggle}>{t(act)}</button>}
+        </td>
+      </tr>
+      {open && (
+        <tr><td colSpan={7} style={{ ...td, whiteSpace: "normal", maxWidth: "none" }}>
+          {c.can.dispose ? <DisposeForm c={c} onDone={() => onDone(t("stores.assets.cond.disposedDone"))} onFail={onFail} />
+            : <LossForm c={c} onDone={() => onDone(t("stores.assets.cond.writtenOffDone"))} onFail={onFail} />}
+        </td></tr>
+      )}
+    </>
+  );
+}
+
+/** Propose from the desk: the tag's last four (or a scan), the reason; the server finds the unit. */
+function ProposeByTag({ onDone, onFail, onCancel }: { onDone: () => void; onFail: (e: unknown) => void; onCancel: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [unit, setUnit] = useState<{ id: string; name: string; last4: string } | null>(null);
+  if (unit === null) {
+    return (
+      <SheetFrame testId="asset-propose">
+        <ScanOrType onCode={(code) => assetLookup(code).then((p) => {
+          if (p.access === "full") setUnit({ id: p.unit.id, name: p.unit.name, last4: p.unit.last4 });
+          else if (p.access === "choose" && p.matches[0] !== undefined) setUnit({ id: p.matches[0].unitId, name: p.matches[0].name, last4: p.matches[0].tagNo.slice(-4) });
+        }).catch(onFail)} />
+        <button type="button" style={{ ...btn, alignSelf: "flex-start" }} onClick={onCancel}>{t("stores.assets.cancel")}</button>
+      </SheetFrame>
+    );
+  }
+  return (
+    <>
+      <strong>{`${unit.name} · ${unit.last4}`}</strong>
+      <CondemnSheet unitId={unit.id} onDone={onDone} onFail={onFail} onCancel={onCancel} />
+    </>
+  );
+}
+
+const rupeesToPaise = (v: string): number => Math.round(Number(v.replace(/[^\d.]/g, "") || "0") * 100);
+
+/**
+ * Decision 14: one buyer up to ₹25,000; above it three written bids, the highest wins (the buyer is the highest
+ * bidder); an e-waste recycler gives its certificate; a buy-back names the new unit's purchase order. A unit that held
+ * data needs the wipe certificate first; a regulated unit its regulator's paper (both refused by the server, in words).
+ */
+function DisposeForm({ c, onDone, onFail }: { c: WireCondemnation; onDone: () => void; onFail: (e: unknown) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const buyers = useQuery({ queryKey: ["stores", "assets", "buyers"], queryFn: disposalBuyers, retry: false });
+  const [f, setF] = useState({ method: "scrap_sale" as DisposeBody["method"], buyerId: "", amount: "", invoiceNo: "", receiptRef: "", poRef: "", certificateNo: "", wipe: "" });
+  const [bids, setBids] = useState([{ vendorId: "", amount: "" }, { vendorId: "", amount: "" }, { vendorId: "", amount: "" }]);
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => setF((x) => ({ ...x, [k]: e.target.value }));
+  const amountPaise = rupeesToPaise(f.amount);
+  const needBids = f.method === "scrap_sale" && amountPaise > 2_500_000;
+  const vendors = buyers.data ?? [];
+  const field = (k: keyof typeof f, label: string, mode?: "decimal"): React.ReactElement => (
+    <label style={{ ...stack, minWidth: 160, flex: "1 1 160px" }}>
+      <span>{label}</span>
+      <input aria-label={label} inputMode={mode} value={f[k]} onChange={set(k)} style={input} />
+    </label>
+  );
+  const submit = (): void => {
+    const body: DisposeBody = {
+      method: f.method, buyerId: f.buyerId, amountPaise, invoiceNo: f.invoiceNo.trim(),
+      receiptRef: f.receiptRef.trim() || null, poRef: f.poRef.trim() || null, certificateNo: f.certificateNo.trim() || null, wipeCertificateNo: f.wipe.trim() || null,
+      ...(needBids ? { bids: bids.filter((b) => b.vendorId !== "").map((b) => ({ vendorId: b.vendorId, amountPaise: rupeesToPaise(b.amount) })) } : {}),
+    };
+    disposeCondemned(c.id, body).then(onDone).catch(onFail);
+  };
+  return (
+    <div data-testid="asset-dispose" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div role="radiogroup" aria-label={t("stores.assets.cond.method")} style={{ display: "flex", gap: 6 }}>
+        {(["scrap_sale", "buy_back", "e_waste"] as const).map((m) => (
+          <button key={m} type="button" role="radio" aria-checked={f.method === m} style={{ ...(f.method === m ? primary : btn) }} onClick={() => setF((x) => ({ ...x, method: m }))}>
+            {t(`stores.assets.cond.m.${m}`)}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <label style={{ ...stack, minWidth: 220, flex: "2 1 220px" }}>
+          <span>{t(f.method === "e_waste" ? "stores.assets.cond.recycler" : "stores.assets.cond.buyer")}</span>
+          <select aria-label={t("stores.assets.cond.buyer")} value={f.buyerId} onChange={set("buyerId")} style={input}>
+            <option value="" />
+            {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+          </select>
+        </label>
+        {field("amount", t("stores.assets.cond.amount"), "decimal")}
+        {field("invoiceNo", t("stores.assets.cond.invoice"))}
+        {f.method === "scrap_sale" && field("receiptRef", t("stores.assets.cond.receipt"))}
+        {f.method === "buy_back" && field("poRef", t("stores.assets.cond.po"))}
+        {f.method === "e_waste" && field("certificateNo", t("stores.assets.cond.certificate"))}
+        {c.holdsData && field("wipe", t("stores.assets.cond.wipe"))}
+      </div>
+      {needBids && (
+        <div style={stack}>
+          <strong>{t("stores.assets.cond.bids")}</strong>
+          <div style={{ display: "flex", gap: 8, ...dim }}><span style={{ flex: 2 }}>{t("stores.assets.cond.bidder")}</span><span style={{ flex: 1 }}>{t("stores.assets.cond.amount")}</span></div>
+          {bids.map((b, i) => (
+            <div key={i} style={{ display: "flex", gap: 8 }}>
+              <select aria-label={`${t("stores.assets.cond.bid")} ${String(i + 1)}`} value={b.vendorId} style={{ ...input, flex: 2 }}
+                onChange={(e) => setBids((x) => x.map((y, j) => (j === i ? { ...y, vendorId: e.target.value } : y)))}>
+                <option value="" />
+                {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+              <input aria-label={`${t("stores.assets.cond.amount")} ${String(i + 1)}`} inputMode="decimal" value={b.amount} style={{ ...input, flex: 1 }}
+                onChange={(e) => setBids((x) => x.map((y, j) => (j === i ? { ...y, amount: e.target.value } : y)))} />
+            </div>
+          ))}
+        </div>
+      )}
+      <p style={{ margin: 0, ...dim }}>{t("stores.assets.cond.taxNote")}</p>
+      <button type="button" style={{ ...primary, alignSelf: "flex-start", minHeight: 44 }} disabled={f.buyerId === "" || f.invoiceNo.trim() === ""} onClick={submit}>
+        {t("stores.assets.cond.disposeGo")}
+      </button>
+    </div>
+  );
+}
+
+function LossForm({ c, onDone, onFail }: { c: WireCondemnation; onDone: () => void; onFail: (e: unknown) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [no, setNo] = useState("");
+  return (
+    <div data-testid="asset-loss" style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <label style={{ ...stack, minWidth: 240 }}>
+        <span>{t("stores.assets.cond.inquiry")}</span>
+        <input aria-label={t("stores.assets.cond.inquiry")} value={no} onChange={(e) => setNo(e.target.value)} style={input} />
+      </label>
+      <button type="button" style={{ ...primary, minHeight: 44 }} disabled={no.trim() === ""} onClick={() => writeOffLoss(c.id, no.trim()).then(onDone).catch(onFail)}>
+        {t("stores.assets.cond.writeOff")}
+      </button>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════ the committee's phone (S4b) ═══════════════════════════════ */
+
+/**
+ * S4b (#1114, spec "Condemnation (phone, signer)") — each proposal this person may sign: unit · reason · cost · age ·
+ * repairs in 12 months · signatures so far, and one primary, Sign; "Object" asks one line of why. Refusals in words.
+ */
+export function StoresCondemnSign(): React.ReactElement {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const search = useSearch({ strict: false }) as { c?: string };
+  const q = useQuery({ queryKey: ["stores", "condemn", "to-sign"], queryFn: condemnationsToSign, retry: false });
+  const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
+  const rows = [...(q.data?.rows ?? [])].sort((a, b) => Number(b.id === search.c) - Number(a.id === search.c));
+  const refusal = useRefusal();
+  const after = (text: string): void => { setNotice({ text, ok: true }); void qc.invalidateQueries({ queryKey: ["stores", "condemn"] }); };
+  // A refusal (already signed, a seat taken meanwhile) says so in words and re-reads the list, so the card shows the truth.
+  const refused = (e: unknown): void => { setNotice({ text: refusal(e), ok: false }); void qc.invalidateQueries({ queryKey: ["stores", "condemn"] }); };
+  return (
+    <div data-testid="stores-condemn" className="stores-ui" style={page}>
+      <Offline />
+      <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.assets.cond.signTitle")}</h1>
+      <Notice n={notice} />
+      {q.data === undefined && !q.isError ? <GreyRows n={4} />
+        : q.isError ? <p style={{ margin: 0, fontWeight: 700 }}>{refusal(q.error)}</p>
+        : rows.length === 0 ? <p style={{ margin: 0 }}>{t("stores.assets.nothingYet")}</p>
+        : rows.map((c) => <SignCard key={c.id} c={c} onDone={after} onFail={refused} />)}
+    </div>
+  );
+}
+
+function SignCard({ c, onDone, onFail }: { c: WireCondemnation; onDone: (text: string) => void; onFail: (e: unknown) => void }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const [objecting, setObjecting] = useState(false);
+  const [why, setWhy] = useState("");
+  return (
+    <section data-testid={`sign-${c.id}`} style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "2px solid var(--ink, #222)", paddingTop: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <strong style={{ ...cell, whiteSpace: "nowrap", fontSize: 17 }}>{c.unit.name}</strong>
+        <span style={{ fontSize: 24, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{c.unit.last4}</span>
+        <CondWord status={c.status} />
+      </div>
+      <Row k={t("stores.assets.cond.col.reason")} v={<span>{t(`stores.assets.cond.r.${c.reason}`)}</span>} />
+      {"costPaise" in c && <Row k={t("stores.assets.cost")} v={<span>{c.costPaise === null || c.costPaise === undefined ? t("stores.assets.costUnknown") : money(c.costPaise)}</span>} />}
+      <Row k={t("stores.assets.cond.age")} v={<span>{c.ageYears === null ? "—" : t("stores.assets.cond.years", { count: c.ageYears })}</span>} />
+      <Row k={t("stores.assets.cond.repairs")} v={<span>{String(c.repairs12m)}</span>} />
+      <Row k={t("stores.assets.place")} v={<span>{c.unit.department ?? c.unit.place}</span>} />
+      {c.seats.map((s) => (
+        <Row key={s.seat} k={t(`stores.assets.cond.seat.${s.seat}`)} v={s.signed === null
+          ? <span style={{ ...word, borderStyle: "dashed" }}>{t("stores.assets.cond.status.pending")}</span>
+          : <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{`${s.signed.by} · ${assetDay(s.signed.at.slice(0, 10), i18n.language)}`}</span>} />
+      ))}
+      {objecting ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={stack}>
+            <span>{t("stores.assets.why")}</span>
+            <input aria-label={t("stores.assets.why")} maxLength={300} value={why} onChange={(e) => setWhy(e.target.value)} style={input} autoFocus />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" style={{ ...primary, flex: 1, minHeight: 48 }} disabled={why.trim() === ""}
+              onClick={() => objectCondemnation(c.id, why.trim()).then(() => onDone(t("stores.assets.cond.objectedDone"))).catch(onFail)}>{t("stores.assets.cond.object")}</button>
+            <button type="button" style={btn} onClick={() => setObjecting(false)}>{t("stores.assets.cancel")}</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" style={{ ...primary, flex: 1, minHeight: 48 }} disabled={!c.can.sign}
+            onClick={() => signCondemnation(c.id).then(() => onDone(t("stores.assets.cond.signed"))).catch(onFail)}>{t("stores.assets.cond.sign")}</button>
+          <button type="button" style={btn} disabled={!c.can.object} onClick={() => setObjecting(true)}>{t("stores.assets.cond.object")}</button>
+        </div>
+      )}
     </section>
   );
 }
@@ -807,7 +1202,39 @@ function ExportsTab(): React.ReactElement {
           </tbody>
         </table>
       </QueryState>
-      <p style={{ margin: 0, ...dim }}>{`${t("stores.assets.removals")}: ${t("stores.assets.nothingYet")}`}</p>
+      <Removals month={month} onFail={(e) => setNotice({ text: refusal(e), ok: false })} />
+    </section>
+  );
+}
+
+/** Decision 15: the month's removals for Tally (condemnation, reason, sale amount, invoice), and its one download. */
+function Removals({ month, onFail }: { month: string; onFail: (e: unknown) => void }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const q = useQuery({ queryKey: ["stores", "assets", "removals", month], queryFn: () => assetRemovals(month), retry: false });
+  const rows = q.data?.rows ?? [];
+  return (
+    <section style={{ ...stack, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <strong style={{ flex: 1 }}>{t("stores.assets.removals")}</strong>
+        <button type="button" style={{ ...btn, minHeight: 44 }}
+          onClick={() => apiDownload(`/stores/assets/exports/removals?month=${encodeURIComponent(month)}&format=csv`, `asset-removals-${month}.csv`).catch(onFail)}>
+          {t("stores.assets.download")}
+        </button>
+      </div>
+      <QueryState q={q} empty={rows.length === 0}>
+        <table data-testid="asset-removals" style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead><tr>{["tag", "item", "no", "reason", "method", "date"].map((c) => <th key={c} style={th}>{t(c === "no" || c === "reason" || c === "method" ? `stores.assets.cond.col.${c}` : `stores.assets.col.${c}`)}</th>)}<th style={th}>{t("stores.assets.cond.amount")}</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.unitId}>
+                <td style={td}>{r.tagNo.slice(-4)}</td><td style={td}>{r.name}</td><td style={td}>{r.condemnationNo}</td>
+                <td style={td}>{t(`stores.assets.cond.r.${r.reason}`)}</td><td style={td}>{t(`stores.assets.cond.m.${r.method}`)}</td>
+                <td style={td}>{assetDay(r.on, i18n.language)}</td><td style={{ ...td, textAlign: "right" }}>{money(r.amountPaise)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </QueryState>
     </section>
   );
 }
