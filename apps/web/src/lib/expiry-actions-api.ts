@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { dateLocale } from "./date-locale";
 import type { Pack, SupplierKind } from "./returns-api";
 
 /**
@@ -53,14 +54,14 @@ export const moveExpiryBatch = (storeResourceId: string, batchId: string): Promi
   api("POST", "/pharmacy/office/expiry-actions/move", { storeResourceId, batchId });
 
 /** An instant in IST, short: "6 Jan, 10:30". */
-export function istShort(iso: string, locale = "en-IN"): string {
+export function istShort(iso: string, locale = dateLocale()): string {
   return new Intl.DateTimeFormat(locale, {
     timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(new Date(iso));
 }
 
 /** A drug's expiry is a month: "May 27". */
-export function expiryMonthLabel(isoDate: string, locale = "en-IN"): string {
+export function expiryMonthLabel(isoDate: string, locale = dateLocale()): string {
   const [y, m] = isoDate.split("-").map(Number) as [number, number];
   return new Intl.DateTimeFormat(locale, { timeZone: "UTC", month: "short", year: "2-digit" }).format(new Date(Date.UTC(y, m - 1, 1)));
 }

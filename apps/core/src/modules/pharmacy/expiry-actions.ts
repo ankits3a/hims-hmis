@@ -1,6 +1,6 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { monthEndOf } from "@hmis/contracts";
-import { IST_UTC_OFFSET_MINUTES } from "../../kernel/approvals/cumulative";
+import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { events } from "../../kernel/db/schema";
@@ -118,7 +118,6 @@ const MOVE_RIGHT = "materials.stock.issue";
 const MOVE_REASON = "expiry action list (#1063): the other counter sells it";
 
 const DAY_MS = 86_400_000;
-const IST_MS = IST_UTC_OFFSET_MINUTES * 60_000;
 
 // ═══════════════════════════════════ small pure pieces ═══════════════════════════════════
 
@@ -128,10 +127,11 @@ const daysFrom = (from: string, to: string): number => Math.round(dayNo(to) - da
 
 /** The next Monday 07:00 IST strictly after `now`. */
 export function nextExpiryRunAt(now: Date): Date {
-  const ist = new Date(now.getTime() + IST_MS);
+  // The hospital clock is the kernel's (`istDayWindow`, `istDayString`), never a copy of the offset here.
   const [h, m] = EXPIRY_ACTIONS_IST.split(":").map(Number) as [number, number];
-  const todayAt = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate(), h, m) - IST_MS;
-  let at = todayAt + ((EXPIRY_ACTIONS_WEEKDAY - ist.getUTCDay() + 7) % 7) * DAY_MS;
+  const todayAt = istDayWindow(now).start.getTime() + (h * 60 + m) * 60_000;
+  const weekday = new Date(`${istDayString(now)}T00:00:00Z`).getUTCDay();
+  let at = todayAt + ((EXPIRY_ACTIONS_WEEKDAY - weekday + 7) % 7) * DAY_MS;
   if (at <= now.getTime()) at += 7 * DAY_MS;
   return new Date(at);
 }

@@ -1,3 +1,4 @@
+import { dateLocale } from "../../lib/date-locale";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -38,7 +39,7 @@ export function ExpiringView({ onOpen }: { onOpen?: (open: ReturnsOpen) => void 
   const canRun = can("materials.returns.manage");
   const canMove = can("materials.stock.issue");
   const canWriteOff = can("materials.writeoffs.manage");
-  const locale = i18n.language === "hi" ? "hi-IN" : "en-IN";
+  const locale = dateLocale(i18n.language);
   const d = q.data;
 
   const run = async (): Promise<void> => {
