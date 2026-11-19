@@ -195,6 +195,18 @@ export type MaterialsErrorCode =
   | "transfer_self_receipt"
   /** The destination names its keepers (`attributes.custodianRoles`) and the receiver holds none of them. */
   | "not_store_keeper"
+  /**
+   * STORES S1 (#1111) — the destination is a Stores department shelf (`attributes.domain: 'stores'`,
+   * `kind: 'shelf'`). Stock enters a shelf only through the Stores intent `receiveAtShelf`, which checks
+   * the department-scoped grant and writes the department's cost centre; this route checks neither.
+   */
+  | "shelf_receives_through_stores"
+  /**
+   * STORES (pre-merge review S1) — a `/materials/transfers` call names a Stores place (`attributes.domain: 'stores'`)
+   * as source or destination. Stores stock moves through the Stores intents, which check the department grant and
+   * the keepers; the materials route checks neither.
+   */
+  | "moves_through_stores"
   // ── PHARMACY PARITY P2 — purchase orders and the GRN received against one ──
   /** No such purchase order. */
   | "unknown_purchase_order"

@@ -19,6 +19,7 @@ import { otManifest } from "../../modules/ot";
 import { labManifest } from "../../modules/lab";
 import { pcpndtManifest } from "../../modules/pcpndt";
 import { aerbManifest } from "../../modules/aerb";
+import { storesManifest } from "../../modules/stores";
 import { radiologyManifest } from "../../modules/radiology";
 import { pharmacyManifest } from "../../modules/pharmacy";
 import { rosterManifest } from "../../modules/roster";
@@ -193,4 +194,8 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
   // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
   doctorDeskManifest,
+  // STORES S1 (#1111, decision 0099) — appended. A leaf over materials: three permissions (`stores.masters.manage`
+  // at hospital scope; `stores.shelf.read` and `.work` asked at a shelf's department), one menu entry (`/stores`),
+  // no subscription, no job — app-only, the `aerb` shape.
+  storesManifest,
 ];

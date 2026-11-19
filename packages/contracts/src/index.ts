@@ -30,3 +30,4 @@ export * from "./counter-pack";
 export * from "./doctor-desk";
 export * from "./gst-code";
 export * from "./drug-strength";
+export * from "./stores";

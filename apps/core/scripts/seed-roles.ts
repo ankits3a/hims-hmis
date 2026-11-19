@@ -1318,6 +1318,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D3 — the head of stores keeps the fridges' master (which store, what range) and closes
       // an excursion: release each held batch with its reason, or write it off. DEFAULT — owner may change.
       "pharmacy.coldchain.manage",
+      // STORES S1 (#1111, decision 0099) — the non-drug Stores masters: categories, items, stores, shelves,
+      // par and the new-item queue. The spec's own words: "The materials head holds stores.masters.manage."
+      "stores.masters.manage",
     ],
   },
   {
@@ -1992,6 +1995,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "pharmacology_reviewer",
     permissions: ["formulary.read", "formulary.crk.sign"],
   },
+  /**
+   * STORES S1 (#1111, decision 0099) — THE NON-DRUG STORES. Two new DEPARTMENT-SCOPED roles: a holder is
+   * assigned at an org department (`scope_type = 'department'`), and every shelf act is asked at the
+   * shelf's department, so the in-charge of Housekeeping cannot touch Laundry's shelf. Neither holds a
+   * `materials.*` string (the materials keeper check ignores scope). NOBODY is assigned by any seed.
+   *   · `department_store_incharge` — receives at, uses from, checks and drafts a reorder for the shelf.
+   *   · `department_head` — reads the shelf (and approves the department's tickets in S2).
+   * The materials head keeps the Stores masters (`stores.masters.manage`, in its own row above).
+   */
+  { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work"] },
+  { roleKey: "department_head", permissions: ["stores.shelf.read"] },
 ];
 
 /**
@@ -2254,6 +2268,9 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
   admin: "Administrator",
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
+  // STORES S1 (#1111) — both assigned AT a department, never hospital-wide.
+  department_store_incharge: "Department Store In-charge (receives, uses and counts the department's own Stores shelf)",
+  department_head: "Head of Department (reads the department's Stores shelf; approves its requests from S2)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

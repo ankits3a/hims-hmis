@@ -135,6 +135,7 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   // ── OPEN QUESTION: master data no deploy can supply, but no runbook today ──
   billing: "OPEN — `billing_config` is checked under `hospital`; a cashier's go-live may still be one",
   materials: "OPEN — vendors, items and opening stock are master data no seed supplies",
+  stores: "OPEN — the non-drug front door over materials (#1111): GEN-MAIN, GEN-NIGHT and the 12 categories are seeded; department shelves and opening counts are commissioned per department",
   membership: "OPEN — the holder book is loaded from the owner's own files (Plan 09 DD3)",
   roster: "PHASE R (R1) — not a department: a layer OVER every one of them, the way `aerb` is a layer over radiology. It has no clinical day of its own, nothing to commission and no patient; what it HAS is one G1 row, because a hospital whose masters are unseeded cannot draft any department's rota",
   aerb: "RULED not a department 2026-09-07 — a statutory layer OVER radiology; `radiology_devices_licensed` and `radiology_rso_appointed` already check its acts, and a row set of its own would demand a second check of the same certificates",

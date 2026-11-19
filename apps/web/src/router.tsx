@@ -68,6 +68,8 @@ import { BillingOffice } from "./screens/billing-office";
 import { OpsMode } from "./screens/ops-mode";
 import { AdminUsers } from "./screens/admin-users";
 import { AttendanceLinks } from "./screens/attendance-links";
+import { StoresDesk } from "./screens/stores-desk";
+import { StoresShelf } from "./screens/stores-shelf";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -266,6 +268,9 @@ const NAV: readonly NavEntry[] = [
   // #634 — who on the attendance machine's list is which login: the count and the unlinked list for the
   // owner and the Attendance Committee, the suggestions and the hand link for the Users administrator.
   { to: "/attendance/links", label: "nav.attendanceLinks", permission: "attendance.all.read", anyOf: ["auth.users.manage"], group: "admin" },
+  // STORES S1 (#1111, decision 0099) — the non-drug Stores desk, `storesManifest.menu`'s entry. A department's
+  // own shelf (`/stores/shelf/$shelfId`) is opened from it; its grants are department-scoped, so it is no menu row.
+  { to: "/stores", label: "nav.stores", permission: "stores.masters.manage", group: "admin" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -1864,6 +1869,22 @@ const attendanceLinksRoute = createRoute({
   component: AttendanceLinks,
 });
 
+// STORES S1 (#1111) — the materials head's desk (`/stores`, 16:9) and a department's shelf on the phone. The
+// server asks every shelf act at the shelf's department; the screens show what it allows.
+const storesDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/stores",
+  component: StoresDesk,
+});
+const storesShelfRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/stores/shelf/$shelfId",
+  component: function StoresShelfPage() {
+    const { shelfId } = storesShelfRoute.useParams();
+    return <StoresShelf shelfId={shelfId} />;
+  },
+});
+
 /**
  * PLAN 09 T3 / DD8 — card recognition. It is under `/counter/…` rather than `/billing/…` because
  * recognition DEPLOYS BEFORE the billing integration is armed: the counter has to be able to look a
@@ -1968,7 +1989,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

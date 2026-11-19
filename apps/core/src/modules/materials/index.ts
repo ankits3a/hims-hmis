@@ -107,7 +107,7 @@ export { PO_HEAD_APPROVAL_LIMIT_PAISE, PO_RECEIPT_TOLERANCE_BPS, PRICE_CHECK_THR
 export {
   OPEN_PO_STATUSES, allowedReceiptBase, approvalTierFor, assertNotPoApprover, purchaseOrderOfGrn, cancelPurchaseOrder, createPurchaseOrder, decidePurchaseOrder,
   getPurchaseOrder, lastPurchaseByItem, lineGstPaise, listPurchaseOrders, onOrderAt, overduePurchaseOrders,
-  purchasableVendors, purchaseOrdersAwaiting, receivableLines, sendPurchaseOrder, setStockLevel, settlePurchaseOrders,
+  purchasableVendors, purchaseOrdersAwaiting, receivableLines, sendPurchaseOrder, setStockLevel, settlePurchaseOrders, writeStockLevel,
   stockLevelsAt, submitPurchaseOrder, updatePurchaseOrder,
 } from "./purchase-orders";
 export type { LastPurchase, PoFilter, PoInput, PoLineInput, PoLineView, PoStatus, PoSummary, PoView, StockLevel } from "./purchase-orders";
@@ -203,3 +203,7 @@ export type {
   DuplicateSuggestion, DuplicateWhy, ItemMergeHooks, ItemMergeStatus, ItemMergeSummary, ItemMergeView, MergeItemSide, MergePreview,
   MergeRefusal, MergeRule, MergeStockLine, MergeTally,
 } from "./item-merge";
+// STORES S1 (#1111) — additive: the opening balance of a store (one `OPEN-<code>` batch per line, one
+// `adjust` row, no cost centre), read and written by `modules/stores`.
+export { OPENING_BALANCE_REF_TYPE, hasOpeningBalance, postOpeningBalances } from "./opening-balances";
+export type { OpeningLine } from "./opening-balances";

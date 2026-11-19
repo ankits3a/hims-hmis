@@ -168,6 +168,33 @@ export const LEDGER_REASON_VALUES = ["grn", "issue", "receive", "consume", "retu
  * `shelf_life_days` is nullable and its absence is a FACT: a stationery item has no shelf life, and
  * DD8 rule 5's `min(6 months, 75% of shelf_life)` falls back to the six-month bound when it is null.
  */
+/**
+ * STORES S1 (#1111, decision 0099) — THE NON-DRUG CATEGORY TREE. Two levels: a top category (parent
+ * null) and its sub-categories. Every Stores item names one (`items.category_id`); pharmacy items name
+ * none, so the column is nullable and every pharmacy row is unchanged. The depth rule (a sub-category
+ * never has children) lives in `modules/stores/items.ts`, which is the only writer.
+ */
+export const itemCategories = pgTable(
+  "item_categories",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    nameHi: text("name_hi"),
+    parentId: text("parent_id").references((): AnyPgColumn => itemCategories.id),
+    active: boolean("active").notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("item_categories_code_lower_ux").using("btree", sql`lower(${t.code})`),
+    index("item_categories_parent_idx").on(t.parentId),
+    check("item_categories_not_own_parent_ck", sql`${t.parentId} is null or ${t.parentId} <> ${t.id}`),
+  ],
+);
+
+/** STORES S1 — how a Stores item is kept at a department (decision 4 of the spec). `tagged` arrives with S4. */
+export const ITEM_TRACK_MODE_VALUES = ["expensed", "shelf", "durable"] as const;
+
 export const items = pgTable(
   "items",
   {
@@ -236,9 +263,22 @@ export const items = pgTable(
      */
     mergedIntoItemId: text("merged_into_item_id").references((): AnyPgColumn => items.id),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
+    /**
+     * STORES S1 (#1111) — four columns, all nullable or defaulted so every pharmacy row is unchanged.
+     * `category_id` and `track_mode` are set on every Stores item and on no pharmacy item;
+     * `search_aliases` holds the Hindi, Hinglish and local names a request search matches
+     * ("kachra dabba"); `patient_billable` marks an item that can appear on a patient's bill, which
+     * Stores refuses (ruling 0099 Q1).
+     */
+    categoryId: text("category_id").references(() => itemCategories.id),
+    trackMode: text("track_mode"),
+    searchAliases: text("search_aliases").array().notNull().default(sql`'{}'::text[]`),
+    patientBillable: boolean("patient_billable").notNull().default(false),
     ...auditColumns,
   },
   (t) => [
+    index("items_category_idx").on(t.categoryId),
+    check("items_track_mode_ck", sql`${t.trackMode} is null or ${t.trackMode} in ('expensed', 'shelf', 'durable')`),
     /** A code is read off a label and case is not identity — the `formulary_salts_name_lower_ux` precedent. */
     uniqueIndex("items_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("items_class_active_idx").on(t.class, t.active),

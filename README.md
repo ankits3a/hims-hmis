@@ -1696,6 +1696,13 @@ person sees their own days — as one word a day (Present, Absent, Leave, Off, P
 a day with a single punch), without times. A request to meet about a Confirm day goes to whoever
 holds `attendance_committee`; nobody is assigned to that role by any seed.
 
+**Non-drug Stores (decision 0099, S1 #1111, 2026-11-18).** One master register for every item the
+hospital keeps that is not a medicine, the central store `GEN-MAIN` and each department's shelves, on
+the same item table and ledger as the pharmacy. `stores.masters.manage` is held by `materials_head`; the new roles
+`department_store_incharge` (`stores.shelf.read`, `stores.shelf.work`) and `department_head`
+(`stores.shelf.read`) hold nothing else. Both are assigned AT a department, never hospital-wide, and
+every shelf act is asked at the shelf's department; nobody is assigned to either by any seed.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

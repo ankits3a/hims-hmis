@@ -45,7 +45,7 @@ import {
   cancelGrn, captureGrn, getGrn, grnWorklist, mrpRevisionView, nearExpiryAcceptanceView, postGrn, requestMrpRevisionApproval,
   requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
-import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
+import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, refuseStoresPlacesOnMaterialsRoute, transferWorklist } from "./transfers";
 import type { TransferView } from "./transfers";
 import { consumptionsFor } from "./consumption";
 import {
@@ -1373,7 +1373,10 @@ export class MaterialsController {
   ): Promise<{ transferId: string; lines: unknown[] }> {
     const b = parsed(issueBody, body);
     try {
-      return await withTx(this.db, (tx) => issueStock(tx, actor, { ...b, occurredAt: new Date() }));
+      return await withTx(this.db, async (tx) => {
+        await refuseStoresPlacesOnMaterialsRoute(tx, [b.fromResourceId, b.toResourceId]);
+        return issueStock(tx, actor, { ...b, occurredAt: new Date() });
+      });
     } catch (e) { toHttp(e); }
   }
 
