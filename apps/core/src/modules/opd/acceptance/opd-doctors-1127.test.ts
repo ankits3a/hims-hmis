@@ -74,20 +74,22 @@ describe("OPD Admin → Doctors (spec #1127)", () => {
   it("spec #1127 D4: staff search lists active non-doctors from two letters, doctor-role first, never an existing doctor", async () => {
     const ravi = await mkUser(db, "ravi", ["doctor"]);
     await db.update(users).set({ fullName: "Ravi Kumar" }).where(eq(users.id, ravi.id));
-    const rahul = await mkUser(db, "rahul", ["front_office"]);
-    await db.update(users).set({ fullName: "Rahul Sinha" }).where(eq(users.id, rahul.id));
-    const rani = await mkUser(db, "rani", ["doctor"]);
-    await db.update(users).set({ fullName: "Rani Devi", active: false }).where(eq(users.id, rani.id));
+    const ravish = await mkUser(db, "ravish", ["front_office"]);
+    await db.update(users).set({ fullName: "Ravish Sinha" }).where(eq(users.id, ravish.id));
+    const ravina = await mkUser(db, "ravina", ["doctor"]);
+    await db.update(users).set({ fullName: "Ravina Devi", active: false }).where(eq(users.id, ravina.id));
+    const already = await mkDoctor(db, { username: "ravidoc", departmentId: deptId, roomId, weekdays: [] });
+    await db.update(users).set({ fullName: "Ravi Doctor" }).where(eq(users.id, already.userId));
 
     expect(await doctorCandidates(db, "r")).toEqual([]);
-    const found = await doctorCandidates(db, "ra");
-    expect(found.map((c) => c.username)).toEqual(["ravi", "rahul"]);
+    const found = await doctorCandidates(db, "rav");
+    expect(found.map((c) => c.username)).toEqual(["ravi", "ravish"]);
     expect(found[0]).toMatchObject({ username: "ravi", fullName: "Ravi Kumar", isDoctorRole: true });
+    expect(found[1]).toMatchObject({ username: "ravish", isDoctorRole: false });
     expect(typeof found[0]!.staffCode).toBe("string");
-    expect(found.map((c) => c.username)).not.toContain("rajdoc");
 
-    const rahulCode = (await db.select().from(users).where(eq(users.id, rahul.id)))[0]!.staffCode;
-    expect((await doctorCandidates(db, rahulCode)).map((c) => c.username)).toEqual(["rahul"]);
+    const ravishCode = (await db.select().from(users).where(eq(users.id, ravish.id)))[0]!.staffCode;
+    expect((await doctorCandidates(db, ravishCode)).map((c) => c.username)).toEqual(["ravish"]);
   });
 
   it("spec #1127 D5: deactivating lists future bookings and today's waiting patients, then marks the bookings needs rebooking", async () => {
