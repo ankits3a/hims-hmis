@@ -316,10 +316,15 @@ function DoctorPanel({
   useEffect(() => { if (focusRegn) regnRef.current?.focus(); }, [focusRegn]);
 
   const schedules = useQuery({ queryKey: ["opd", "schedules", doctor.id], queryFn: () => listDoctorSchedules(doctor.id), retry: false });
-  const leaves = useQuery({ queryKey: ["opd", "leaves", doctor.id], queryFn: () => listLeaves({ doctorId: doctor.id }), retry: false });
-  const history = useQuery({ queryKey: ["opd", "doctors", "history", doctor.id], queryFn: () => fetchDoctorHistory(doctor.id), retry: false });
+  // Leave still to come: the SERVER filters (`toDate >= from`, scheduled only), so this panel holds no date arithmetic of its own.
   const today = todayIst();
-  const comingLeaves = (leaves.data?.items ?? []).filter((l) => l.status === "scheduled" && l.toDate >= today);
+  const leaves = useQuery({
+    queryKey: ["opd", "leaves", doctor.id, "coming", today],
+    queryFn: () => listLeaves({ doctorId: doctor.id, from: today, status: "scheduled" }),
+    retry: false,
+  });
+  const history = useQuery({ queryKey: ["opd", "doctors", "history", doctor.id], queryFn: () => fetchDoctorHistory(doctor.id), retry: false });
+  const comingLeaves = leaves.data?.items ?? [];
   const roomName = (id: string): string => rooms.find((r) => r.id === id)?.name ?? id;
   const departmentName = (id: string | null | undefined): string => (id == null ? "" : departments.find((d) => d.id === id)?.name ?? id);
 
