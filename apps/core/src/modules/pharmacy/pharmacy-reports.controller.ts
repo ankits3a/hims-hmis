@@ -18,6 +18,8 @@ import { gstr2bReconcile } from "./gstr2b";
 import { gstr3bReport } from "./gstr3b";
 import { officeNonMoving, officePurchaseAnalysis, officePurchaseRegister, officeStockValuation, officeVendorDiscounts } from "./office-reports";
 import { dailyStock, itemCatalogueReport, lossRegister, topSellingItems } from "./office-stock-reports";
+import { EXCEPTIONS_VIEW, officeExceptions } from "./exceptions";
+import type { PharmacyExceptionDay } from "./exceptions";
 import { parsed, toHttp } from "./pharmacy-http";
 import { REPORTS_MARGIN, REPORTS_READ, requireReportPermission } from "./report-range";
 import { hsnReport, marginReport, salesRegister } from "./sales-register";
@@ -175,6 +177,16 @@ export class PharmacyReportsController {
   @Get("losses")
   async losses(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<LossRegister> {
     try { return await lossRegister(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * #1065 (ruling 0097) — the day's exceptions, biggest first, with totals by kind: `?day=YYYY-MM-DD`, yesterday when
+   * absent. The owner's right alone.
+   */
+  @RequirePermission(EXCEPTIONS_VIEW, "hospital")
+  @Get("exceptions")
+  async exceptions(@CurrentActor() actor: Actor, @Query("day") day?: string): Promise<PharmacyExceptionDay> {
+    try { return await officeExceptions(this.db, actor, { day: day ?? null }, new Date()); } catch (e) { toHttp(e); }
   }
 
   /** STAGE C — per item: opening + in − out = closing over the range, from the ledger. */

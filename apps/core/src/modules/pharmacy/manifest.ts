@@ -171,6 +171,13 @@ export const pharmacyManifest: ModuleManifest = {
      * `pharmacy.reports.margin`. Held by `owner`, `admin` and `pharmacy_incharge`; any role may be granted it.
      */
     "pharmacy.metrics.read",
+    /**
+     * #1065 (ruling 0097) — the office's Exceptions page (`GET /pharmacy/office/reports/exceptions`): a day's
+     * refunds, approved discounts above 10%, stock adjustments, write-offs, MRP revisions, leakage, cash short or
+     * over, purchases above the reference, supplier credits below our debit note and paper sales entered late,
+     * biggest first; and the 08:00 IST phone notification of yesterday's. The owner alone.
+     */
+    "pharmacy.exceptions.view",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [

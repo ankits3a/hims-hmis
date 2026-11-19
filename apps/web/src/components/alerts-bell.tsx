@@ -59,6 +59,8 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   // Stores UX pass (walk finding 5/6) — a Stores ticket notice (Approved, On the way, Delivered, To approve) opens the
   // ticket's timeline, whose header links the step this reader can act on.
   store_indent: (refId) => ({ to: `/stores/tickets/${encodeURIComponent(refId)}`, search: {} }),
+  // #1065 (ruling 0097) — the owner's 08:00 pharmacy digest opens that day's Exceptions page.
+  pharmacy_exceptions_day: (refId) => ({ to: "/pharmacy/office", search: { view: "reports", page: "exceptions", day: refId } }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {

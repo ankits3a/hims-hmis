@@ -28,6 +28,6 @@ export function phonePushConsumer(db: Db, source: PhonePushSource, now: () => nu
     if (sender === null) return;
     if (now() - e.occurredAt.getTime() > PHONE_PUSH_FRESH_MS) return;
     const p = alertRaised.payloadSchema.parse(e.payload);
-    await relayAlertToPhones(db, sender, { id: p.alertId, userId: p.userId, kind: p.kind });
+    await relayAlertToPhones(db, sender, { id: p.alertId, userId: p.userId, kind: p.kind, ...(p.figures === undefined ? {} : { figures: p.figures }) });
   };
 }
