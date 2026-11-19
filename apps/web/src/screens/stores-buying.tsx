@@ -766,7 +766,7 @@ function PdfPicker({ rfqId, vendorId, onRead }: { rfqId: string; vendorId: strin
 function useBlobUrl(b64: string | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
-    if (b64 === undefined) return undefined;
+    if (b64 === undefined || typeof URL.createObjectURL !== "function") return undefined;
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
