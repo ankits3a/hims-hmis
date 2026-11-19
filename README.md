@@ -1792,6 +1792,16 @@ A NEFT, RTGS or UPI reference is checked for its shape and is never reused.
 `materials.bills.manage`, `materials.payments.prepare`, `materials.payments.record`, `pharmacy.tally.export` and
 `stores.audit.read`.
 
+**Stores tax on the bill (decision 0101, S6b #1116, 2026-11-19).** HMIS applies tax rules the hospital's chartered
+accountant signs; it gives no tax advice. Each Stores or service bill line carries a GST input-credit mark (not available
+by default; eligible or shared where the CA's table allows) and reverse charge. TDS is proposed only from a TDS table the
+CA has signed (thresholds, the PAN-missing rate, lower-deduction certificates); with none signed, every bill books and
+pays as before. A supplier declared for e-invoicing whose bill claims credit is held until its IRN is entered. The MSME
+Act's clock (micro and small suppliers: 15 days from delivery, or the agreed days up to 45 with a signed agreement) and
+TDS on goods are switches, off until the owner turns them on after a dry run. The Tally export books Stores lines to
+category ledgers with department cost centres; a drug-only month's file is unchanged.
+`stores.tax.manage` is held by `accounts_officer` alone.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

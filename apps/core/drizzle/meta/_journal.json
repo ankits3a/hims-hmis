@@ -1730,6 +1730,13 @@
       "when": 1795116047494,
       "tag": "0247_stores_s6a",
       "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1795121375883,
+      "tag": "0248_stores_s6b",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { api } from "./api";
 import type {
-  WireHoldsDryRun, WirePayBookDraft, WirePayBooked, WirePayHold, WirePayablesByGroup, WirePayingDesk, WirePayingSettings, WireRunToAuthorise,
+  WireGstCredit, WireMsmeDryRun, WireTdsDryRun, WireHoldsDryRun, WirePayBookDraft, WirePayBooked, WirePayHold, WirePayablesByGroup, WirePayingDesk, WirePayingSettings, WireRunToAuthorise,
   WireServiceEntry, WireServiceToConfirm, WireSesPeriodKind, WireSesSource,
 } from "@hmis/contracts";
 
@@ -19,8 +19,10 @@ export type RunVendor = {
 export const payingDesk = (): Promise<WirePayingDesk> => api("GET", "/stores/pay/desk");
 export const payablesByGroup = (): Promise<WirePayablesByGroup> => api("GET", "/stores/pay/by-group");
 export const bookDraft = (kind: "grn" | "ses", id: string): Promise<WirePayBookDraft> => api("GET", `/stores/pay/book/${kind}/${enc(id)}`);
-export const bookBill = (body: { kind: "grn" | "ses"; id: string; vendorBillNo: string; billDate: string; lines?: { itemId: string; qtyPacks: number; ratePaise: number }[] }): Promise<WirePayBooked> =>
-  api("POST", "/stores/pay/book", body);
+export const bookBill = (body: {
+  kind: "grn" | "ses"; id: string; vendorBillNo: string; billDate: string; irn?: string | null;
+  lines?: { itemId: string; qtyPacks: number; ratePaise: number; gstCredit?: WireGstCredit | null; reverseCharge?: boolean | null }[];
+}): Promise<WirePayBooked> => api("POST", "/stores/pay/book", body);
 export const billHolds = (billId: string): Promise<WirePayHold[]> => api("GET", `/stores/pay/bills/${enc(billId)}/holds`);
 export const releaseHold = (holdId: string, reason: string): Promise<WirePayHold> => api("POST", `/stores/pay/holds/${enc(holdId)}/release`, { reason });
 export const keepHold = (holdId: string, reason: string, reviewOn: string): Promise<WirePayHold> => api("POST", `/stores/pay/holds/${enc(holdId)}/keep`, { reason, reviewOn });
@@ -34,8 +36,12 @@ export const runVendors = async (runId: string): Promise<RunVendor[]> =>
 export const recordPayment = (runId: string, body: { vendorId: string; mode: string; reference: string | null; paidOn?: string | null }): Promise<unknown> =>
   api("POST", `/stores/pay/runs/${enc(runId)}/pay`, body);
 export const holdsDryRun = (): Promise<WireHoldsDryRun> => api("GET", "/stores/pay/settings/dry-run");
-export const setPayingSettings = (holdsCoverPharmacy: boolean, dryRunAt: string): Promise<WirePayingSettings> =>
-  api("POST", "/stores/pay/settings", { holdsCoverPharmacy, dryRunAt });
+/** S6b (#1116): each switch alone (unchanged when absent), with the dry run it followed. */
+export const setPayingSwitch = (body: { holdsCoverPharmacy?: boolean; msmeRule?: "as_today" | "act"; tdsGoods?: boolean; dryRunAt: string }): Promise<WirePayingSettings> =>
+  api("POST", "/stores/pay/settings", body);
+export const setPayingSettings = (holdsCoverPharmacy: boolean, dryRunAt: string): Promise<WirePayingSettings> => setPayingSwitch({ holdsCoverPharmacy, dryRunAt });
+export const msmeDryRun = (): Promise<WireMsmeDryRun> => api("GET", "/stores/pay/settings/msme-dry-run");
+export const tdsDryRun = (): Promise<WireTdsDryRun> => api("GET", "/stores/pay/settings/tds-dry-run");
 export const serviceDepartments = (): Promise<{ id: string; code: string; name: string }[]> => api("GET", "/stores/pay/services/departments");
 export const servicesToConfirm = (departmentId: string): Promise<WireServiceToConfirm[]> => api("GET", `/stores/pay/services?departmentId=${enc(departmentId)}`);
 export const confirmService = (body: {

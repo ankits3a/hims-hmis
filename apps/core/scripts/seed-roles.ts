@@ -2106,6 +2106,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       "stores.assets.export", "stores.assets.condemn", "stores.budget.manage", "stores.award.sign",
       "materials.bills.manage", "materials.payments.prepare", "materials.payments.record", "pharmacy.tally.export", "stores.audit.read",
+      // STORES S6b (#1116, decision 12) — keeps the CA's TDS and GST-credit tables (save, record the CA's signature),
+      // lower-deduction certificates and MSME objections. Shipped with no table: nothing is computed until the CA signs.
+      "stores.tax.manage",
     ],
   },
   /**

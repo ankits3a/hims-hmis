@@ -4,13 +4,13 @@ import { useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import {
-  billHolds, bookBill, bookDraft, decideRun, draftRun, holdsDryRun, keepHold, payablesByGroup, payingDesk, recordPayment, releaseHold, runToAuthorise,
-  runVendors, setPayingSettings, submitRun,
+  billHolds, bookBill, bookDraft, decideRun, draftRun, holdsDryRun, keepHold, msmeDryRun, payablesByGroup, payingDesk, recordPayment, releaseHold, runToAuthorise,
+  runVendors, setPayingSwitch, submitRun, tdsDryRun,
 } from "../lib/paying-api";
 import { dateLocale } from "../lib/date-locale";
 import { storesErrorCode } from "../lib/stores-api";
 import "./stores.css";
-import type { WireHoldsDryRun, WirePayDue, WirePayHold, WirePayRun, WirePayToBook, WirePayingDesk, WireRunToAuthorise } from "@hmis/contracts";
+import type { WireGstCredit, WirePayDue, WirePayHold, WirePayRun, WirePayToBook, WirePayingDesk, WireRunToAuthorise } from "@hmis/contracts";
 
 /**
  * STORES S6a (#1116, spec "## Screens") — `/stores/pay`, THE PAYING DESK (16:9, fits 1366 × 768) and, from a notice, the
@@ -23,6 +23,11 @@ import type { WireHoldsDryRun, WirePayDue, WirePayHold, WirePayRun, WirePayToBoo
  * payment: mode and UTR), Exports (payables by item group and by department, Download). The owner's switches sit under
  * the tabs: each Off / On, "See what changes" (the dry run) before "Switch on". Every status is a word; loading is grey
  * rows with no text; empty is "Nothing here".
+ *
+ * S6b (#1116): Book bill proposes per Stores or service line the GST credit mark (Eligible / Not available / Shared) and
+ * Reverse charge, which the officer confirms; it takes the IRN, and says "IRN missing" for a supplier declared for
+ * e-invoicing whose bill claims credit, and "TDS not checked" while no CA-signed TDS table exists. The owner's MSME
+ * 15-day rule and TDS on goods switches work like the pharmacy-holds one (see what changes, then switch on).
  */
 type Tab = "toBook" | "holds" | "due" | "runs" | "payments" | "exports";
 const TABS: Tab[] = ["toBook", "holds", "due", "runs", "payments", "exports"];
@@ -157,11 +162,16 @@ function BookForm({ doc, onDone }: { doc: WirePayToBook; onDone: () => void }): 
   const [no, setNo] = useState("");
   const [date, setDate] = useState("");
   const [lines, setLines] = useState<Record<string, { qty: string; rate: string }>>({});
+  const [marks, setMarks] = useState<Record<string, { credit: WireGstCredit; rc: boolean }>>({});
+  const [irn, setIrn] = useState("");
   if (q.isPending) return <GreyRows n={2} />;
   if (q.isError) return <Notice n={{ text: t("stores.err.failed"), ok: false }} />;
   const d = q.data;
   const billNo = no === "" ? d.vendorBillNo : no;
   const billDate = date === "" ? d.billDate : date;
+  const markOf = (l: (typeof d.lines)[number]): { credit: WireGstCredit; rc: boolean } => marks[l.itemId] ?? { credit: l.gstCredit ?? "not_available", rc: l.reverseCharge };
+  const claims = d.lines.some((l) => l.storesLine && markOf(l).credit !== "not_available");
+  const irnMissing = d.einvoiceApplicable && claims && irn.trim() === "";
   return (
     <div style={{ ...card, margin: "6px 0" }}>
       <Notice n={act.note} />
@@ -170,17 +180,31 @@ function BookForm({ doc, onDone }: { doc: WirePayToBook; onDone: () => void }): 
           <input style={input} value={billNo} onChange={(e) => setNo(e.target.value)} /></label>
         <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>{t("stores.paying.billDate")}
           <input style={input} type="date" value={billDate} onChange={(e) => setDate(e.target.value)} /></label>
-        <span style={{ ...word, alignSelf: "center" }}>{t("stores.paying.tax.tdsNotChecked")}</span>
+        <label style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 200px", minWidth: 0 }}>{t("stores.paying.tax.irn")}
+          <input style={input} value={irn} onChange={(e) => setIrn(e.target.value)} /></label>
+        {!d.tdsChecked && <span style={{ ...word, alignSelf: "center" }}>{t("stores.paying.tax.tdsNotChecked")}</span>}
+        {irnMissing && <span style={{ ...red, alignSelf: "center" }}>{t("stores.paying.tax.irnMissing")}</span>}
       </div>
       {d.lines.map((l) => {
         const v = lines[l.itemId] ?? { qty: String(l.qtyPacks), rate: String(l.ratePaise / 100) };
         return (
           <div key={l.itemId} style={row}>
-            <span style={{ ...cut, flex: "1 1 160px" }}>{l.itemName}</span>
+            <span style={{ ...wrap, flex: "1 1 160px" }}>{l.itemName}</span>
             <input aria-label={t("stores.services.qty")} style={{ ...input, width: 90 }} inputMode="numeric" value={v.qty} onChange={(e) => setLines({ ...lines, [l.itemId]: { ...v, qty: e.target.value } })} />
             <span>{l.uom}</span>
             <input aria-label={t("stores.paying.rate")} style={{ ...input, width: 110 }} inputMode="decimal" value={v.rate} onChange={(e) => setLines({ ...lines, [l.itemId]: { ...v, rate: e.target.value } })} />
             <span>{`${String(l.gstRateBps / 100)} % GST`}</span>
+            {l.storesLine && (
+              <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <select aria-label="GST" style={input} value={markOf(l).credit} onChange={(e) => setMarks({ ...marks, [l.itemId]: { ...markOf(l), credit: e.target.value as WireGstCredit } })}>
+                  {(["not_available", "eligible", "shared"] as const).map((c) => <option key={c} value={c}>{t(`stores.paying.tax.${c}`)}</option>)}
+                </select>
+                <label style={{ display: "flex", gap: 4, alignItems: "center", minHeight: 40 }}>
+                  <input type="checkbox" checked={markOf(l).rc} onChange={(e) => setMarks({ ...marks, [l.itemId]: { ...markOf(l), rc: e.target.checked } })} />
+                  {t("stores.paying.tax.reverseCharge")}
+                </label>
+              </span>
+            )}
           </div>
         );
       })}
@@ -189,8 +213,12 @@ function BookForm({ doc, onDone }: { doc: WirePayToBook; onDone: () => void }): 
         <button type="button" style={primary} disabled={act.busy || billNo.trim() === ""} onClick={() => void act.run(async () => {
           const body = { kind: doc.kind, id: doc.id, vendorBillNo: billNo.trim(), billDate, lines: d.lines.map((l) => {
             const v = lines[l.itemId];
-            return { itemId: l.itemId, qtyPacks: v === undefined ? l.qtyPacks : Number(v.qty), ratePaise: v === undefined ? l.ratePaise : rupeesToPaise(v.rate) };
-          }) };
+            const m = markOf(l);
+            return {
+              itemId: l.itemId, qtyPacks: v === undefined ? l.qtyPacks : Number(v.qty), ratePaise: v === undefined ? l.ratePaise : rupeesToPaise(v.rate),
+              ...(l.storesLine ? { gstCredit: m.credit, reverseCharge: m.rc } : {}),
+            };
+          }), ...(irn.trim() === "" ? {} : { irn: irn.trim() }) };
           const r = await bookBill(body);
           if (r.status === "accepted") onDone();
         }, t("stores.paying.booked"))}>{t("stores.paying.save")}</button>
@@ -441,32 +469,48 @@ function Exports(): React.ReactElement {
 
 /* ─────────────── Settings (the owner's) ─────────────── */
 
+type DryRow = { id: string; no: string; vendor: string; paise: number | null; words: string[] };
+type SwitchKey = "holds" | "msme" | "tds";
+
 function Settings({ desk }: { desk: WirePayingDesk }): React.ReactElement {
   const { t } = useTranslation();
   const act = useAct();
-  const [dry, setDry] = useState<WireHoldsDryRun | null>(null);
+  const [dry, setDry] = useState<{ key: SwitchKey; at: string; rows: DryRow[] } | null>(null);
   const s = desk.settings;
   const onOff = (on: boolean): React.ReactElement => <span style={word}>{t(on ? "stores.paying.settings.on" : "stores.paying.settings.off")}</span>;
+  const day = (d: string): string => new Date(`${d}T00:00:00`).toLocaleDateString(dateLocale());
+  const see = async (key: SwitchKey): Promise<void> => {
+    if (key === "holds") { const r = await holdsDryRun(); setDry({ key, at: r.at, rows: r.bills.map((b) => ({ id: b.billId, no: b.billNo, vendor: b.vendorName, paise: b.totalPaise, words: b.kinds.map((k) => t(`stores.paying.hold.${k}`)) })) }); }
+    if (key === "msme") { const r = await msmeDryRun(); setDry({ key, at: r.at, rows: r.bills.map((b) => ({ id: b.billId, no: b.billNo, vendor: b.vendorName, paise: null, words: [`${day(b.dueDate)} → ${day(b.actDueDate)}`] })) }); }
+    if (key === "tds") { const r = await tdsDryRun(); setDry({ key, at: r.at, rows: r.bills.map((b) => ({ id: b.billId, no: b.billNo, vendor: b.vendorName, paise: b.tdsPaise, words: ["TDS"] })) }); }
+  };
+  const rows: { key: SwitchKey; label: string; on: boolean; body: (on: boolean, at: string) => Parameters<typeof setPayingSwitch>[0] }[] = [
+    { key: "holds", label: t("stores.paying.settings.holdsPharmacy"), on: s.holdsCoverPharmacy, body: (on, at) => ({ holdsCoverPharmacy: on, dryRunAt: at }) },
+    { key: "msme", label: t("stores.paying.settings.msme"), on: s.msmeRule === "act", body: (on, at) => ({ msmeRule: on ? "act" : "as_today", dryRunAt: at }) },
+    { key: "tds", label: t("stores.paying.settings.tdsGoods"), on: s.tdsGoods === true, body: (on, at) => ({ tdsGoods: on, dryRunAt: at }) },
+  ];
   return (
     <section style={{ ...card, marginTop: 12 }} data-testid="paying-settings">
       <strong>{t("stores.paying.settings.title")}</strong>
       <Notice n={act.note} />
-      <div style={row}>
-        <span style={{ flex: "1 1 200px" }}>{t("stores.paying.settings.holdsPharmacy")}</span>
-        {onOff(s.holdsCoverPharmacy)}
-        <button type="button" style={btn} disabled={act.busy} onClick={() => void act.run(async () => setDry(await holdsDryRun()), t("stores.paying.settings.seen"))}>{t("stores.paying.settings.see")}</button>
-        {dry !== null && (
-          <button type="button" style={primary} disabled={act.busy} onClick={() => void act.run(() => setPayingSettings(!s.holdsCoverPharmacy, dry.at), t("stores.paying.settings.saved"))}>
-            {t(s.holdsCoverPharmacy ? "stores.paying.settings.switchOff" : "stores.paying.settings.switchOn")}
-          </button>
-        )}
-      </div>
-      {dry !== null && (dry.bills.length === 0 ? <span>{t("stores.paying.settings.nothing")}</span> : dry.bills.map((b) => (
-        <div key={b.billId} style={row}><span>{b.billNo}</span><span style={{ ...cut, flex: "1 1 120px" }}>{b.vendorName}</span><span>{money(b.totalPaise)}</span>
-          {b.kinds.map((k) => <span key={k} style={word}>{t(`stores.paying.hold.${k}`)}</span>)}</div>
-      )))}
-      <div style={row}><span style={{ flex: "1 1 200px" }}>{t("stores.paying.settings.msme")}</span>{onOff(s.msmeRule === "act")}<span>{t("stores.paying.settings.later")}</span></div>
-      <div style={row}><span style={{ flex: "1 1 200px" }}>{t("stores.paying.settings.tdsGoods")}</span>{onOff(false)}<span>{t("stores.paying.settings.later")}</span></div>
+      {rows.map((r) => (
+        <div key={r.key}>
+          <div style={row} data-testid={`switch-${r.key}`}>
+            <span style={{ flex: "1 1 200px" }}>{r.label}</span>
+            {onOff(r.on)}
+            <button type="button" style={btn} disabled={act.busy} onClick={() => void act.run(() => see(r.key), t("stores.paying.settings.seen"))}>{t("stores.paying.settings.see")}</button>
+            {dry !== null && dry.key === r.key && (
+              <button type="button" style={primary} disabled={act.busy} onClick={() => void act.run(async () => { await setPayingSwitch(r.body(!r.on, dry.at)); setDry(null); }, t("stores.paying.settings.saved"))}>
+                {t(r.on ? "stores.paying.settings.switchOff" : "stores.paying.settings.switchOn")}
+              </button>
+            )}
+          </div>
+          {dry !== null && dry.key === r.key && (dry.rows.length === 0 ? <span>{t("stores.paying.settings.nothing")}</span> : dry.rows.map((b) => (
+            <div key={b.id} style={row}><span>{b.no}</span><span style={{ ...wrap, flex: "1 1 120px" }}>{b.vendor}</span>{b.paise !== null && <span>{money(b.paise)}</span>}
+              {b.words.map((w) => <span key={w} style={word}>{w}</span>)}</div>
+          )))}
+        </div>
+      ))}
     </section>
   );
 }

@@ -18,7 +18,7 @@ Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
 `docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
 `docs/specs/1115-stores-buying-desk.md` (S5, built: S5a, S5b, S5c),
-`docs/specs/1116-stores-paying-desk.md` (S6, approved; S6a built here).
+`docs/specs/1116-stores-paying-desk.md` (S6, approved; S6a and S6b built here).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -479,9 +479,43 @@ department shelves every department (housekeeping included) receives from. Pharm
   (the payment row's `after` carries mode and reference). TRAP: `grn.received` is dated by the wall clock.
 - Web: `/stores/pay` (`apps/web/src/screens/stores-paying.tsx`; `?run=` the owner's sheet, `?bill=` a bill's hold cards), `/stores/services`.
 
+## 10h. Tax on the bill, the MSME clock, the Tally split (S6b #1116; ruling 0101 Q1, Q2)
+- Rules a CA signs, not advice. Pharmacy safety: `pharmacy/stores-s6b-no-change.test.ts` + `pharmacy/__golden__/stores-s6b-no-change.json`
+  (bills from plain/micro/medium/no-terms suppliers, payables, plan, run, NEFT, ledger, AND the drug-only Tally files byte for
+  byte), captured on S6a. Rerun it after any change to `materials/supplier-bills.ts` or `pharmacy/tally.ts`.
+- Hooks Stores registers with materials at import (`registerBillTaxHooks` in `tax-on-bill.ts`, `registerPurchaseSplitSource`
+  in `tally-split.ts`); each returns null / leaves a bill out when its switch is off or no table is signed.
+- Marks (migration 0248, all nullable on `supplier_bill_lines`): `gst_credit`, `reverse_charge` ride `BillLineInput` and are
+  refused on a pharmacy line (`bill_invalid`). Reverse charge = the line's GST columns 0 and the expected total leaves that
+  line's GST out (so the match holds). A Stores line booked unmarked takes the proposal (signed `gst_credit` table: own
+  category before top, named supplier type before `any`; else `not_available`).
+- TDS: tables `stores_tax_tables` (+ `_signs`, one per version; newest SIGNED wins), shipped EMPTY. Nature = the row whose
+  `categoryCodes` hold the line's category (own or top), else `goods`. The goods row needs the owner's `tds_goods` too.
+  DECIDED: the threshold compares the supplier's booked value of that nature (bill / calendar month / FY) PLUS this bill;
+  when crossed the whole bill's base is taxed. Payee = PAN's 4th letter (P/H individual). Certificate (`stores_tds_certificates`,
+  a Stores table — `vendor_documents` has no rate column) valid on the bill date wins, then PAN missing. A pharmacy-only bill
+  no switched-on row reaches stays `tds_paise` null (as before). Booking writes the lines' TDS and `supplier_bills.tds_paise`
+  and ADDS it to `paid_paise` (a deduction is a settlement), so payables, runs and payments (`materials/payments.ts` untouched) see total −
+  TDS; the supplier ledger shows a `tds` debit. `setBillTds` (reason) writes `tds_reason`; booking keeps it; an edit or
+  re-match drops it (lines are re-inserted).
+- IRN: `supplier_bills.irn`; hold `irn_missing` when the supplier's `einvoice_applicable` and a line is eligible OR shared
+  (DECIDED: shared claims credit too) and no IRN.
+- MSME (`msme.ts`): `msme_rule = act` → micro/small only (trader per `msme_traders_on_clock`, default on); start = delivery
+  (materials' `acceptanceDayOf`) or the latest close of an objection raised within 15 days (`stores_msme_objections` + `_closes`;
+  an open objection moves nothing); 15 days, or the vendor's terms (≤ 45) when a `payment_terms_agreement` document is valid
+  on the start day (DECIDED: the agreed days are the terms on file). Medium = bill date + terms. Written once at booking.
+- Switches (`paying-settings.ts`): every field optional; turning ON (holds, act, tds_goods, traders off) needs a dry run ≤ 1 day.
+- Tally (`tally-split.ts`): ledger keys `purchase:<TOP>`, `asset:<TOP>` (a GRN line whose batch has a tagged unit),
+  `tds:<nature>`, `rcm_liability`; names in `stores_tally_ledgers` (newest per key; `pharmacy.tally.export` holders). Missing
+  names → `invalid_tally_ledgers` with `detail.missing`, before writing. Cost centre = the `payablesByGroup` rule (SES dept,
+  shelf dept, else store code); the masters file adds the ledgers and COSTCENTRE masters only when used.
+- "GST not credited" (`gstNotCreditedOn`): derived on read from shelf receipts × the billed line's GST rate where the mark is
+  `not_available` (unbilled: the category default). Not yet on the spend/budget screens.
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
 staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
 SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5 leaves: splitting one request line
-across groups; the buyer's chat intents (locked S3 D7 pin); paying an advance (S6). S6a leaves: the reversing SES, the "Service to confirm" notice (no job), GST marks, TDS, IRN,
-the MSME rule and the Tally split (S6b), the auditor agent (S6c).
+across groups; the buyer's chat intents (locked S3 D7 pin); paying an advance (S6). S6a leaves: the reversing SES, the "Service to confirm" notice (no job), the auditor agent (S6c).
+S6b leaves: "GST not credited" on the spend and budget screens; a screen to enter the CA's tables (API only); the half-yearly
+MSME-dues report; the "MSME bill due soon" notice (no job).

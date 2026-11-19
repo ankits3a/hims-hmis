@@ -1253,6 +1253,14 @@ export const supplierBills = pgTable(
     cancelledBy: text("cancelled_by"),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
+    /**
+     * STORES S6b (#1116, decisions 4–5) — both nullable; every pharmacy bill leaves them null. `irn` the e-invoice's
+     * reference number as printed (not checked against the GST portal). `tds_paise` the TDS deducted when the bill was
+     * booked, from a CA-signed table (null = "TDS not checked": nothing was deducted). A deduction is a settlement, so
+     * it is counted in `paid_paise` at booking (the payable is the total less TDS).
+     */
+    irn: text("irn"),
+    tdsPaise: bigint("tds_paise", { mode: "number" }),
     ...auditColumns,
   },
   (t) => [
@@ -1317,8 +1325,24 @@ export const supplierBillLines = pgTable(
     listRatePaise: bigint("list_rate_paise", { mode: "number" }),
     discountBps: integer("discount_bps").notNull().default(0),
     discountPaise: bigint("discount_paise", { mode: "number" }).notNull().default(0),
+    /**
+     * STORES S6b (#1116, decisions 4–5) — all nullable; a pharmacy line leaves every one null. `gst_credit` the line's
+     * input-credit mark (`eligible` | `not_available` | `shared`, a Stores or service line only); `reverse_charge` true =
+     * the supplier billed no GST and the hospital owes it (the line's GST columns are then 0). `tds_paise` the TDS
+     * deducted on this line at booking, its `tds_nature`, the signed table row it came from (`tds_ref`: table id and
+     * section) and, when a person changed the proposal, `tds_reason`.
+     */
+    gstCredit: text("gst_credit"),
+    reverseCharge: boolean("reverse_charge"),
+    tdsPaise: bigint("tds_paise", { mode: "number" }),
+    tdsNature: text("tds_nature"),
+    tdsRef: text("tds_ref"),
+    tdsReason: text("tds_reason"),
   },
   (t) => [
+    check("supplier_bill_lines_gst_credit_ck", sql`${t.gstCredit} is null or ${t.gstCredit} in ('eligible', 'not_available', 'shared')`),
+    check("supplier_bill_lines_reverse_charge_ck", sql`${t.reverseCharge} is not true or (${t.cgstPaise} = 0 and ${t.sgstPaise} = 0 and ${t.igstPaise} = 0)`),
+    check("supplier_bill_lines_tds_ck", sql`${t.tdsPaise} is null or (${t.tdsPaise} >= 0 and ${t.tdsPaise} <= ${t.taxablePaise})`),
     check(
       "supplier_bill_lines_discount_ck",
       sql`(${t.listRatePaise} is null and ${t.discountBps} = 0 and ${t.discountPaise} = 0) or (${t.listRatePaise} >= 0 and ${t.discountBps} between 0 and 10000 and ${t.discountPaise} between 0 and ${t.listRatePaise} and ${t.ratePaise} = ${t.listRatePaise} - ${t.discountPaise} and (${t.discountBps} = 0 or ${t.discountPaise} = ${t.listRatePaise} - (${t.listRatePaise} * (10000 - ${t.discountBps}) + 5000) / 10000))`,

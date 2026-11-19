@@ -805,6 +805,11 @@ export type WirePayPayment = { id: string; paymentNo: string; runNo: string; ven
 
 export type WirePayingSettings = {
   version: number; holdsCoverPharmacy: boolean; msmeRule: "as_today" | "act"; outOfPatternMultipleBps: number; firstBillLimitPaise: number;
+  /**
+   * STORES S6b (#1116): the TDS goods row's owner switch (off) and the CA's trader line for the MSME clock (default on).
+   * Always sent by the server; optional on the wire so an S6a reader (and its locked check's fixture) still types.
+   */
+  tdsGoods?: boolean; msmeTradersOnClock?: boolean;
   setAt: string | null; setBy: { id: string; name: string } | null;
 };
 
@@ -839,7 +844,11 @@ export const storesSesBody = z.object({
 });
 export const storesHoldReleaseBody = z.object({ reason: z.string().trim().max(300) });
 export const storesHoldKeepBody = z.object({ reason: z.string().trim().max(300), reviewOn: isoDay });
-export const storesPayingSettingsBody = z.object({ holdsCoverPharmacy: z.boolean(), dryRunAt: z.string().datetime() });
+/** Each switch is optional (unchanged when absent); switching one ON needs its dry run at most a day old. */
+export const storesPayingSettingsBody = z.object({
+  holdsCoverPharmacy: z.boolean().optional(), msmeRule: z.enum(["as_today", "act"]).optional(), tdsGoods: z.boolean().optional(),
+  msmeTradersOnClock: z.boolean().optional(), dryRunAt: z.string().datetime(),
+});
 export const storesRecordPaymentBody = z.object({
   vendorId: id, mode: z.enum(["neft", "rtgs", "upi", "cheque", "cash"]), reference: z.string().trim().max(64).nullish(), paidOn: isoDay.nullish(),
 });
@@ -847,10 +856,87 @@ export const storesRunDecideBody = z.object({ approve: z.boolean(), reason: z.st
 /** Book a bill from a GRN or a service entry: only what is on the paper (number, date; a line's quantity or rate when they differ). */
 export const storesPayBookBody = z.object({
   kind: z.enum(["grn", "ses"]), id, vendorBillNo: z.string().trim().min(1).max(64), billDate: isoDay,
-  lines: z.array(z.object({ itemId: id, qtyPacks: z.number().int().min(0).max(1_000_000), ratePaise: z.number().int().min(0).max(1_000_000_000) })).max(300).optional(),
+  lines: z.array(z.object({
+    itemId: id, qtyPacks: z.number().int().min(0).max(1_000_000), ratePaise: z.number().int().min(0).max(1_000_000_000),
+    // STORES S6b (#1116, decision 4): the officer's confirmed marks on a Stores or service line.
+    gstCredit: z.enum(["eligible", "not_available", "shared"]).nullish(), reverseCharge: z.boolean().nullish(),
+  })).max(300).optional(),
+  irn: z.string().trim().max(100).nullish(),
 });
 export type WirePayBookDraft = {
   kind: "grn" | "ses"; id: string; no: string; vendorId: string; vendorName: string; poNo: string | null; vendorBillNo: string; billDate: string;
-  lines: { itemId: string; itemName: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number }[]; expectedTotalPaise: number;
+  lines: {
+    itemId: string; itemName: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number;
+    /** STORES S6b: a Stores or service line takes marks; the proposal from the signed GST-credit table (or the default). */
+    storesLine: boolean; gstCredit: WireGstCredit | null; reverseCharge: boolean;
+  }[];
+  expectedTotalPaise: number;
+  /** STORES S6b: the supplier's e-invoicing declaration (an eligible line then needs the IRN) and whether TDS can be checked. */
+  einvoiceApplicable: boolean; tdsChecked: boolean;
 };
 export type WirePayBooked = { billId: string; billNo: string; status: WirePayBillStatus; totalPaise: number; holds: WirePayHoldKind[] };
+
+/* ═══ STORES S6b (#1116, decisions 4–6, 10) — tax on the bill, the MSME clock, the Tally split ═══ */
+
+export const GST_CREDITS = ["eligible", "not_available", "shared"] as const;
+export type WireGstCredit = (typeof GST_CREDITS)[number];
+export const TDS_NATURES = ["contract", "professional", "rent", "commission", "goods"] as const;
+export type WireTdsNature = (typeof TDS_NATURES)[number];
+
+/** One row of the CA's TDS table. The Act's section is TEXT (data, never code): the Income-tax Act, 2025 renumbered them. */
+export type WireTdsRule = {
+  nature: WireTdsNature; section: string; rateBps: { individual: number; other: number }; panMissingRateBps: number;
+  threshold: { kind: "bill" | "month" | "year"; paise: number }; on: boolean;
+  /** The item categories (codes, top or own) whose lines are of this nature; a line matching none is "goods". */
+  categoryCodes: string[];
+};
+/** One row of the CA's GST-credit table: what is proposed for a category and supplier type. */
+export type WireGstCreditRule = { categoryCode: string; supplier: "registered" | "unregistered" | "any"; credit: WireGstCredit; reverseCharge: boolean };
+
+const tdsRuleSchema = z.object({
+  nature: z.enum(TDS_NATURES), section: z.string().trim().min(1).max(120),
+  rateBps: z.object({ individual: z.number().int().min(0).max(10_000), other: z.number().int().min(0).max(10_000) }),
+  panMissingRateBps: z.number().int().min(0).max(10_000),
+  threshold: z.object({ kind: z.enum(["bill", "month", "year"]), paise: z.number().int().min(0).max(1_000_000_000_000) }),
+  on: z.boolean(), categoryCodes: z.array(z.string().trim().min(1).max(40)).max(200),
+});
+const gstCreditRuleSchema = z.object({
+  categoryCode: z.string().trim().min(1).max(40), supplier: z.enum(["registered", "unregistered", "any"]), credit: z.enum(GST_CREDITS), reverseCharge: z.boolean(),
+});
+export const storesTaxTableBody = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("tds"), rules: z.array(tdsRuleSchema).max(50), documentRef: z.string().trim().min(1).max(300) }),
+  z.object({ kind: z.literal("gst_credit"), rules: z.array(gstCreditRuleSchema).max(500), documentRef: z.string().trim().min(1).max(300) }),
+]);
+export const storesTaxSignBody = z.object({ documentRef: z.string().trim().min(1).max(300) });
+export const storesTdsCertificateBody = z.object({
+  vendorId: id, number: z.string().trim().min(1).max(64), rateBps: z.number().int().min(0).max(10_000), validFrom: isoDay, validTo: isoDay,
+  documentRef: z.string().trim().min(1).max(300),
+});
+export const storesBillTdsBody = z.object({
+  lines: z.array(z.object({ lineId: id, tdsPaise: z.number().int().min(0).max(1_000_000_000_000) })).min(1).max(300), reason: z.string().trim().max(300),
+});
+export const storesMsmeObjectionBody = z.object({
+  grnId: id.nullish(), sesId: id.nullish(), kind: z.enum(["qc_rejection", "short"]), raisedOn: isoDay, reason: z.string().trim().max(300),
+});
+export const storesMsmeObjectionCloseBody = z.object({ closedOn: isoDay, note: z.string().trim().max(300) });
+export const storesTallyLedgersBody = z.object({ names: z.record(z.string().trim().min(1).max(80), z.string().trim().max(100)) });
+
+export type WireTaxTable = {
+  id: string; kind: "tds" | "gst_credit"; version: number; rules: WireTdsRule[] | WireGstCreditRule[]; documentRef: string;
+  createdBy: { id: string; name: string } | null; createdAt: string;
+  signed: { by: { id: string; name: string } | null; at: string; documentRef: string } | null;
+};
+export type WireTaxTables = { tds: WireTaxTable | null; gstCredit: WireTaxTable | null; drafts: WireTaxTable[]; canManage: boolean };
+
+/** What HMIS proposes for an entered, not yet booked bill: per line the marks and the TDS. */
+export type WireBillTaxProposal = {
+  billId: string; billNo: string; tdsChecked: boolean; tdsPaise: number | null; irn: string | null; irnNeeded: boolean;
+  lines: {
+    lineId: string; itemId: string; itemName: string; storesLine: boolean; taxablePaise: number;
+    gstCredit: WireGstCredit | null; reverseCharge: boolean;
+    tds: { nature: WireTdsNature; section: string; rateBps: number; basePaise: number; paise: number; why: "rate" | "pan_missing" | "certificate" | "under_threshold" | "row_off" } | null;
+  }[];
+};
+export type WireTdsDryRun = { at: string; bills: { billId: string; billNo: string; vendorName: string; basePaise: number; tdsPaise: number }[] };
+export type WireMsmeDryRun = { at: string; bills: { billId: string; billNo: string; vendorName: string; dueDate: string; actDueDate: string }[] };
+export type WireStoresTallyLedgers = { names: Record<string, string>; needed: string[] };

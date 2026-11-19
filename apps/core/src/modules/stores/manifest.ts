@@ -70,6 +70,9 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * Due, Runs, Payments, Exports) is `/stores/pay` (its own menu row, `materials.bills.manage`); the department's phone
  * "Service to confirm" is `/stores/services`.
  *
+ * S6b (#1116, decision 12) adds `stores.tax.manage` (hospital; `accounts_officer`): the CA's TDS and GST-credit tables
+ * (saved, then signed with the CA's document), lower-deduction certificates and MSME objections. Shipped with no table.
+ *
  * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -110,6 +113,7 @@ export const storesManifest: ModuleManifest = {
     "stores.award.sign",
     "stores.ses.confirm",
     "stores.holds.release",
+    "stores.tax.manage",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */

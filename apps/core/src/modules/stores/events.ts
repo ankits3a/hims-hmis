@@ -55,6 +55,9 @@ export const STORES_ACTS = [
   // S6a (#1116): a service entry sheet confirmed (refId = the SES), a payment hold placed by a rule, released or kept
   // (refId = the hold), the paying desk's switches set (refId = the settings row), a run authorised from the phone.
   "ses_confirm", "hold_placed", "hold_release", "hold_keep", "paying_settings",
+  // S6b (#1116): a tax table saved or signed (refId = the table), a lower-deduction certificate, a TDS changed from the
+  // proposal (refId = the bill), an MSME objection raised or closed (refId = the objection), the Stores Tally ledger names.
+  "tax_table_save", "tax_table_sign", "tds_certificate", "tds_change", "msme_objection", "msme_objection_close", "tally_ledgers",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

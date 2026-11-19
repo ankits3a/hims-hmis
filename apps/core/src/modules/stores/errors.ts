@@ -184,6 +184,14 @@ export const STORES_ERROR_CODES = [
   "ends_by_itself",
   "review_too_far",
   "unknown_payment_run",
+  // S6b (#1116): the tax tables, a bill's TDS, MSME objections.
+  "bad_tax_table",
+  "unknown_tax_table",
+  "tax_table_signed",
+  "unknown_bill",
+  "bill_booked",
+  "unknown_objection",
+  "objection_closed",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -368,6 +376,13 @@ const STATUS: Record<StoresErrorCode, number> = {
   ends_by_itself: 409,
   review_too_far: 422,
   unknown_payment_run: 404,
+  bad_tax_table: 422,
+  unknown_tax_table: 404,
+  tax_table_signed: 409,
+  unknown_bill: 404,
+  bill_booked: 409,
+  unknown_objection: 404,
+  objection_closed: 409,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

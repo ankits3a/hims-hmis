@@ -1400,6 +1400,9 @@ export const storesPayingSettings = pgTable(
     msmeRule: text("msme_rule").notNull(),
     outOfPatternMultipleBps: integer("out_of_pattern_multiple_bps").notNull(),
     firstBillLimitPaise: bigint("first_bill_limit_paise", { mode: "number" }).notNull(),
+    /** STORES S6b (#1116, decision 13) — the TDS goods row's owner switch (off) and the CA's trader line for the MSME clock (on: the cautious side). */
+    tdsGoods: boolean("tds_goods").notNull().default(false),
+    msmeTradersOnClock: boolean("msme_traders_on_clock").notNull().default(true),
     dryRunAt: timestamp("dry_run_at", { withTimezone: true }),
     setBy: text("set_by").notNull(),
     setAt: timestamp("set_at", { withTimezone: true }).notNull(),
@@ -1408,5 +1411,129 @@ export const storesPayingSettings = pgTable(
     uniqueIndex("stores_paying_settings_version_ux").on(t.version),
     check("stores_paying_settings_msme_ck", sql`${t.msmeRule} in ('as_today', 'act')`),
     check("stores_paying_settings_limits_ck", sql`${t.outOfPatternMultipleBps} >= 10000 and ${t.firstBillLimitPaise} > 0`),
+  ],
+);
+
+/**
+ * STORES S6b (#1116, decisions 4–5) — THE TAX TABLES the CA signs: `kind` `tds` (rows by nature of payment: section as
+ * TEXT, rates by payee type, the PAN-missing rate, threshold, own switch, the categories it covers) or `gst_credit` (the
+ * input-credit and reverse-charge marks proposed per category and supplier type). A version is written once; it counts
+ * only once signed (`stores_tax_table_signs`, one per version). The newest SIGNED version of a kind is in force; a bill
+ * keeps what it was booked under. Shipped EMPTY: with no signed table nothing is proposed. Both APPEND-ONLY (0248).
+ */
+export const storesTaxTables = pgTable(
+  "stores_tax_tables",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    version: integer("version").notNull(),
+    rules: jsonb("rules").notNull(),
+    documentRef: text("document_ref").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_tax_tables_version_ux").on(t.kind, t.version),
+    check("stores_tax_tables_kind_ck", sql`${t.kind} in ('tds', 'gst_credit')`),
+    check("stores_tax_tables_doc_ck", sql`length(${t.documentRef}) > 0`),
+  ],
+);
+
+export const storesTaxTableSigns = pgTable(
+  "stores_tax_table_signs",
+  {
+    id: text("id").primaryKey(),
+    tableId: text("table_id").notNull().references(() => storesTaxTables.id),
+    documentRef: text("document_ref").notNull(),
+    signedBy: text("signed_by").notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_tax_table_signs_table_ux").on(t.tableId),
+    check("stores_tax_table_signs_doc_ck", sql`length(${t.documentRef}) > 0`),
+  ],
+);
+
+/**
+ * STORES S6b (#1116, decision 5) — a supplier's lower or nil deduction certificate: its rate overrides the TDS row while
+ * valid on the bill's date. APPEND-ONLY (0248); a withdrawn certificate is a later row with rate and dates of its own.
+ */
+export const storesTdsCertificates = pgTable(
+  "stores_tds_certificates",
+  {
+    id: text("id").primaryKey(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    number: text("number").notNull(),
+    rateBps: integer("rate_bps").notNull(),
+    validFrom: date("valid_from", { mode: "string" }).notNull(),
+    validTo: date("valid_to", { mode: "string" }).notNull(),
+    documentRef: text("document_ref").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_tds_certificates_vendor_idx").on(t.vendorId, t.validFrom),
+    check("stores_tds_certificates_ck", sql`${t.rateBps} between 0 and 10000 and ${t.validFrom} <= ${t.validTo} and length(${t.documentRef}) > 0`),
+  ],
+);
+
+/**
+ * STORES S6b (#1116, decision 6) — a WRITTEN OBJECTION to goods or a service inside the MSME Act's 15 days (a QC
+ * rejection, a "Short"): the clock starts on the day it is closed. One close per objection. Both APPEND-ONLY (0248).
+ */
+export const storesMsmeObjections = pgTable(
+  "stores_msme_objections",
+  {
+    id: text("id").primaryKey(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    grnId: text("grn_id").references(() => grns.id),
+    sesId: text("ses_id"),
+    kind: text("kind").notNull(),
+    raisedOn: date("raised_on", { mode: "string" }).notNull(),
+    reason: text("reason").notNull(),
+    raisedBy: text("raised_by").notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_msme_objections_grn_idx").on(t.grnId),
+    index("stores_msme_objections_ses_idx").on(t.sesId),
+    check("stores_msme_objections_doc_ck", sql`(${t.grnId} is null) <> (${t.sesId} is null)`),
+    check("stores_msme_objections_kind_ck", sql`${t.kind} in ('qc_rejection', 'short') and length(${t.reason}) > 0`),
+  ],
+);
+
+export const storesMsmeObjectionCloses = pgTable(
+  "stores_msme_objection_closes",
+  {
+    id: text("id").primaryKey(),
+    objectionId: text("objection_id").notNull().references(() => storesMsmeObjections.id),
+    closedOn: date("closed_on", { mode: "string" }).notNull(),
+    note: text("note").notNull(),
+    closedBy: text("closed_by").notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_msme_objection_closes_ux").on(t.objectionId),
+    check("stores_msme_objection_closes_note_ck", sql`length(${t.note}) > 0`),
+  ],
+);
+
+/**
+ * STORES S6b (#1116, decision 10) — the accountant's Tally ledger names for Stores lines: `purchase:<top category>`,
+ * `asset:<top category>`, `tds:<nature>`, `rcm_liability`. Newest row per key wins. APPEND-ONLY (0248). Pharmacy's own
+ * names stay in `pharmacy_tally_config`, untouched.
+ */
+export const storesTallyLedgers = pgTable(
+  "stores_tally_ledgers",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_tally_ledgers_key_idx").on(t.key, t.setAt),
+    check("stores_tally_ledgers_ck", sql`length(${t.key}) between 1 and 80 and length(${t.name}) between 1 and 100`),
   ],
 );

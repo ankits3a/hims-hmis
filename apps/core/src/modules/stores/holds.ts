@@ -130,6 +130,12 @@ async function evaluate(db: Exec, b: BillRow, now: Date, settings: WirePayingSet
       found.push({ kind: "pay_after_grn", evidence: [self, ...docs.values()], endsAt: null });
     }
   }
+
+  // irn_missing (S6b, decision 4): a supplier declared for e-invoicing, a line claiming credit (eligible or shared), no IRN.
+  if (v!.einvoiceApplicable === true && (b.irn ?? null) === null) {
+    const marks = await ex(db).select({ credit: supplierBillLines.gstCredit }).from(supplierBillLines).where(eq(supplierBillLines.billId, b.id));
+    if (marks.some((m) => m.credit === "eligible" || m.credit === "shared")) found.push({ kind: "irn_missing", evidence: [self, { type: "vendor", id: v!.id, no: v!.code }], endsAt: null });
+  }
   return found;
 }
 

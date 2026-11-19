@@ -3,12 +3,13 @@ import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { pharmacyTallyConfig, pharmacyTallyExports } from "../../kernel/db/schema";
 import { receiptAllocationsBetween, refundVouchersPaidBetween } from "../billing";
-import { purchaseAdjustmentsBetween, purchaseRegister, supplierPaymentsBetween } from "../materials";
+import { purchaseAdjustmentsBetween, purchaseRegister, purchaseSplitsFor, supplierPaymentsBetween } from "../materials";
 import { userNames } from "./queue";
 import { PharmacyError } from "./errors";
 import { reportRange, reportToday, requireReportPermission } from "./report-range";
 import { pharmacySalesPeriod } from "./sales-register";
 import type { ReportInput } from "./sales-register";
+import type { PurchaseSplit } from "../materials";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -147,8 +148,11 @@ const TYPE_OF: Record<TallyVoucherKind, TallyVoucherType> = {
   purchase_return: "Debit Note", supplier_payment: "Payment", credit_shortfall: "Journal", return_closed: "Journal",
 };
 
-/** One line of a voucher: `amountPaise` > 0 is a DEBIT, < 0 a credit (the internal sign; Tally's is flipped in the XML). */
-export type TallyEntry = { ledger: string; amountPaise: number; party: boolean };
+/**
+ * One line of a voucher: `amountPaise` > 0 is a DEBIT, < 0 a credit (the internal sign; Tally's is flipped in the XML).
+ * STORES S6b (#1116, decision 10): a Stores purchase line names its `costCentre` (absent on every pharmacy entry).
+ */
+export type TallyEntry = { ledger: string; amountPaise: number; party: boolean; costCentre?: string };
 export type TallyVoucher = {
   kind: TallyVoucherKind; type: TallyVoucherType; remoteId: string; number: string; date: string; reference: string | null;
   party: string; narration: string; entries: TallyEntry[];
@@ -156,7 +160,7 @@ export type TallyVoucher = {
 /** A party ledger the masters file creates (a vendor, a B2B buyer): its group and GSTIN. The counter ledger is a mapped account, not a party. */
 export type TallyParty = { name: string; group: "Sundry Debtors" | "Sundry Creditors"; gstin: string | null };
 
-type Build = { vouchers: TallyVoucher[]; parties: Map<string, TallyParty> };
+type Build = { vouchers: TallyVoucher[]; parties: Map<string, TallyParty>; ledgers: Map<string, string> };
 
 function voucher(b: Build, kind: TallyVoucherKind, v: Omit<TallyVoucher, "kind" | "type" | "entries">, entries: TallyEntry[]): void {
   const kept = entries.filter((e) => e.amountPaise !== 0);
@@ -183,7 +187,12 @@ export type TallySource = {
   /** One receipt; `credits` is what it settled per buyer (a receipt can settle a B2C and a B2B bill together). */
   receipts: { id: string; no: string; date: string; invoiceNos: string[]; cashPaise: number; bankPaise: number; credits: { buyer: TallyBuyer; amountPaise: number }[] }[];
   refunds: { id: string; no: string; date: string; buyer: TallyBuyer; invoiceNo: string | null; amountPaise: number; cash: boolean }[];
-  purchases: { id: string; no: string; date: string; vendorBillNo: string; vendor: { name: string; gstin: string | null }; taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; roundOffPaise: number; totalPaise: number }[];
+  /**
+   * STORES S6b (#1116, decision 10): `split` — present only for a bill with a Stores or service line, reverse charge or
+   * TDS — reads the purchase per line (ledger by item group, cost centres, TDS and reverse-charge ledgers). Without it the
+   * voucher is exactly as before.
+   */
+  purchases: { id: string; no: string; date: string; vendorBillNo: string; vendor: { name: string; gstin: string | null }; taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; roundOffPaise: number; totalPaise: number; split?: PurchaseSplit }[];
   debitNotes: { id: string; no: string; date: string; returnNo: string | null; vendor: { name: string; gstin: string | null }; taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: number }[];
   supplierPayments: { id: string; no: string; date: string; vendor: { name: string; gstin: string | null }; mode: string; reference: string | null; amountPaise: number; bills: string[] }[];
   adjustments: { kind: "short_credit" | "closed"; id: string; no: string; date: string; ref: string | null; reason: string | null; vendor: { name: string; gstin: string | null }; amountPaise: number }[];
@@ -194,8 +203,8 @@ export type TallySource = {
  * on one day, sales and their receipts first, then refunds, then purchases, returns, adjustments and
  * payments. Throws `tally_unbalanced` on the first voucher that would not balance.
  */
-export function buildVouchers(src: TallySource, l: TallyLedgers): { vouchers: TallyVoucher[]; parties: TallyParty[] } {
-  const b: Build = { vouchers: [], parties: new Map() };
+export function buildVouchers(src: TallySource, l: TallyLedgers): { vouchers: TallyVoucher[]; parties: TallyParty[]; ledgers: TallyLedgerMaster[] } {
+  const b: Build = { vouchers: [], parties: new Map(), ledgers: new Map() };
   /** B2C: the one counter ledger. B2B: "legal name (GSTIN)", a party the masters create with its GSTIN. */
   const buyer = (x: TallyBuyer): string => {
     if (x === null) return l.counterSales;
@@ -241,9 +250,27 @@ export function buildVouchers(src: TallySource, l: TallyLedgers): { vouchers: Ta
   }
   for (const p of src.purchases) {
     const party = vendor(p.vendor);
-    voucher(b, "purchase", { remoteId: `hmis:purchase:${p.id}`, number: p.no, date: p.date, reference: p.vendorBillNo, party, narration: `Supplier bill ${p.vendorBillNo} booked as ${p.no}` }, [
-      dr(l.purchases, p.taxablePaise), dr(l.inputCgst, p.cgstPaise), dr(l.inputSgst, p.sgstPaise), dr(l.inputIgst, p.igstPaise),
-      roundOffEntry(l.roundOff, -p.roundOffPaise), cr(party, p.totalPaise, true),
+    const head = { remoteId: `hmis:purchase:${p.id}`, number: p.no, date: p.date, reference: p.vendorBillNo, party, narration: `Supplier bill ${p.vendorBillNo} booked as ${p.no}` };
+    if (p.split === undefined) {
+      voucher(b, "purchase", head, [
+        dr(l.purchases, p.taxablePaise), dr(l.inputCgst, p.cgstPaise), dr(l.inputSgst, p.sgstPaise), dr(l.inputIgst, p.igstPaise),
+        roundOffEntry(l.roundOff, -p.roundOffPaise), cr(party, p.totalPaise, true),
+      ]);
+      continue;
+    }
+    // STORES S6b (#1116, decision 10): one voucher, several ledger lines; the party is credited the total less TDS.
+    const lines = new Map<string, TallyEntry>();
+    for (const e of p.split.entries) {
+      const ledger = "std" in e ? l[e.std] : e.ledger;
+      if (!("std" in e)) b.ledgers.set(ledger, e.group);
+      const k = `${ledger}\u0000${e.costCentre ?? ""}`;
+      const cur = lines.get(k) ?? { ledger, amountPaise: 0, party: false, ...(e.costCentre === null ? {} : { costCentre: e.costCentre }) };
+      cur.amountPaise += e.amountPaise;
+      lines.set(k, cur);
+    }
+    voucher(b, "purchase", head, [
+      ...[...lines.values()].sort((x, y) => y.amountPaise - x.amountPaise || x.ledger.localeCompare(y.ledger)),
+      roundOffEntry(l.roundOff, -p.roundOffPaise), cr(party, p.totalPaise - p.split.deductedPaise, true),
     ]);
   }
   for (const d of src.debitNotes) {
@@ -268,8 +295,14 @@ export function buildVouchers(src: TallySource, l: TallyLedgers): { vouchers: Ta
   }
   const order: Record<TallyVoucherKind, number> = { sale: 0, receipt: 1, sales_return: 2, refund: 3, purchase: 4, purchase_return: 5, credit_shortfall: 6, return_closed: 7, supplier_payment: 8 };
   b.vouchers.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : order[x.kind] - order[y.kind] || x.number.localeCompare(y.number)));
-  return { vouchers: b.vouchers, parties: [...b.parties.values()].sort((x, y) => x.name.localeCompare(y.name)) };
+  return {
+    vouchers: b.vouchers, parties: [...b.parties.values()].sort((x, y) => x.name.localeCompare(y.name)),
+    ledgers: [...b.ledgers].map(([name, group]) => ({ name, group })).sort((x, y) => x.name.localeCompare(y.name)),
+  };
 }
+
+/** STORES S6b (#1116): a Stores ledger the masters file creates (a category purchase or asset ledger, TDS, reverse charge). */
+export type TallyLedgerMaster = { name: string; group: string };
 
 // ═══════════════════════════════════ the XML, pure ═══════════════════════════════════
 
@@ -308,12 +341,22 @@ ${messages.join("\n")}
 `;
 }
 
+/** STORES S6b (#1116): a Stores line's cost centre, under Tally's primary cost category; absent on every pharmacy entry. */
+const costCentreXml = (e: TallyEntry): string => (e.costCentre === undefined ? "" : `
+      <CATEGORYALLOCATIONS.LIST>
+       <CATEGORY>Primary Cost Category</CATEGORY>
+       <COSTCENTREALLOCATIONS.LIST>
+        <NAME>${xmlEscape(e.costCentre)}</NAME>
+        <AMOUNT>${tallyAmount(e.amountPaise)}</AMOUNT>
+       </COSTCENTREALLOCATIONS.LIST>
+      </CATEGORYALLOCATIONS.LIST>`);
+
 export function voucherXml(v: TallyVoucher): string {
   const entries = v.entries.map((e) => `     <ALLLEDGERENTRIES.LIST>
       <LEDGERNAME>${xmlEscape(e.ledger)}</LEDGERNAME>
       <ISDEEMEDPOSITIVE>${e.amountPaise > 0 ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
       <ISPARTYLEDGER>${e.party ? "Yes" : "No"}</ISPARTYLEDGER>
-      <AMOUNT>${tallyAmount(e.amountPaise)}</AMOUNT>
+      <AMOUNT>${tallyAmount(e.amountPaise)}</AMOUNT>${costCentreXml(e)}
      </ALLLEDGERENTRIES.LIST>`).join("\n");
   return `    <TALLYMESSAGE xmlns:UDF="TallyUDF">
      <VOUCHER REMOTEID="${xmlEscape(v.remoteId)}" VCHTYPE="${v.type}" ACTION="Create" OBJVIEW="Accounting Voucher View">
@@ -338,7 +381,7 @@ export function vouchersXml(vouchers: readonly TallyVoucher[], l: TallyLedgers):
  * among them, under Sundry Debtors), the vendors as Sundry Creditors and the B2B buyers as Sundry
  * Debtors, each with its GSTIN. No ledger is ever made for a patient.
  */
-export function mastersXml(vouchers: readonly TallyVoucher[], parties: readonly TallyParty[], l: TallyLedgers): string {
+export function mastersXml(vouchers: readonly TallyVoucher[], parties: readonly TallyParty[], l: TallyLedgers, stores: readonly TallyLedgerMaster[] = []): string {
   const used = new Set(vouchers.flatMap((v) => v.entries.map((e) => e.ledger)));
   const accounts = new Map<string, string>();
   for (const k of LEDGER_KEYS) if (used.has(l[k]) && !accounts.has(l[k])) accounts.set(l[k], GROUP[k]);
@@ -350,8 +393,21 @@ export function mastersXml(vouchers: readonly TallyVoucher[], parties: readonly 
       <PARENT>${xmlEscape(group)}</PARENT>${extra}
      </LEDGER>
     </TALLYMESSAGE>`;
+  // STORES S6b (#1116): the cost centres the Stores lines name, and the Stores ledgers (after pharmacy's, so a
+  // drug-only month — none of either — writes the file exactly as before).
+  const centres = [...new Set(vouchers.flatMap((v) => v.entries.map((e) => e.costCentre).filter((c): c is string => c !== undefined)))].sort((a, b) => a.localeCompare(b));
+  const withCentre = new Set(vouchers.flatMap((v) => v.entries.filter((e) => e.costCentre !== undefined).map((e) => e.ledger)));
   const messages = [
     ...[...accounts].sort(([a], [b]) => a.localeCompare(b)).map(([name, group]) => ledger(name, group)),
+    ...stores.filter((s) => !accounts.has(s.name) && used.has(s.name)).map((s) => ledger(s.name, s.group, withCentre.has(s.name) ? "\n      <ISCOSTCENTRESON>Yes</ISCOSTCENTRESON>" : "")),
+    ...centres.map((c) => `    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+     <COSTCENTRE NAME="${xmlEscape(c)}" ACTION="Create">
+      <NAME.LIST>
+       <NAME>${xmlEscape(c)}</NAME>
+      </NAME.LIST>
+      <CATEGORY>Primary Cost Category</CATEGORY>
+     </COSTCENTRE>
+    </TALLYMESSAGE>`),
     ...parties.filter((p) => !accounts.has(p.name)).map((p) => ledger(p.name, p.group, `\n      <ISBILLWISEON>Yes</ISBILLWISEON>${p.gstin === null ? "" : `\n      <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>\n      <PARTYGSTIN>${xmlEscape(p.gstin)}</PARTYGSTIN>`}`)),
   ];
   return envelope("All Masters", l.companyName, messages);
@@ -359,7 +415,7 @@ export function mastersXml(vouchers: readonly TallyVoucher[], parties: readonly 
 
 // ═══════════════════════════════════ the period's documents ═══════════════════════════════════
 
-async function sourceOf(db: Db, from: string, to: string): Promise<TallySource> {
+async function sourceOf(db: Db, from: string, to: string): Promise<TallySource & { missingLedgers: string[] }> {
   const [sales, receipts, refunds, register, payments, adjustments] = await Promise.all([
     pharmacySalesPeriod(db, from, to),
     receiptAllocationsBetween(db, from, to),
@@ -382,7 +438,11 @@ async function sourceOf(db: Db, from: string, to: string): Promise<TallySource> 
     cur.credits.push({ buyer: inv.buyer, amountPaise: paise });
     byReceipt.set(r.receiptId, cur);
   }
+  // STORES S6b (#1116, decision 10): a bill with a Stores or service line, reverse charge or TDS is read per line.
+  const splits = await purchaseSplitsFor(db, register.rows.filter((r) => r.kind === "bill").map((r) => r.id));
+  const missingLedgers = [...new Set([...splits.values()].flatMap((x) => x.missing))].sort((a, b) => a.localeCompare(b));
   return {
+    missingLedgers,
     sales: sales.sales.map((s) => ({
       id: s.id, no: s.invoiceNo, date: s.serviceDay, ref: s.ref, buyer: s.buyer, grossPaise: s.grossPaise, discountPaise: s.discountPaise,
       taxablePaise: s.taxableBasePaise, cgstPaise: s.cgstPaise, sgstPaise: s.sgstPaise,
@@ -400,6 +460,7 @@ async function sourceOf(db: Db, from: string, to: string): Promise<TallySource> 
     purchases: register.rows.filter((r) => r.kind === "bill").map((r) => ({
       id: r.id, no: r.docNo, date: r.date, vendorBillNo: r.vendorDocNo ?? "", vendor: { name: r.vendorName, gstin: r.gstin }, taxablePaise: r.taxablePaise,
       cgstPaise: r.cgstPaise, sgstPaise: r.sgstPaise, igstPaise: r.igstPaise, roundOffPaise: r.roundOffPaise, totalPaise: r.totalPaise,
+      ...(splits.has(r.id) ? { split: splits.get(r.id)! } : {}),
     })),
     debitNotes: register.rows.filter((r) => r.kind === "debit_note").map((r) => ({
       id: r.id, no: r.docNo, date: r.date, returnNo: r.ref, vendor: { name: r.vendorName, gstin: r.gstin }, taxablePaise: r.taxablePaise,
@@ -424,6 +485,8 @@ export type TallyPreview = {
   sample: TallyVoucher[];
   /** Earlier exports whose range overlaps this one: a re-export is seen before it is made. */
   earlier: TallyExportSummary[];
+  /** STORES S6b (#1116): Stores ledger names still to be named; present only when some are (the export refuses until then). */
+  missingLedgers?: string[];
 };
 
 function countsOf(vouchers: readonly TallyVoucher[]): Record<TallyVoucherKind, number> {
@@ -454,11 +517,13 @@ export async function tallyPreview(db: Db, actor: Actor, input: ReportInput, now
   await requireReportPermission(db, actor, TALLY_EXPORT, "the Tally export");
   const range = reportRange(input.preset ?? "month", reportToday(now), input);
   const state = await readLedgers(db);
-  const { vouchers } = buildVouchers(await sourceOf(db, range.from, range.to), state.ledgers);
+  const src = await sourceOf(db, range.from, range.to);
+  const { vouchers } = buildVouchers(src, state.ledgers);
   return {
     from: range.from, to: range.to, preset: range.preset, confirmed: state.confirmed, ledgers: state.ledgers,
     voucherCount: vouchers.length, counts: countsOf(vouchers), debitPaise: debitOf(vouchers), sample: vouchers.slice(0, 5),
     earlier: await earlierExports(db, range.from, range.to),
+    ...(src.missingLedgers.length === 0 ? {} : { missingLedgers: src.missingLedgers }),
   };
 }
 
@@ -473,9 +538,14 @@ export async function tallyExport(db: Db, actor: Actor, input: ReportInput, now:
   if (!state.confirmed) {
     throw new PharmacyError("tally_ledgers_unconfirmed", "confirm the Tally ledger names first (Tally → Ledgers): the defaults are names, not your company's ledgers");
   }
-  const { vouchers, parties } = buildVouchers(await sourceOf(db, range.from, range.to), state.ledgers);
+  const src = await sourceOf(db, range.from, range.to);
+  // STORES S6b (#1116, decision 10 and edge case 9): a Stores ledger with no name refuses the export, before writing.
+  if (src.missingLedgers.length > 0) {
+    throw new PharmacyError("invalid_tally_ledgers", `name these Tally ledgers first: ${src.missingLedgers.join(", ")}`, { missing: src.missingLedgers });
+  }
+  const { vouchers, parties, ledgers } = buildVouchers(src, state.ledgers);
   const vXml = vouchersXml(vouchers, state.ledgers);
-  const mXml = mastersXml(vouchers, parties, state.ledgers);
+  const mXml = mastersXml(vouchers, parties, state.ledgers, ledgers);
   const row = {
     id: newId(), fromDate: range.from, toDate: range.to, voucherCount: vouchers.length, counts: countsOf(vouchers), debitPaise: debitOf(vouchers),
     checksum: createHash("sha256").update(vXml, "utf8").digest("hex"), ledgers: state.ledgers, vouchersXml: vXml, mastersXml: mXml,

@@ -33,6 +33,7 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_SES_CONFIRM`
   - `STORES_SHELF_READ`
   - `STORES_SHELF_WORK`
+  - `STORES_TAX_MANAGE`
 - `advances.ts`
   - `ADVANCE_MAX_BPS`
   - `ADVANCE_WORDS`
@@ -266,9 +267,17 @@ Source: `apps/core/src/modules/stores/`
   - `updateStoresItem(db: Db, actor: Actor, itemId: string, patch: { categoryId?: string; trackMode?: TrackMode; searchAliases?: string[] }, rea…`
 - `manifest.ts`
   - `storesManifest: ModuleManifest`
+- `msme.ts`
+  - `MSME_ACT_DAYS`
+  - `MSME_ACT_MAX_DAYS`
+  - `actDueDate(db: Exec, input: { billId: string; vendorId: string; billDate: string; acceptanceDate: string; termsDays: number | null }, trade…`
+  - `closeMsmeObjection(db: Db, actor: Actor, objectionId: string, input: { closedOn: string; note: string }, now: Date = new Date()): Promise<{…`
+  - `msmeDryRun(db: Db, actor: Actor, now: Date = new Date()): Promise<WireMsmeDryRun>`
+  - `onTheClock(v: Pick<VendorRow, "msmeClass" | "msmeActivity">, tradersOnClock: boolean): boolean`
+  - `recordMsmeObjection(db: Db, actor: Actor, input: { grnId?: string | null; sesId?: string | null; kind: "qc_rejection" | "short"; raisedOn: …`
 - `paying-book.ts`
   - `bookDraft(db: Db, actor: Actor, kind: "grn" | "ses", id: string): Promise<WirePayBookDraft>`
-  - `bookFromDesk(db: Db, actor: Actor, input: { kind: "grn" | "ses"; id: string; vendorBillNo: string; billDate: string; lines?: { itemId: stri…`
+  - `bookFromDesk(db: Db, actor: Actor, input: { kind: "grn" | "ses"; id: string; vendorBillNo: string; billDate: string; irn?: string | null; l…`
 - `paying-reads.ts`
   - `decideRunFromPhone(db: Db, actor: Actor, runId: string, input: { approve: boolean; reason?: string | null }, now: Date = new Date()): Promi…`
   - `payablesByGroup(db: Db, actor: Actor, now: Date = new Date()): Promise<WirePayablesByGroup>`
@@ -278,7 +287,8 @@ Source: `apps/core/src/modules/stores/`
 - `paying-settings.ts`
   - `PAYING_DEFAULTS: WirePayingSettings`
   - `payingSettings(db: Exec): Promise<WirePayingSettings>`
-  - `setPayingSettings(db: Db, actor: Actor, input: { holdsCoverPharmacy: boolean; dryRunAt: string }, now: Date = new Date()): Promise<WirePayi…`
+  - `setPayingSettings(db: Db, actor: Actor, input: PayingSwitches, now: Date = new Date()): Promise<WirePayingSettings>`
+  - types: `PayingSwitches`
 - `pdf-text.ts`
   - `pdfPages(bytes: Buffer): PdfPage[]`
 - `purchase-delivery.ts`
@@ -356,6 +366,22 @@ Source: `apps/core/src/modules/stores/`
   - `setSupplierFields(db: Db, actor: Actor, vendorId: string, patch: { msmeActivity?: "maker" | "service" | "trader" | null; einvoiceApplicable…`
   - `storesSuppliers(db: Db, actor: Actor, now: Date = new Date()): Promise<WireStoresSupplier[]>`
   - `supplierKyc(db: Db | Tx, vendorId: string, now: Date, opts: { categoryId?: string | null } = {}): Promise<WireSupplierKyc>`
+- `tally-split.ts`
+  - `setStoresTallyLedgers(db: Db, actor: Actor, names: Record<string, string>, now: Date = new Date()): Promise<WireStoresTallyLedgers>`
+  - `storesTallyLedgerNames(db: Db, actor: Actor): Promise<WireStoresTallyLedgers>`
+- `tax-on-bill.ts`
+  - `addTdsCertificate(db: Db, actor: Actor, input: { vendorId: string; number: string; rateBps: number; validFrom: string; validTo: string; doc…`
+  - `billTaxProposal(db: Db, actor: Actor, billId: string, now: Date = new Date()): Promise<WireBillTaxProposal>`
+  - `gstNotCreditedOn(db: Db, departmentCode: string, day: string): Promise<{ paise: number; rows: number }>`
+  - `natureOf(rules: readonly WireTdsRule[], line: Pick<TaxLine, "storesLine" | "catCode" | "topCode">): WireTdsNature`
+  - `proposeCredit(rules: readonly WireGstCreditRule[] | null, line: Pick<TaxLine, "catCode" | "topCode">, registered: boolean): { credit: WireG…`
+  - `saveTaxTable(db: Db, actor: Actor, input: { kind: "tds"; rules: WireTdsRule[]; documentRef: string } | { kind: "gst_credit"; rules: WireGst…`
+  - `setBillTds(db: Db, actor: Actor, billId: string, input: { lines: { lineId: string; tdsPaise: number }[]; reason: string }, now: Date = new …`
+  - `signTaxTable(db: Db, actor: Actor, tableId: string, input: { documentRef: string }, now: Date = new Date()): Promise<WireTaxTable>`
+  - `signedTaxTable(db: Exec, kind: "tds" | "gst_credit"): Promise<Signed | null>`
+  - `taxTables(db: Db, actor: Actor): Promise<WireTaxTables>`
+  - `tdsDryRun(db: Db, actor: Actor, now: Date = new Date()): Promise<WireTdsDryRun>`
+  - `tdsFor(db: Exec, billId: string, opts: { goodsOn: boolean }): Promise<TdsResult>`
 - `tickets.ts`
   - `CLAIM_IDLE_MS`
   - `EMERGENCY_REVIEW_MS`
@@ -416,7 +442,7 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_agent_proposal_steps`, `stores_agent_proposals`, `stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_award_lines`, `stores_award_signatures`, `stores_awards`, `stores_bill_hold_steps`, `stores_bill_holds`, `stores_buy_exception_steps`, `stores_buy_exceptions`, `stores_buy_group_moves`, `stores_buy_groups`, `stores_client_keys`, `stores_committee_seats`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_over_budget_marks`, `stores_paying_settings`, `stores_picking_claims`, `stores_po_advance_steps`, `stores_po_advances`, `stores_pr_band_settings`, `stores_pr_deliveries`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_quote_admissions`, `stores_quote_lines`, `stores_quote_technical`, `stores_quotes`, `stores_rfq_invitees`, `stores_rfq_lines`, `stores_rfq_steps`, `stores_rfqs`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_service_entries`, `stores_service_entry_lines`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
+`stores_agent_proposal_steps`, `stores_agent_proposals`, `stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_award_lines`, `stores_award_signatures`, `stores_awards`, `stores_bill_hold_steps`, `stores_bill_holds`, `stores_buy_exception_steps`, `stores_buy_exceptions`, `stores_buy_group_moves`, `stores_buy_groups`, `stores_client_keys`, `stores_committee_seats`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_msme_objection_closes`, `stores_msme_objections`, `stores_nudges`, `stores_over_budget_marks`, `stores_paying_settings`, `stores_picking_claims`, `stores_po_advance_steps`, `stores_po_advances`, `stores_pr_band_settings`, `stores_pr_deliveries`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_quote_admissions`, `stores_quote_lines`, `stores_quote_technical`, `stores_quotes`, `stores_rfq_invitees`, `stores_rfq_lines`, `stores_rfq_steps`, `stores_rfqs`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_service_entries`, `stores_service_entry_lines`, `stores_tag_decisions`, `stores_tally_ledgers`, `stores_tax_table_signs`, `stores_tax_tables`, `stores_tds_certificates`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
 
 Foreign keys into: `materials`, `org`, `resources`
 
