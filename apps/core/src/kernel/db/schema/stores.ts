@@ -1130,3 +1130,155 @@ export const storesPrDeliveries = pgTable(
   },
   (t) => [index("stores_pr_deliveries_pr_idx").on(t.prId, t.lineIdx), check("stores_pr_deliveries_qty_ck", sql`${t.qtyBase} > 0`)],
 );
+
+// ═══════════════════════════════ S5c (#1115): the buyer agent, exceptions, advances ═══════════════════════════════
+
+/**
+ * STORES S5c (#1115, decision 5, "Audit by construction") — ONE DRAFT THE BUYER AGENT MADE: the nightly grouping preview
+ * (`grouping`), an RFQ draft (`rfq_draft`), a quote read from a PDF (`quote_read`) or a PO draft (`po_draft`). A draft is
+ * data, never an act: nothing is grouped, sent, quoted, ordered or awarded until a person confirms it, and that confirm
+ * writes the record and its `copilot_acts` row (the confirming person) together. `department_ids` is what the
+ * three-open-proposals-per-department cap counts (`central` stands for the store's own requests). `made_by` is the
+ * agent (`system:stores-buyer-agent`) or, for a draft asked for at the desk, the person who asked. APPEND-ONLY (0246).
+ */
+export const storesAgentProposals = pgTable(
+  "stores_agent_proposals",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    departmentIds: jsonb("department_ids").$type<string[]>().notNull(),
+    groupId: text("group_id").references(() => storesBuyGroups.id),
+    rfqId: text("rfq_id").references(() => storesRfqs.id),
+    vendorId: text("vendor_id").references(() => vendors.id),
+    /** What the agent proposes (lines, suppliers, read lines with their source), as the desk shows it. */
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    /** The PDF a `quote_read` came from (document store key); the quote that is entered carries the same key. */
+    documentKey: text("document_key"),
+    madeBy: text("made_by").notNull(),
+    madeAt: timestamp("made_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_agent_proposals_kind_idx").on(t.kind, t.madeAt),
+    index("stores_agent_proposals_group_idx").on(t.groupId),
+    check("stores_agent_proposals_kind_ck", sql`${t.kind} in ('grouping', 'rfq_draft', 'quote_read', 'po_draft')`),
+  ],
+);
+
+/**
+ * S5c — WHAT A PERSON DID WITH A DRAFT: `confirmed` (the record was written; `confirm_id` is its `copilot_acts` row),
+ * `dismissed`, `superseded` (its lines moved on without it), and per line of a quote read `line_confirmed` /
+ * `line_dropped` (the numbers the person confirmed, in `data`). One closing step per draft, one step per line.
+ * APPEND-ONLY (0246).
+ */
+export const storesAgentProposalSteps = pgTable(
+  "stores_agent_proposal_steps",
+  {
+    id: text("id").primaryKey(),
+    proposalId: text("proposal_id").notNull().references(() => storesAgentProposals.id),
+    kind: text("kind").notNull(),
+    lineIdx: integer("line_idx"),
+    data: jsonb("data").$type<Record<string, unknown>>(),
+    confirmId: text("confirm_id"),
+    resultRowId: text("result_row_id"),
+    reason: text("reason"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_agent_proposal_steps_proposal_idx").on(t.proposalId, t.at),
+    uniqueIndex("stores_agent_proposal_steps_close_ux").on(t.proposalId).where(sql`${t.kind} in ('confirmed', 'dismissed', 'superseded')`),
+    uniqueIndex("stores_agent_proposal_steps_line_ux").on(t.proposalId, t.lineIdx).where(sql`${t.kind} in ('line_confirmed', 'line_dropped')`),
+    check("stores_agent_proposal_steps_kind_ck", sql`${t.kind} in ('confirmed', 'dismissed', 'superseded', 'line_confirmed', 'line_dropped')`),
+    check("stores_agent_proposal_steps_line_ck", sql`(${t.kind} in ('line_confirmed', 'line_dropped')) = (${t.lineIdx} is not null)`),
+  ],
+);
+
+/**
+ * STORES S5c (#1115, edge cases 1 and 9; ruling 0101 Q4) — A PURCHASE OUTSIDE THE QUOTE BANDS. `single_source`: one
+ * maker supplies it; a typed reason, the user HOD's certificate (`certified`), then the materials head's approval up to
+ * ₹5 lakh or the owner's above (`approved`). `emergency`: an emergency request's one quote, approved by the medical
+ * superintendent (`approved`), confirmed by the owner within 72 hours (`confirmed`). Either: `refused` ends it. The
+ * value is frozen at the request (the group's estimate); `needs_owner` is decided then. APPEND-ONLY (0246).
+ */
+export const storesBuyExceptions = pgTable(
+  "stores_buy_exceptions",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    groupId: text("group_id").notNull().references(() => storesBuyGroups.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    reason: text("reason").notNull(),
+    valuePaise: bigint("value_paise", { mode: "number" }).notNull(),
+    needsOwner: boolean("needs_owner").notNull(),
+    raisedBy: text("raised_by").notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_buy_exceptions_group_idx").on(t.groupId),
+    check("stores_buy_exceptions_kind_ck", sql`${t.kind} in ('single_source', 'emergency')`),
+    check("stores_buy_exceptions_value_ck", sql`${t.valuePaise} >= 0 and length(${t.reason}) > 0`),
+  ],
+);
+
+export const storesBuyExceptionSteps = pgTable(
+  "stores_buy_exception_steps",
+  {
+    id: text("id").primaryKey(),
+    exceptionId: text("exception_id").notNull().references(() => storesBuyExceptions.id),
+    kind: text("kind").notNull(),
+    /** In what capacity: `hod`, `materials_head`, `owner`, `medical_superintendent`. */
+    asRole: text("as_role").notNull(),
+    reason: text("reason"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_buy_exception_steps_once_ux").on(t.exceptionId, t.kind),
+    check("stores_buy_exception_steps_kind_ck", sql`${t.kind} in ('certified', 'approved', 'confirmed', 'refused')`),
+    check("stores_buy_exception_steps_reason_ck", sql`${t.kind} <> 'refused' or ${t.reason} is not null`),
+  ],
+);
+
+/**
+ * STORES S5c (#1115, decision 11; ruling 0101 Q7) — AN ADVANCE ON AN EQUIPMENT PO: at most 30 % of the PO, against the
+ * supplier's bank guarantee (number, bank, valid to, amount), approved by the owner (`stores_po_advance_steps`
+ * `approved` | `refused`). Every PO with an award is "Pay after GRN" unless an APPROVED row names it. Paying the advance is
+ * S6's (#1116); this row is what S6 reads. `po_id` is plain text (the `award_id` precedent). APPEND-ONLY (0246).
+ */
+export const storesPoAdvances = pgTable(
+  "stores_po_advances",
+  {
+    id: text("id").primaryKey(),
+    poId: text("po_id").notNull(),
+    pctBps: integer("pct_bps").notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    guaranteeNo: text("guarantee_no").notNull(),
+    guaranteeBank: text("guarantee_bank").notNull(),
+    guaranteeValidTo: date("guarantee_valid_to", { mode: "string" }).notNull(),
+    guaranteePaise: bigint("guarantee_paise", { mode: "number" }).notNull(),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_po_advances_po_idx").on(t.poId),
+    check("stores_po_advances_pct_ck", sql`${t.pctBps} > 0 and ${t.pctBps} <= 3000`),
+    check("stores_po_advances_money_ck", sql`${t.amountPaise} > 0 and ${t.guaranteePaise} >= ${t.amountPaise}`),
+  ],
+);
+
+export const storesPoAdvanceSteps = pgTable(
+  "stores_po_advance_steps",
+  {
+    id: text("id").primaryKey(),
+    advanceId: text("advance_id").notNull().references(() => storesPoAdvances.id),
+    kind: text("kind").notNull(),
+    reason: text("reason"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_po_advance_steps_once_ux").on(t.advanceId),
+    check("stores_po_advance_steps_kind_ck", sql`${t.kind} in ('approved', 'refused')`),
+    check("stores_po_advance_steps_reason_ck", sql`${t.kind} <> 'refused' or ${t.reason} is not null`),
+  ],
+);

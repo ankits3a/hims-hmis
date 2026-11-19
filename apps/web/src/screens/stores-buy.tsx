@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
-  approvePr, approveSupplierCategory, budgetsForMonth, bulkApprovePrs, buyContext, declinePr, delegate, delegationCandidates, grnsForQc, myDelegations,
+  approvePr, approveSupplierCategory, budgetsForMonth, overBudget, bulkApprovePrs, buyContext, declinePr, delegate, delegationCandidates, grnsForQc, myDelegations,
   myPrs, postQcGrn, previewLine, prsToApprove, raisePr, setBudget, setSupplierFields, signQc, suppliers,
 } from "../lib/buying-api";
 import { listCategories, searchItems, storesErrorCode } from "../lib/stores-api";
@@ -95,7 +95,7 @@ function BudgetLine({ b }: { b: WirePurchaseRequest["budget"] }): React.ReactEle
 
 export function StoresBuy(): React.ReactElement {
   const { t } = useTranslation();
-  const search = useSearch({ strict: false }) as { pr?: string; tab?: string };
+  const search = useSearch({ strict: false }) as { pr?: string; tab?: string; month?: string };
   const ctx = useQuery({ queryKey: ["stores", "buy", "context"], queryFn: buyContext, retry: false });
   const tabs = tabsOf(ctx.data);
   const [tab, setTab] = useState<Tab | null>(null);
@@ -120,7 +120,7 @@ export function StoresBuy(): React.ReactElement {
             {shown === "approve" && <ApproveTab ctx={ctx.data!} focus={search.pr} />}
             {shown === "mine" && <MineTab />}
             {shown === "handover" && <HandoverTab ctx={ctx.data!} />}
-            {shown === "budgets" && <BudgetsTab />}
+            {shown === "budgets" && <BudgetsTab initialMonth={search.month} />}
             {shown === "suppliers" && <SuppliersTab masters={ctx.data!.can.masters} />}
             {shown === "qc" && <QcTab />}
           </>
@@ -433,11 +433,11 @@ function HandoverTab({ ctx }: { ctx: BuyContext }): React.ReactElement {
 
 /* ─────────────── Budgets (finance, 16:9) ─────────────── */
 
-function BudgetsTab(): React.ReactElement {
+function BudgetsTab({ initialMonth }: { initialMonth?: string | undefined }): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const refusal = useRefusal();
-  const [month, setMonth] = useState(thisMonth());
+  const [month, setMonth] = useState(initialMonth !== undefined && /^\d{4}-\d{2}$/.test(initialMonth) ? initialMonth : thisMonth());
   const q = useQuery({ queryKey: ["stores", "buy", "budgets", month], queryFn: () => budgetsForMonth(month), retry: false });
   const [typed, setTyped] = useState<Record<string, string>>({});
   const [year, setYear] = useState(false);
@@ -473,6 +473,7 @@ function BudgetsTab(): React.ReactElement {
                 </div>
                 <div style={line}>
                   <span style={cell}>{`${t("stores.buy.spent")} ${money(d.spentPaise)}`}</span>
+                  {(d.committedPaise ?? 0) > 0 && <span style={word}>{`${t("stores.buy.onOrder")} ${money(d.committedPaise)}`}</span>}
                   {d.equipment.requests.length > 0 && <span style={word}>{`${t("stores.buy.equipment")} ${money(d.equipment.requests.reduce((a, r) => a + r.estimatePaise, 0))}`}</span>}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
@@ -485,6 +486,30 @@ function BudgetsTab(): React.ReactElement {
             ))}
           </div>
         )}
+      <OverBudgetList month={month} />
+    </section>
+  );
+}
+
+/** S5c (#1115, decision 15) — the owner's monthly over-budget list: departments past 100 % and the approvals marked "over budget". */
+function OverBudgetList({ month }: { month: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["stores", "buy", "over", month], queryFn: () => overBudget(month), retry: false });
+  if (q.isError) return null;
+  if (q.data === undefined) return <GreyRows n={2} />;
+  return (
+    <section data-testid="over-budget-list" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <h2 style={{ margin: 0, fontSize: 16 }}>{t("stores.buy.overList")}</h2>
+      {q.data.departments.length === 0 ? <p style={{ margin: 0 }}>{t("stores.buy.overListNone")}</p> : q.data.departments.map((d) => (
+        <article key={d.departmentId} style={card}>
+          <div style={line}>
+            <strong style={cell}>{d.name}</strong>
+            <span style={{ ...word, borderStyle: "dashed" }}>{t("stores.buy.overBudget")}</span>
+          </div>
+          <div style={line}><span style={cell}>{`${t("stores.buy.spent")} ${money(d.spentPaise)} / ${money(d.budgetPaise)} · ${String(d.pct)}%`}</span></div>
+          {d.marks.length > 0 && <div style={{ ...line, flexWrap: "wrap" }}><span style={{ overflowWrap: "anywhere" }}>{`${t("stores.buy.overMarks")}: ${d.marks.map((m) => m.no).join(", ")}`}</span></div>}
+        </article>
+      ))}
     </section>
   );
 }

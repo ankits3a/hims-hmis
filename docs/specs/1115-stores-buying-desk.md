@@ -1,6 +1,6 @@
 ---
 issue: 1115
-status: approved
+status: built
 approved: 2026-11-19
 ---
 # SPEC: Stores S5, the buying desk and the buyer agent: requests, grouping, RFQ, comparative statement, award, budgets (#1115) — APPROVED by owner 2026-11-19 (decision 0101)
@@ -367,3 +367,35 @@ never in notices.
 - **Pharmacy-live paths touched, each pinned:** `materials.grn.qc` (D6), `createPurchaseOrder` and the PO tiers
   (D7, D15), `vendors` columns (nullable, D7). The first commit of S5a also adds plain characterisation tests
   (green on `main`, outside `acceptance/`) for a pharmacy PO and a drug GRN QC before any materials edit.
+
+## As built (S5a, S5b, S5c; 2026-11-19)
+
+Built in three PRs as the build notes say; D1–D7 (S5a), D8–D20 (S5b), D21–D23 (S5c) each have a locked acceptance test.
+Where S5c's build differs from the text above, or decides what the text left open:
+
+- **The 22:00 job rides the Stores minute sweep** (`runStoresChaser` → `runBuyerNightIfDue`), S3's precedent: no new
+  scheduler job name. The night of D runs once, at the first minute between 22:00 on D and 07:00 on D+1 that finds no
+  `agent_night` act for D; a halted night runs the minute the halt lifts. Proposals are `stores_agent_proposals` rows
+  (migration 0246, append-only) because `copilot_acts` holds only what a person confirmed; each confirm writes the
+  record and its `copilot_acts` row together.
+- **Grouping key:** category, then likely supplier (an open rate contract, else the last paid receipt's supplier). The
+  three-open-proposals cap counts the central store's own requests as one department.
+- **The concierge's chat intents for the buyer are not registered:** the S3 acceptance check D7 (locked) pins the Stores
+  intents at seven with `stores.reorder` the only act. The drafts follow the same law on the desk (propose → a person's
+  confirm → `copilot_acts`, the copilot's halt, the ₹ cap on model calls, works with the model down).
+- **PDF reading** uses the kernel's one chat client; the text goes masked and comes back rehydrated; a cited line must be
+  on its page and each number in that line, else the number is blank. The upload rides the API's 1 MB JSON body (a
+  quotation PDF up to about 700 KB). A scan or an encrypted PDF reads as an empty draft.
+- **Scorecard** quarters are calendar quarters (`2026-Q4`); a GRN's date is its challan date; fill rate is over POs whose
+  expected date falls in the quarter; price drift is the GRN cost against the PO's net rate; a price tie in the
+  comparative goes to earlier delivery, then the better scorecard, then the supplier code.
+- **Single source** (edge case 1): a central-store group's certificate is the materials head's and its approval the
+  owner's; medical equipment's single source is the owner's whatever the value. **Emergency** (edge case 9): only a
+  group of emergency requests; the purchase does not wait for the owner's confirmation, which is "overdue" after 72 h.
+- **Advances** (decision 11): requested at the desk, approved by the owner; paying them is S6's (#1116).
+- **Not built:** splitting ONE request line across two groups (flow 4's "or splits one"): a line moves whole. A split
+  needs a quantity on the group move and through every read after it (RFQ lines, the comparative, the award, the
+  delivery share); owed as #1133.
+- **Spent** adds Stores POs at award value with GST from the PO's approval, less what was already delivered to the
+  department (then S3's receipt rule counts it); a delivery ticket raised but not yet received counts in neither.
+

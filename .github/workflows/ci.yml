@@ -92,7 +92,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      # #1115 (S5c): core's `tsc` needs ~5.1 GB now (drizzle types every table into every query); the runner's default
+      # V8 heap aborted it. An explicit heap, measured with `--extendedDiagnostics`; the check itself is unchanged.
       - run: pnpm typecheck
+        env: { NODE_OPTIONS: --max-old-space-size=7168 }
       - run: pnpm lint
       # WASA M-08 — A NEW HIGH IN WHAT SHIPS FAILS THE BUILD. `--prod` because the image installs
       # production dependencies only (Dockerfile `prod-deps`); dev-only advisories (esbuild under

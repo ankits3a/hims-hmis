@@ -4,14 +4,16 @@ import { istDayString } from "../../kernel/approvals/cumulative";
 import { raiseNotice } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import {
-  storesDepartmentBudgets, storesOverBudgetMarks, storesPurchaseRequestLines, storesPurchaseRequestStamps, storesPurchaseRequests,
+  purchaseOrders, storeIndents, storesAwardLines, storesAwards, storesDepartmentBudgets, storesOverBudgetMarks, storesPrDeliveries, storesPurchaseRequestLines,
+  storesPurchaseRequestStamps, storesPurchaseRequests,
 } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { STORES_BUDGET_MANAGE, departmentOf, holds, recordAct } from "./access";
+import { groupLines, holdsRole, lineMoney } from "./buying-common";
 import { StoresError } from "./errors";
 import { departmentSpendByMonth, nextMonthStart } from "./spend";
 import { approversToTell } from "./tickets";
-import type { WireDepartmentBudget } from "@hmis/contracts";
+import type { WireDepartmentBudget, WireOverBudgetMonth } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -23,7 +25,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  * a new row and one act.
  *
  * Spent = S3's spend rule (`spend.ts`: receipts into the department's shelves at batch cost, less returns), which already
- * leaves tagged units out. S5b adds the Stores POs of the department's non-stock requests at PO value when ordered.
+ * leaves tagged units out, plus (S5c) the Stores POs of the department's requests at PO value when ordered (`committedByPo`).
  * Equipment is apart: band C equipment requests never count and are listed as "Equipment" beside the month.
  *
  * Warnings: one notice at 80 % and one at 100 % per department per month to the HOD (else the stand-in) and the
@@ -108,7 +110,107 @@ export async function departmentBudget(db: Db | Tx, departmentId: string, month:
     estimatePaise: lines.filter((l) => l.prId === p.id).reduce((a, l) => a + l.qtyBase * l.unitEstimatePaise, 0),
   }));
   const budgetPaise = row?.amountPaise ?? null;
-  return { departmentId: dept.id, month, budgetPaise, spentPaise, pct: budgetPaise === null ? null : pctOf(spentPaise, budgetPaise), equipment: { requests } };
+  const committedPaise = await committedByPo(db, dept.id, month);
+  const total = spentPaise + committedPaise;
+  return {
+    departmentId: dept.id, month, budgetPaise, spentPaise: total, committedPaise, pct: budgetPaise === null ? null : pctOf(total, budgetPaise), equipment: { requests },
+  };
+}
+
+/**
+ * S5c (#1115, decision 15) — "plus Stores POs for that department's non-stock PRs at PO value when ordered". For each
+ * Stores PO APPROVED in the IST month (approved, sent or received; an award links it to its group), the department's own
+ * request lines on it, priced at the award's rate with GST (Stores input GST is a cost, ruling 0101 Q2), for the
+ * quantity NOT YET DELIVERED to the department (`stores_pr_deliveries`): once delivered, the shelf's receipt is counted
+ * by S3's rule instead, so nothing is counted twice. Equipment lines never count (they are "Equipment", apart).
+ * DECIDED: a delivery ticket raised but not yet received counts in neither, for those hours.
+ */
+async function committedByPo(db: Db | Tx, departmentId: string, month: string): Promise<number> {
+  const start = new Date(`${month}-01T00:00:00+05:30`);
+  const end = new Date(`${nextMonthStart(month)}T00:00:00+05:30`);
+  const pos = await (db as Db).select({ awardId: purchaseOrders.awardId, vendorId: purchaseOrders.vendorId, groupId: storesAwards.groupId })
+    .from(purchaseOrders).innerJoin(storesAwards, eq(storesAwards.id, purchaseOrders.awardId))
+    .where(and(inArray(purchaseOrders.status, ["approved", "sent", "part_received", "received"]), gte(purchaseOrders.approvedAt, start), lt(purchaseOrders.approvedAt, end)));
+  let total = 0;
+  for (const po of pos) {
+    const mine = (await groupLines(db, po.groupId)).filter((l) => l.source === "department" && l.departmentId === departmentId && !l.equipment);
+    if (mine.length === 0) continue;
+    const rates = await (db as Db).select().from(storesAwardLines).where(and(eq(storesAwardLines.awardId, po.awardId!), eq(storesAwardLines.vendorId, po.vendorId)));
+    const delivered = await (db as Db).select().from(storesPrDeliveries).where(inArray(storesPrDeliveries.prId, [...new Set(mine.map((l) => l.prId))]));
+    for (const l of mine) {
+      const r = rates.find((x) => x.itemId === l.itemId);
+      if (r === undefined) continue;
+      const left = l.qtyBase - delivered.filter((d) => d.prId === l.prId && d.lineIdx === l.lineIdx).reduce((a, d) => a + d.qtyBase, 0);
+      if (left <= 0) continue;
+      const m = lineMoney(left, r.ratePaise, r.discountBps, r.gstRateBps);
+      total += m.taxablePaise + m.gstPaise;
+    }
+  }
+  return total;
+}
+
+/**
+ * S5c (#1115, decision 15: "a monthly over-budget list to the owner") — every department past 100 % of a month's budget,
+ * with the approvals that carried "over budget" (tickets' marks and requests' stamps) in that month. The owner and
+ * finance read it; nothing in it refuses anything.
+ */
+export async function overBudgetList(db: Db, actor: Actor, month: string): Promise<WireOverBudgetMonth> {
+  if (!(await holds(db, actor, STORES_BUDGET_MANAGE)) && !(await holdsRole(db, actor, "owner"))) {
+    throw new StoresError("not_permitted", "the over-budget list is the owner's and finance's", { permission: STORES_BUDGET_MANAGE });
+  }
+  return overBudgetMonth(db, month);
+}
+
+export async function overBudgetMonth(db: Db | Tx, month: string): Promise<WireOverBudgetMonth> {
+  requireMonth(month);
+  const start = new Date(`${month}-01T00:00:00+05:30`);
+  const end = new Date(`${nextMonthStart(month)}T00:00:00+05:30`);
+  const depts = await (db as Db).selectDistinct({ id: storesDepartmentBudgets.departmentId }).from(storesDepartmentBudgets).where(eq(storesDepartmentBudgets.month, month));
+  const out: WireOverBudgetMonth["departments"] = [];
+  for (const { id } of depts) {
+    const b = await departmentBudget(db, id, month);
+    if (b.budgetPaise === null || b.spentPaise <= b.budgetPaise) continue;
+    const dept = await departmentOf(db, id);
+    const tickets = await (db as Db).select({ id: storesOverBudgetMarks.refId, at: storesOverBudgetMarks.at, no: storeIndents.indentNo }).from(storesOverBudgetMarks)
+      .innerJoin(storeIndents, eq(storeIndents.id, storesOverBudgetMarks.refId))
+      .where(and(eq(storesOverBudgetMarks.departmentId, id), eq(storesOverBudgetMarks.month, month)));
+    const prs = await (db as Db).select({ id: storesPurchaseRequests.id, no: storesPurchaseRequests.prNo, at: storesPurchaseRequestStamps.at }).from(storesPurchaseRequestStamps)
+      .innerJoin(storesPurchaseRequests, eq(storesPurchaseRequests.id, storesPurchaseRequestStamps.prId))
+      .where(and(eq(storesPurchaseRequests.departmentId, id), eq(storesPurchaseRequestStamps.overBudget, true), gte(storesPurchaseRequestStamps.at, start), lt(storesPurchaseRequestStamps.at, end)));
+    out.push({
+      departmentId: id, code: dept.code, name: dept.name, budgetPaise: b.budgetPaise, spentPaise: b.spentPaise, committedPaise: b.committedPaise, pct: b.pct ?? 100,
+      marks: [
+        ...tickets.map((t) => ({ refType: "ticket" as const, refId: t.id, no: t.no, at: t.at.toISOString() })),
+        ...prs.map((p) => ({ refType: "pr" as const, refId: p.id, no: p.no, at: p.at.toISOString() })),
+      ].sort((a, b2) => a.at.localeCompare(b2.at)),
+    });
+  }
+  return { month, departments: out.sort((a, b) => b.pct - a.pct) };
+}
+
+export const OVER_BUDGET_WORDS = ["Over budget last month", "पिछले महीने बजट से ज़्यादा"] as const;
+
+/**
+ * Once a month (the buyer agent's night run calls it every night; the notice's source key makes it once): when the
+ * month before has a department over budget, each owner gets one notice that opens the list. Returns the notices raised.
+ */
+export async function sendOwnerOverBudgetList(db: Db, now: Date): Promise<number> {
+  const thisMonth = monthOf(now);
+  const [y, m] = thisMonth.split("-").map(Number) as [number, number];
+  const prev = m === 1 ? `${String(y - 1)}-12` : `${String(y)}-${String(m - 1).padStart(2, "0")}`;
+  const list = await overBudgetMonth(db, prev);
+  if (list.departments.length === 0) return 0;
+  let n = 0;
+  await withTx(db, async (tx) => {
+    for (const userId of await usersHoldingRole(tx, "owner")) {
+      const ok = await raiseNotice(tx as unknown as Db, {
+        userId, kind: "stores.budget", title: OVER_BUDGET_WORDS[0], body: `${OVER_BUDGET_WORDS[1]} · ${String(list.departments.length)}`,
+        refType: "stores_budget", refId: prev, sourceKey: `stores-over-budget:${prev}:${userId}`, at: now,
+      });
+      if (ok) n += 1;
+    }
+  });
+  return n;
 }
 
 /** Who is told: the department's approvers (else the stand-in) and every accounts officer. */

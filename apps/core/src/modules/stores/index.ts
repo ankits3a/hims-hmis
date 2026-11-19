@@ -90,3 +90,18 @@ export {
 export { purchaseDeliveries } from "./purchase-delivery";
 export { renderRfq } from "./rfq-print";
 export { buyingDesk } from "./buying-desk";
+// S5c (#1115): the buyer agent (night grouping, central shortfall, RFQ and PO drafts, quotes read from PDFs), the supplier
+// scorecard, single-source and emergency purchases, equipment advances, the owner's over-budget list, the two Now cards.
+export {
+  AGENT_TOOLS, BUYER_AGENT, PROPOSAL_CAP_PER_DEPARTMENT, agentProposals, confirmGroupingProposal, confirmPoDraft, confirmRfqDraft, dismissProposal, draftPo,
+  draftRfq, getProposal, raiseCentralShortfall, runBuyerNight,
+} from "./buyer-agent";
+export type { BuyerNightRun } from "./buyer-agent";
+export { QUOTE_READ_INTENT, confirmQuoteLine, readQuotePdf, readByRules } from "./quote-reader";
+export type { QuoteReadDeps } from "./quote-reader";
+export { pdfPages } from "./pdf-text";
+export { quarterBounds, quarterOf, supplierScorecard } from "./scorecard";
+export { EMERGENCY_CONFIRM_MS, EXCEPTION_WORDS, advanceBuyException, getBuyException, listBuyExceptions, refuseBuyException, requestBuyException } from "./buy-exceptions";
+export { ADVANCE_MAX_BPS, ADVANCE_WORDS, advancesToDecide, decidePoAdvance, payTermsOf, requestPoAdvance } from "./advances";
+export { OVER_BUDGET_WORDS, overBudgetList, sendOwnerOverBudgetList } from "./budgets";
+export { storesAwardSignDesk, storesPurchaseApproveDesk } from "./desk";

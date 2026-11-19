@@ -8,6 +8,7 @@ import {
 import { STORES_BUYING_MANAGE, STORES_INDENTS_APPROVE, STORES_MASTERS, holds, recordAct } from "./access";
 import { bandOfLines, requireGroup } from "./buy-groups";
 import { byItem, clean, ex, groupLines, latestByVendor, lineMoney, requireCanQuote, rfqClock } from "./buying-common";
+import { approvedExceptionFor } from "./buy-exceptions";
 import { computeComparative } from "./comparative";
 import { StoresError } from "./errors";
 import { requireRfq } from "./rfq";
@@ -60,7 +61,11 @@ export async function enterQuote(db: Db, actor: Actor, input: EnterQuoteInput, n
     if (input.groupId == null) throw new StoresError("unknown_group", "name the group or the RFQ");
     groupId = (await requireGroup(db, input.groupId)).id;
     const lines = await groupLines(db, groupId);
-    if ((await bandOfLines(db, lines, now)).band !== "A") throw new StoresError("rfq_needed", "three quotes are needed: make an RFQ");
+    if ((await bandOfLines(db, lines, now)).band !== "A") {
+      // S5c (ruling 0101 Q4): an approved single-source or emergency purchase takes its named supplier's one quote.
+      const exc = await approvedExceptionFor(db, groupId, now);
+      if (exc === null || exc.vendorId !== input.vendorId) throw new StoresError("rfq_needed", "three quotes are needed: make an RFQ");
+    }
     asked = new Map(byItem(lines.filter((l) => !l.onContract)).map((l) => [l.itemId, l.qtyBase] as const));
   }
   await requireCanQuote(db, input.vendorId, now);
