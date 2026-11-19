@@ -1048,30 +1048,30 @@ and `postGrn` refuse the capturer with `grn_same_person` — on the screen, the 
 controlled-cabinet receipt alike. Each change appends `store_settings.changed` (from, to, who). The screen
 recommends turning it on once a second trained person is on every shift.
 
-| Permission | materials_head | storekeeper | pharmacy |
-|---|---|---|---|
-| `materials.items.read` | ✓ | ✓ | ✓ |
-| `materials.items.manage` | ✓ | | |
-| `materials.vendors.read` | ✓ | ✓ | |
-| `materials.vendors.manage` | ✓ | | |
-| `materials.stores.manage` | ✓ | | |
-| `materials.stock.read` | ✓ | ✓ | ✓ |
-| `materials.grn.capture` | ✓ | ✓ | |
-| `materials.grn.qc` | ✓ | | ✓ |
-| `materials.stock.issue` | ✓ | ✓ | |
-| `materials.stock.receive` | ✓ | ✓ | ✓ |
-| `materials.recall.manage` | ✓ | | |
-| `materials.counts.manage` | ✓ | | |
-| `materials.counts.perform` | ✓ | ✓ | ✓ |
-| `materials.po.raise` | ✓ | | ✓ |
-| `materials.bills.manage` | ✓ | | ✓ |
-| `materials.bills.accept_difference` | ✓ | | |
-| `materials.payments.prepare` | ✓ | | |
-| `materials.payments.record` | ✓ | | |
-| `materials.returns.manage` | ✓ | | ✓ |
-| `materials.returns.approve` | ✓ | | |
-| `materials.writeoffs.manage` | ✓ | | |
-| `materials.items.merge` | ✓ | | |
+| Permission | materials_head | storekeeper | pharmacy | accounts_officer |
+|---|---|---|---|---|
+| `materials.items.read` | ✓ | ✓ | ✓ | |
+| `materials.items.manage` | ✓ | | | |
+| `materials.vendors.read` | ✓ | ✓ | | |
+| `materials.vendors.manage` | ✓ | | | |
+| `materials.stores.manage` | ✓ | | | |
+| `materials.stock.read` | ✓ | ✓ | ✓ | |
+| `materials.grn.capture` | ✓ | ✓ | | |
+| `materials.grn.qc` | ✓ | | ✓ | |
+| `materials.stock.issue` | ✓ | ✓ | | |
+| `materials.stock.receive` | ✓ | ✓ | ✓ | |
+| `materials.recall.manage` | ✓ | | | |
+| `materials.counts.manage` | ✓ | | | |
+| `materials.counts.perform` | ✓ | ✓ | ✓ | |
+| `materials.po.raise` | ✓ | | ✓ | |
+| `materials.bills.manage` | ✓ | | ✓ | ✓ |
+| `materials.bills.accept_difference` | ✓ | | | |
+| `materials.payments.prepare` | ✓ | | | ✓ |
+| `materials.payments.record` | ✓ | | | ✓ |
+| `materials.returns.manage` | ✓ | | ✓ | |
+| `materials.returns.approve` | ✓ | | | |
+| `materials.writeoffs.manage` | ✓ | | | |
+| `materials.items.merge` | ✓ | | | |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
@@ -1779,6 +1779,18 @@ owner; any member may object or hand the seat over for a dated spell. The PO cop
 differs; its own approval tier is unchanged. When the goods pass QC the requester's delivery ticket is raised by itself.
 `stores.award.sign` is held by `materials_head`, `accounts_officer`, `medical_superintendent`, `biomedical_engineer` and
 `department_head` (at its department, the user HOD's seat).
+
+**Stores paying desk (decision 0101, S6a #1116, 2026-11-19).** Stores bills sit in pharmacy's one payables book. A
+department confirms a service (laundry month, AMC visit, manpower) on its phone; that service entry is billed like a
+GRN. Payment holds place themselves by rule on Stores bills (looks duplicate, unusual amount, bank changed recently, KYC
+incomplete, above PO, goods not received); a held bill stays out of every payment run. Up to ₹50,000 the materials head
+releases a hold with a reason, above that the owner; never on a bill they booked or whose PO they approved, and a bank
+change's hold ends only with time. Pharmacy-only bills are not held until the owner switches that on after a dry run.
+A NEFT, RTGS or UPI reference is checked for its shape and is never reused.
+`stores.ses.confirm` is held by `department_head` and `department_store_incharge` (at their department) and
+`biomedical_engineer`; `stores.holds.release` by `materials_head` and `owner`; `accounts_officer` also holds
+`materials.bills.manage`, `materials.payments.prepare`, `materials.payments.record`, `pharmacy.tally.export` and
+`stores.audit.read`.
 
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —

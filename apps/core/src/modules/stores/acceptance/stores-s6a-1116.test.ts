@@ -114,7 +114,7 @@ describe("Stores S6a: service entries, holds and release, UTR, payables by group
       (await registerStoresItem(db, head.actor, { code, name, class: klass, baseUom: "piece", categoryId: cats.get(cat)!, trackMode, gstRateBps: gst })).itemId;
     gloves = await item("HK-GLV-0001", "Household gloves", "HSK", "consumable", "shelf", 1200);
     laundry = await item("HK-LDY-0001", "Laundry per piece", "HSK", "service", "expensed", 1800);
-    amc = await item("ME-AMC-0001", "Monitor AMC", "MEQ", "service", "expensed", 1800);
+    amc = await item("BM-AMC-0001", "Monitor AMC", "BME", "service", "expensed", 1800);
     ({ resourceId: pharmStore } = await withTx(db, (tx) => createStore(tx, head.actor, { code: "PHARM-OPD", name: "OPD pharmacy" })));
     ({ itemId: crocin } = await withTx(db, (tx) => registerItem(tx, head.actor, {
       code: "CROC", name: "Crocin 500", class: "consumable", baseUom: "tablet", batchTracked: true, gstRateBps: 1200,
@@ -454,7 +454,8 @@ describe("Stores S6a: service entries, holds and release, UTR, payables by group
     await submitPaymentRun(db, head.actor, run.id, at(11));
     await decidePaymentRun(db, owner.actor, run.id, "approve", "pay", at(12));
     await recordVendorPayment(db, acct.actor, run.id, vK, { mode: "neft", reference: "HDFC526314000077", paidOn: TODAY }, at(13));
-    const pack = await storesAuditPack(db, head.actor, { billId: bill, from: at(-90 * DAY), to: at(20) });
+    // `grn.received` is dated by the wall clock (materials' postGrn), so the window reaches past it.
+    const pack = await storesAuditPack(db, head.actor, { billId: bill, from: at(-90 * DAY), to: new Date(Math.max(Date.now(), at(20).getTime()) + 60 * MIN) });
     const whats = pack.rows.map((r) => r.what);
     const firstOf = (w: string | RegExp): number => whats.findIndex((x) => (typeof w === "string" ? x === w : w.test(x)));
     const order = [/^purchase_order\./, /^grn\./, "supplier_bill.accepted", "hold_placed", "hold_release", "payment_run.drafted", "payment_run.authorised", "supplier_payment.recorded"];

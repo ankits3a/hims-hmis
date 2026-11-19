@@ -170,6 +170,20 @@ export const STORES_ERROR_CODES = [
   "guarantee_expired",
   "unknown_advance",
   "not_stores_po",
+  // S6a (#1116): service entry sheets, payment holds and their release, the paying switches.
+  "ses_exists",
+  "not_service_po",
+  "unknown_ses",
+  "ses_already_billed",
+  "unknown_hold",
+  "hold_closed",
+  "own_bill",
+  "po_approver",
+  "run_authoriser",
+  "above_limit",
+  "ends_by_itself",
+  "review_too_far",
+  "unknown_payment_run",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -341,6 +355,19 @@ const STATUS: Record<StoresErrorCode, number> = {
   guarantee_expired: 422,
   unknown_advance: 404,
   not_stores_po: 422,
+  ses_exists: 409,
+  not_service_po: 422,
+  unknown_ses: 404,
+  ses_already_billed: 409,
+  unknown_hold: 404,
+  hold_closed: 409,
+  own_bill: 403,
+  po_approver: 403,
+  run_authoriser: 403,
+  above_limit: 403,
+  ends_by_itself: 409,
+  review_too_far: 422,
+  unknown_payment_run: 404,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

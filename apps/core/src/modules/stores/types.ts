@@ -278,6 +278,8 @@ export type AuditPackFilter = {
   unitId?: string;
   /** S5b (#1115, D18): a purchase request's chain, request to delivery ticket. */
   prId?: string;
+  /** S6a (#1116, D8): a supplier bill's money chain, PO to payment and its reference. */
+  billId?: string;
   /** The next page: rows with `seq` above this (the previous pack's `nextAfterSeq`). */
   afterSeq?: number;
   /** Rows per pack, at most `AUDIT_PACK_MAX_ROWS`. */
