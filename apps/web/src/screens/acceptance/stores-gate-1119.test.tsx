@@ -40,11 +40,14 @@ beforeEach(() => {
   setToken("t");
   window.innerWidth = 390;
   // A camera that opens and never reads: the screen must still offer the typed fallback beside it.
-  vi.stubGlobal("navigator", Object.assign(Object.create(navigator) as Navigator, {
-    mediaDevices: { getUserMedia: vi.fn(() => new Promise<MediaStream>(() => undefined)) },
-  }));
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true, value: { getUserMedia: vi.fn(() => new Promise<MediaStream>(() => undefined)) },
+  });
 });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(navigator, "mediaDevices");
+});
 
 describe("the Gate screen at 390 px (spec #1119)", () => {
   it("spec #1119 D6: opens on the scanner; the typed last four digits find the pass; Let out in at most two taps with no horizontal scroll; every status shows a word", async () => {
