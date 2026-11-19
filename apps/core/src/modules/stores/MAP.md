@@ -287,7 +287,7 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Exports: `assetAdditions(month)` (GRN units put to use in the IST month; installed date else first shelf day; GST =
   cost × item GST rate; input credit blank until S6), one `asset_export` act per call.
 
-## 10c. Condemnation, loss and disposal (S4b #1114, `condemnation.ts`; ruling 0100 Q5)
+## 10c. Condemnation, loss and disposal (S4b #1114, `condemnation.ts`; ruling 0101 Q5)
 - Tables (migration 0243, all append-only by the 0242 trigger function): `stores_condemnations` (one proposal, written
   once: kind `condemn` | `loss`, reason, the SEATS frozen on the row, cost judged on, `needs_owner`, `holds_data`,
   `replaces_id`, `round_id`), `stores_condemnation_signatures` (one row per seat, one per person: `sign` | `object`),

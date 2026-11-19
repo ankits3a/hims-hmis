@@ -3,7 +3,7 @@ issue: 1116
 status: approved
 approved: 2026-11-19
 ---
-# SPEC: Stores S6, the paying desk and the auditor agent: service bills, tax on the bill, MSME clock, holds and release, UTR, one Tally export (#1116) — APPROVED by owner 2026-11-19 (decision 0100)
+# SPEC: Stores S6, the paying desk and the auditor agent: service bills, tax on the bill, MSME clock, holds and release, UTR, one Tally export (#1116) — APPROVED by owner 2026-11-19 (decision 0101)
 
 Slice S6 of the Stores & Procurement programme (`docs/specs/stores-programme.md`). Written to decision 0099 Q4
 (ruled 2026-11-18: one supplier list, one payables list, one payment run and one Tally export for pharmacy and
@@ -92,7 +92,7 @@ bills from the existing GRN path work without it. Humans sign every payment, rel
    proposed from a rule table keyed on category and supplier type and confirmed by the accounts officer:
    - **Credit:** `eligible` (used for taxable sales), `not_available` (used for exempt healthcare, or a credit
      the law blocks, such as food or works on a building), or `shared` (used for both; the split is the
-     accountant's monthly working, outside HMIS). Ruled (decision 0100 Q2): Stores lines default to `not_available`; accounts marks a line `eligible` where the CA allows it; the CA signs the rule table before go-live; pharmacy's bills are not touched.
+     accountant's monthly working, outside HMIS). Ruled (decision 0101 Q2): Stores lines default to `not_available`; accounts marks a line `eligible` where the CA allows it; the CA signs the rule table before go-live; pharmacy's bills are not touched.
    - **Reverse charge:** yes or no. With yes the supplier's bill carries no GST, the supplier is paid without
      it, and the export carries the liability for the accountant to pay; whether that tax is credited follows the
      Credit mark.
@@ -125,7 +125,7 @@ bills from the existing GRN path work without it. Humans sign every payment, rel
      on a pharmacy supplier past the yearly threshold (one book). `tdsDryRun` lists the bills and amounts it
      would touch before the row is switched on.
    - Challans, returns and certificates stay in Tally.
-6. **MSME clock** (rules for the CA to sign). Ruled (decision 0100 Q1): follow the Act as below, micro and small only, clock from delivery; it ships switched off and is switched on after the dry run.
+6. **MSME clock** (rules for the CA to sign). Ruled (decision 0101 Q1): follow the Act as below, micro and small only, clock from delivery; it ships switched off and is switched on after the dry run.
    - **Who is on the clock:** a supplier with a Udyam registration classed micro or small. A medium enterprise
      follows its ordinary terms. Whether a micro or small **trader** is on the clock is the CA's line in the
      settings (default: on the clock, the cautious side).
@@ -157,7 +157,7 @@ bills from the existing GRN path work without it. Humans sign every payment, rel
    Holds are placed by rules, not by the agent. An open hold keeps its line out of every run draft, and
    `submitPaymentRun` re-checks (a hold placed after drafting refuses submit: `line_on_hold`). **Scope:** a bill
    with at least one Stores item line or SES line. A pharmacy-only bill gets no hold until decision 13's switch.
-8. **Release.** `releaseHold(holdId, reason)` by a holder of `stores.holds.release` within the value rule (ruled, decision 0100 Q6: up
+8. **Release.** `releaseHold(holdId, reason)` by a holder of `stores.holds.release` within the value rule (ruled, decision 0101 Q6: up
    to ₹50,000 the materials head, above that or when the materials head is barred the owner), never the bill's booker, never the person who approved that bill's PO, never the run's
    authoriser for their own run's lines, never `bank_cooling_off`. A release is an event and a row; a re-placed
    hold is a new row. **Keep** needs a reason and sets a review date (at most 30 days); a kept hold on an MSME
@@ -315,7 +315,7 @@ amounts never appear in a notice.
 
 1. **Supplier sends one bill for two months of service.** Two SES; one bill with lines on both.
 2. **Credit note from a supplier.** Existing vendor credit and debit note flow; holds do not apply to credits.
-3. **Advance payment.** Ruled (decision 0100 Q7): equipment only, up to 30 % against a bank guarantee, with the owner's approval; such an advance is a bill-less payable with its own hold
+3. **Advance payment.** Ruled (decision 0101 Q7): equipment only, up to 30 % against a bank guarantee, with the owner's approval; such an advance is a bill-less payable with its own hold
    until the GRN.
 4. **Caterer pays rent and is paid for meals.** Both gross: the meals bill here, the rent invoice outside S6;
    any set-off is an accounts journal in Tally (DECIDED: no netting in HMIS).
@@ -356,7 +356,7 @@ amounts never appear in a notice.
 - **Files.** Stores: `service-entries.ts`, `tax-on-bill.ts`, `holds.ts`, `msme.ts`, `paying-settings.ts`,
   `auditor-agent.ts`, `paying-reads.ts`, desk providers. Materials, additive: `billDraftFromSes`, the hold filter
   in `draftPaymentRun` / `submitPaymentRun`, the MSME rule in `dueDateFor` read from the setting (behaviour
-  change only when switched; ruled, decision 0100 Q1), TDS in `payables` (null = as today), reference shape and
+  change only when switched; ruled, decision 0101 Q1), TDS in `payables` (null = as today), reference shape and
   reuse in `recordVendorPayment`. Pharmacy (`pharmacy/tally.ts`), additive: purchases read per line, ledger by
   item group, cost centres, TDS and reverse-charge ledgers; the drug-only file is unchanged.
 - **Migration** one per PR. S6a: `supplier_bill_lines.grn_id` nullable + `ses_id` + one-of CHECK (shared live
@@ -374,4 +374,4 @@ amounts never appear in a notice.
 - **Size** XL (three PRs). **Depends on** S5a (vendor fields, KYC) and S5b for Stores POs and service
   contracts (the GRN path works without). **Blocked by** the CA's TDS and GST-credit
   tables at go-live (not for the build: D12 signs a test table); S6-Q1 (D5), S6-Q2 (D15) and
-  S6-Q3 (D11's default) are ruled (decision 0100 Q6, Q1, Q2).
+  S6-Q3 (D11's default) are ruled (decision 0101 Q6, Q1, Q2).

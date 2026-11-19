@@ -3,7 +3,7 @@ issue: 1115
 status: approved
 approved: 2026-11-19
 ---
-# SPEC: Stores S5, the buying desk and the buyer agent: requests, grouping, RFQ, comparative statement, award, budgets (#1115) — APPROVED by owner 2026-11-19 (decision 0100)
+# SPEC: Stores S5, the buying desk and the buyer agent: requests, grouping, RFQ, comparative statement, award, budgets (#1115) — APPROVED by owner 2026-11-19 (decision 0101)
 
 Slice S5 of the Stores & Procurement programme (`docs/specs/stores-programme.md`). Written to decision 0099 Q2
 and Q4 (ruled 2026-11-18): the HOD alone approves a department's request; monthly department budgets from finance
@@ -115,7 +115,7 @@ list and one finance book with pharmacy. Needs S1 (#1111) and S2 (#1112). S7 (#1
 6. **RFQ.** `stores_rfqs` + invitees + lines; number `RFQ` + yymmdd + 4. Invitees must pass
    `assertVendorPurchasable` and the "can quote" rule (decision 12). Bands B/C need ≥ 3 invitees
    (`three_quotes_needed`); fewer than three quotes received leaves the RFQ open with "Re-invite / फिर बुलाएँ"
-   (single-source rule: decision 0100 Q4, below). The reply-by date can be moved once, before it passes, with a
+   (single-source rule: decision 0101 Q4, below). The reply-by date can be moved once, before it passes, with a
    reason. Sending is a person's act; the agent drafts only. HMIS has no outbound mailer (verified: no mail
    transport under `apps/core/src`), so `sendRfq` records who sent it, when, to whom and how (email / print /
    hand), and renders the RFQ PDF; the buyer sends it from the hospital mailbox. An outbound mailer is its own
@@ -133,12 +133,12 @@ list and one finance book with pharmacy. Needs S1 (#1111) and S2 (#1112). S7 (#1
 8. **Comparative statement (`comparativeStatement(rfqId)`).** Per supplier per line: rate, discount, taxable, GST,
    freight and other charges apportioned by value, landed total; ranks L1/L2/L3 per line and on the whole; payment
    terms, delivery days, warranty and scorecard shown, not scored (DECIDED: no weighted scoring formula; humans
-   judge). The landed total includes GST, because Stores input GST is by default not credited (decision 0100 Q2); the
+   judge). The landed total includes GST, because Stores input GST is by default not credited (decision 0101 Q2); the
    total before GST is shown beside it. Technical compliance No excludes a supplier from ranking. Totals are recomputed from quote lines on
    every read, never stored.
 9. **Award (`proposeAward`, `approveAward`).** Whole or split by line. Not-L1 needs a reason (`reason_required`).
    The awarded supplier must be "KYC complete" (decision 12). Band A: the buyer awards. Band B: the materials
-   head approves. Band C: every committee seat signs, then the owner. Ruled (decision 0100 Q3): the seats are the materials head, accounts head, medical superintendent and the user HOD, plus biomedical for medical equipment; all of them sign, then the owner; any member may delegate, with an end date. Seats are
+   head approves. Band C: every committee seat signs, then the owner. Ruled (decision 0101 Q3): the seats are the materials head, accounts head, medical superintendent and the user HOD, plus biomedical for medical equipment; all of them sign, then the owner; any member may delegate, with an end date. Seats are
    rows (`stores_committee_seats`: seat, user, from, to; set by the owner or the materials head, every change an
    event); a band C proposal is refused while a seat is empty (`committee_seat_empty`, naming the seat). A signer
    who proposed the award cannot sign it. Any seat may **Object / आपत्ति** with a reason: the award returns to
@@ -166,7 +166,7 @@ list and one finance book with pharmacy. Needs S1 (#1111) and S2 (#1112). S7 (#1
     - **Bulk:** the owner and the materials head may approve several POs or PRs in one tap; each gets its own
       stamp and event. Never for awards and committee signatures.
     - **Pay after GRN:** derived, not stored: every PO with an award link is pay-after-GRN unless an
-      owner-approved advance row names it. Ruled (decision 0100 Q7): no advances, except for equipment, where the owner may approve up to 30 % against the supplier's bank guarantee; every other PO is pay after GRN. A contract billed for its whole term at the
+      owner-approved advance row names it. Ruled (decision 0101 Q7): no advances, except for equipment, where the owner may approve up to 30 % against the supplier's bank guarantee; every other PO is pay after GRN. A contract billed for its whole term at the
       start by its own terms (AMC or CMC, a software licence, insurance) is not an advance: it is paid against
       S6's service entry for "term started".
 12. **Supplier KYC, two levels.**
@@ -322,7 +322,7 @@ never in notices.
 
 ## Edge cases
 
-1. **Only one supplier makes it** (proprietary spare). Ruled (decision 0100 Q4): a single-source purchase is allowed
+1. **Only one supplier makes it** (proprietary spare). Ruled (decision 0101 Q4): a single-source purchase is allowed
    with a typed reason and an HOD certificate that only one maker supplies it; the materials head approves up to
    ₹5 lakh and the owner above.
 2. **A supplier quotes for part of the lines.** Ranked on the lines it quoted; a split award is allowed.
@@ -333,7 +333,7 @@ never in notices.
 6. **Supplier blacklisted after award, before PO.** `assertVendorPurchasable` refuses the PO; the award reopens.
 7. **Item price moves 10 % above the contract at GRN.** The price check flags it; S6 holds the bill.
 8. **HOD is the only approver and on leave.** S2 stand-in (medical superintendent) or a delegation.
-9. **Emergency purchase at night** (a part for a failed ventilator). Ruled (decision 0100 Q4): the medical superintendent may approve one quote and the owner confirms within 72 hours; the
+9. **Emergency purchase at night** (a part for a failed ventilator). Ruled (decision 0101 Q4): the medical superintendent may approve one quote and the owner confirms within 72 hours; the
    PR is emergency and never grouped.
 10. **Budget not yet entered for the month.** No warning, and the desk says "No budget set / बजट तय नहीं".
 
@@ -363,7 +363,7 @@ never in notices.
 - **Shared files:** seed-roles + test, schema index, drizzle, router, locales (i18n-keys test), caddyfile parity
   (`/stores/buy`).
 - **Size** XL (three PRs). **Depends on** S1, S2. **Ruled** S5-Q1 (D14), S5-Q2
-  (decision 6) and S5-Q3 (decision 11): decision 0100 Q3, Q4 and Q7; nothing blocks S5a.
+  (decision 6) and S5-Q3 (decision 11): decision 0101 Q3, Q4 and Q7; nothing blocks S5a.
 - **Pharmacy-live paths touched, each pinned:** `materials.grn.qc` (D6), `createPurchaseOrder` and the PO tiers
   (D7, D15), `vendors` columns (nullable, D7). The first commit of S5a also adds plain characterisation tests
   (green on `main`, outside `acceptance/`) for a pharmacy PO and a drug GRN QC before any materials edit.

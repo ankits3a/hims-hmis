@@ -28,7 +28,7 @@ import type { Db } from "../../kernel/db/client";
 /**
  * NOT AN ACCEPTANCE FILE — the S4a passport's own checks beyond the done-means (the fixture is the acceptance file's).
  * ACCEPTANCE lives in acceptance/stores-s4a-1114.test.ts — issue #1114, spec docs/specs/1114-stores-asset-passport.md (owner APPROVED 2026-11-19, decision
- * 0100): Stores S4a, the asset passport. One test per server done-means id the build notes give S4a: D1–D10, D15,
+ * 0101): Stores S4a, the asset passport. One test per server done-means id the build notes give S4a: D1–D10, D15,
  * D16, D18 (D19 and D20 are the web half, apps/web/src/screens/acceptance/stores-assets-1114.test.tsx; D11–D14 and
  * D17 are S4b's).
  *
