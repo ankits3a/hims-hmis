@@ -63,7 +63,7 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
     // Parity P2: a purchase order up to the configured limit is the head's, above it the owner's.
     // Parity P3: the payment run is the owner's to authorise — money leaving the hospital.
     expect(MATERIALS_APPROVAL_TYPES.map((s) => s.approverRole)).toEqual(["materials_head", "medical_superintendent", "owner", "materials_head", "owner", "owner", "materials_head", "owner"]);
-    // STORES S4b (#1114, ruling 0100 Q5): a condemnation above ₹50,000 or cost unknown is the owner's too.
+    // STORES S4b (#1114, ruling 0101 Q5): a condemnation above ₹50,000 or cost unknown is the owner's too.
     expect(MATERIALS_APPROVAL_TYPES.map((s) => s.closureSlaMinutes)).toEqual([240, 1440, 1440, 1440, 1440, 1440, 240, 1440]);
     // Neither is act-first: accepting short-dated stock and moving where money goes are both
     // reversible only on paper. See the file header in `approval-types.ts`.

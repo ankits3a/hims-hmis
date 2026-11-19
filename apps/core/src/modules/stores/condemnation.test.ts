@@ -28,7 +28,7 @@ import type { Db } from "../../kernel/db/client";
 
 /**
  * NOT ACCEPTANCE (a unit test beside it) — S4b's edges that close S4a's "not done" list, spec docs/specs/1114-stores-asset-passport.md (owner APPROVED 2026-11-19, decision
- * 0100): Stores S4b, the end of a unit's life. One test per done-means id the build notes give S4b: D11 (the
+ * 0101): Stores S4b, the end of a unit's life. One test per done-means id the build notes give S4b: D11 (the
  * committee and the approvals), D12 (what a condemned, data-holding or regulated unit is refused), D13 (disposal by
  * scrap sale), D14 (loss after a round) and D17 (audit). D1–D10, D15, D16, D18–D20 are S4a's
  * (`stores-s4a-1114.test.ts` and the web acceptance file).

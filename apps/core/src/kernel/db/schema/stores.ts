@@ -488,7 +488,7 @@ export const storesAssetVerifications = pgTable(
 );
 
 /**
- * STORES S4b (#1114, decision 13, ruling 0100 Q5) — A CONDEMNATION OR LOSS PROPOSAL, written once. `kind` is
+ * STORES S4b (#1114, decision 13, ruling 0101 Q5) — A CONDEMNATION OR LOSS PROPOSAL, written once. `kind` is
  * `condemn` (the HOD or biomedical proposed it, with a reason from the list) or `loss` (a unit not seen 30 days after a
  * verification round, or lost on its way to a department: reason `lost`). The committee's seats are frozen on the row
  * (`seats`: `hod` for the user department, `accounts`, `materials`, and `biomedical` for medical equipment), as are

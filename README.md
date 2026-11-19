@@ -1751,7 +1751,7 @@ what it is doing is read from its events every time, never typed, and the units 
 A department's own shelf staff read their own units without any of the three; anyone else who scans a unit sees only
 whose it is and "Found here".
 
-**Stores condemnation and disposal (decision 0100 Q5, S4b #1114, 2026-11-19).** A unit leaves the books only after the
+**Stores condemnation and disposal (decision 0101 Q5, S4b #1114, 2026-11-19).** A unit leaves the books only after the
 condemnation committee signs, each seat once and on the phone: the user department's HOD, accounts, the materials head,
 and biomedical for medical equipment. The medical superintendent then approves the write-off as today, and the owner
 too when the unit cost more than ₹50,000 or its cost is unknown. Disposal is a scrap sale, a buy-back or an e-waste
