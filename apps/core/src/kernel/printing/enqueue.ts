@@ -112,7 +112,14 @@ export type PrintDocument =
    * STORES S4a (#1114, decision 3) — the unit label: its QR carries the tag number only, the last four printed large.
    * Producers `tagUnits`, `retag`, `openUnit`; renderer `modules/stores/asset-label.ts`. Params: the unit id.
    */
-  | "stores_asset_label";
+  | "stores_asset_label"
+  /**
+   * STORES S5b (#1115, decision 6) — the RFQ for one supplier (items, quantities, delivery place and date, reply-by,
+   * "quote before GST, GST apart, freight apart"), queued once per invitee by `sendRfq`, the buyer's tap. HMIS mails
+   * nothing: the buyer prints it or attaches it from the hospital's purchase mailbox. Renderer `modules/stores/rfq-print.ts`.
+   * Params: the RFQ id and the supplier id.
+   */
+  | "stores_rfq";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -179,6 +186,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   // STORES S4a — the same store counter, where the keeper tags what came in on the GRN. DECIDED: no label printer of
   // its own until the store has one; the relay maps `stores_a4` to whichever printer the store's labels come off.
   stores_asset_label: "stores_a4",
+  // STORES S5b — DECIDED: the store's A4 (the purchase office sits with the central store); the relay maps it.
+  stores_rfq: "stores_a4",
 };
 
 /**

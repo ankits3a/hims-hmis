@@ -76,3 +76,17 @@ export { DELEGATION_MAX_DAYS, delegateApprovals, myDelegations } from "./delegat
 export { postStoresGrn, signStoresQc, storesGrnsForQc } from "./grn-qc";
 export { approveSupplierCategory, setSupplierFields, storesSuppliers, supplierKyc } from "./suppliers";
 export { STORES_BUDGET_MANAGE, STORES_BUYING_MANAGE, STORES_GRN_QC, STORES_PURCHASE_REQUEST } from "./access";
+// S5b (#1115): the buying desk by hand — Buy now, the buyer's groups, RFQs, quotes, the comparative, awards and the
+// committee, PO from award (one sheet, two stamps), bulk, the delivery ticket from a request.
+export { STORES_AWARD_SIGN } from "./access";
+export { buyGroups, buyNow, getBuyGroup, groupRequests, groupableRequests, moveGroupLine } from "./buy-groups";
+export { RFQ_DOCUMENT, closeRfq, createRfq, getRfq, inviteSuppliers, listRfqs, moveReplyBy, sendRfq } from "./rfq";
+export { admitLateQuote, enterQuote, getQuote, markTechnical, openQuote } from "./quotes";
+export { comparativeStatement } from "./comparative";
+export {
+  AWARD_WORDS, PAY_AFTER_GRN, approveAward, approveAwardAndPo, approvePoFromSheet, bulkApprove, committeeSeats, getAward, listAwards, makePoFromAward,
+  makePoFromGroup, objectAward, poSheet, proposeAward, sendStoresPo, setCommitteeSeat, signAward, submitStoresPo,
+} from "./awards";
+export { purchaseDeliveries } from "./purchase-delivery";
+export { renderRfq } from "./rfq-print";
+export { buyingDesk } from "./buying-desk";

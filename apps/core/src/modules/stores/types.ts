@@ -276,6 +276,8 @@ export type AuditPackFilter = {
   ticketId?: string; itemId?: string; personId?: string; storeId?: string; from: Date; to: Date;
   /** S4b (#1114): one tagged unit's life: its acts, its tickets, passes, GRN line and condemnations. */
   unitId?: string;
+  /** S5b (#1115, D18): a purchase request's chain, request to delivery ticket. */
+  prId?: string;
   /** The next page: rows with `seq` above this (the previous pack's `nextAfterSeq`). */
   afterSeq?: number;
   /** Rows per pack, at most `AUDIT_PACK_MAX_ROWS`. */

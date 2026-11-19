@@ -19,7 +19,7 @@ import {
 import { storesManifest } from "../manifest";
 import {
   StoresError, admitLateQuote, approveAward, approveAwardAndPo, approvePurchaseRequest, approveSupplierCategory, buyNow, bulkApprove,
-  comparativeStatement, createRfq, createShelf, delegateApprovals, enterQuote, getAward, getBuyGroup, getTicket, groupRequests,
+  comparativeStatement, createRfq, createShelf, inviteSuppliers, delegateApprovals, enterQuote, getAward, getBuyGroup, getTicket, groupRequests,
   listCategories, makePoFromAward, makePoFromGroup, markTechnical, moveGroupLine, objectAward, postStoresGrn, proposeAward,
   purchaseDeliveries, raisePurchaseRequest, registerStoresItem, seedStoresMasters, sendRfq, sendStoresPo, setCommitteeSeat, signStoresQc,
   storesAuditPack, submitStoresPo,
@@ -285,12 +285,13 @@ describe("Stores S5b: grouping, RFQ, quotes, comparative, award, committee, PO f
     const black = await aVendor("V-BLACK", "Blacklisted", "EEEEE5555E");
     await withTx(db, (tx) => blacklistVendor(tx, head.actor, black, "quality_failure", at(-DAY)));
     const noPan = await aVendor("V-NOPAN", "No PAN", null);
-    expect(await refusal(createRfq(db, buyer.actor, { groupId: g.id, replyBy: at(2 * DAY), vendorIds: [v1, v2, black] }, at(5)))).toBe("cannot_quote");
-    expect(await refusal(createRfq(db, buyer.actor, { groupId: g.id, replyBy: at(2 * DAY), vendorIds: [v1, v2, noPan] }, at(5)))).toBe("cannot_quote");
+    expect(await refusal(inviteSuppliers(db, buyer.actor, rfq.id, [black], at(5)))).toBe("cannot_quote");
+    expect(await refusal(inviteSuppliers(db, buyer.actor, rfq.id, [noPan], at(5)))).toBe("cannot_quote");
 
     // A supplier that can quote (no bank yet) is invited; three invitees: sent, one PDF each, sender and channel recorded.
-    const ok = await createRfq(db, buyer.actor, { groupId: g.id, replyBy: at(2 * DAY), deliveryDate: "2026-11-30", vendorIds: [v1, v2, vCan] }, at(6));
+    const ok = await inviteSuppliers(db, buyer.actor, rfq.id, [vCan], at(6));
     expect(ok.status).toBe("drafted");
+    expect(ok.invitees.map((i) => i.vendorId).sort()).toEqual([v1, v2, vCan].sort());
     expect(await count(sql`select count(*)::int as n from print_jobs where document = 'stores_rfq'`)).toBe(0); // nothing goes out without the tap
     const sent = await sendRfq(db, buyer.actor, ok.id, { channel: "email" }, at(7));
     expect(sent.status).toBe("sent");
@@ -498,7 +499,7 @@ describe("Stores S5b: grouping, RFQ, quotes, comparative, award, committee, PO f
     const sub = await submitPurchaseOrder(db, pharmacist.actor, ph.id, at(41));
     expect([sub.status, sub.approvalTier]).toEqual(["pending_approval", "head"]);
     expect(await refusal(submitPurchaseOrder(db, pharmacist.actor, ph.id, at(42)))).toBe("po_wrong_status");
-    expect(await refusal(decidePurchaseOrder(db, pharmacist.actor, ph.id, "approve", "ok", at(43)))).toBeTruthy();
+    await expect(decidePurchaseOrder(db, pharmacist.actor, ph.id, "approve", "ok", at(43))).rejects.toThrow();
     const ok = await decidePurchaseOrder(db, head.actor, ph.id, "approve", "Rates checked", at(44));
     expect(ok.status).toBe("approved");
   });
@@ -510,12 +511,12 @@ describe("Stores S5b: grouping, RFQ, quotes, comparative, award, committee, PO f
     await submitStoresPo(db, buyer.actor, po1!.id, at(22));
     expect(po1!.totalPaise).toBe(3_400_000 + 612_000); // ₹40,120
     const awardActs = await actsNamed("approve_award");
-    const poEvents = await count(sql`select count(*)::int as n from events where name = 'material.purchase_order_approved'`);
+    const poEvents = await count(sql`select count(*)::int as n from events where name = 'purchase_order.approved'`);
     const one = await approveAwardAndPo(db, head.actor, { awardId: a1.id, poId: po1!.id }, at(23));
     expect(one.award.status).toBe("approved");
     expect(one.po.status).toBe("approved");
     expect(await actsNamed("approve_award")).toBe(awardActs + 1);
-    expect(await count(sql`select count(*)::int as n from events where name = 'material.purchase_order_approved'`)).toBe(poEvents + 1);
+    expect(await count(sql`select count(*)::int as n from events where name = 'purchase_order.approved'`)).toBe(poEvents + 1);
 
     const big = await quotedRfq(table, 3, 1_700_000, [1_700_000, 1_750_000, 1_800_000], 100);
     const a2 = await proposeAward(db, buyer.actor, { rfqId: big.rfq.id, vendorId: v1 }, at(120));
@@ -610,7 +611,7 @@ describe("Stores S5b: grouping, RFQ, quotes, comparative, award, committee, PO f
     const pack = await storesAuditPack(db, owner.actor, { prId: pr.id, from: at(-60), to: at(60) }, at(61));
     const what = pack.rows.map((r) => r.what);
     const chain = ["raise_purchase_request", "approve_purchase_request", "create_rfq", "send_rfq", "enter_quote", "propose_award", "po_from_award",
-      "approve_award", "material.purchase_order_approved", "send_po", "grn_qc", "grn_post", "raise_ticket"];
+      "approve_award", "purchase_order.approved", "send_po", "grn_qc", "grn_post", "raise_ticket"];
     let from = -1;
     for (const step of chain) {
       const i = what.indexOf(step, from + 1);

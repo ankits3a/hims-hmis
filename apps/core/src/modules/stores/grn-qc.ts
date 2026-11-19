@@ -1,9 +1,11 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
-import { grnLines, grns, items, vendors } from "../../kernel/db/schema";
+import { grnLines, grns, items, purchaseOrders, storesAwards, vendors } from "../../kernel/db/schema";
 import { assertNotPoApprover, postGrn, purchaseOrderOfGrn, runGateQc } from "../materials";
 import { STORES_GRN_QC, holds, recordAct } from "./access";
+import { groupLines } from "./buying-common";
 import { StoresError } from "./errors";
+import { raiseDeliveriesForGrn } from "./purchase-delivery";
 import type { WireStoresGrnForQc } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -20,8 +22,24 @@ import type { Db } from "../../kernel/db/client";
  * its purchase request; until then the grant is asked at hospital scope.
  */
 
+/**
+ * S5b (#1115, decision 14): the department's nominee (`stores.grn.qc` AT a department) signs QC for a GRN whose PO was
+ * made from an award that buys that department's request. The GRN → PO → award → group → request link is read here.
+ */
+async function nomineeDepartments(db: Db, grnId: string): Promise<string[]> {
+  const [g] = await db.select({ poId: grns.purchaseOrderId }).from(grns).where(eq(grns.id, grnId));
+  if (g?.poId == null) return [];
+  const [po] = await db.select({ awardId: purchaseOrders.awardId }).from(purchaseOrders).where(eq(purchaseOrders.id, g.poId));
+  if (po?.awardId == null) return [];
+  const [a] = await db.select({ groupId: storesAwards.groupId }).from(storesAwards).where(eq(storesAwards.id, po.awardId));
+  if (a === undefined) return [];
+  return [...new Set((await groupLines(db, a.groupId)).map((l) => l.departmentId).filter((d): d is string => d !== null))];
+}
+
 async function requireStoresGrn(db: Db, actor: Actor, grnId: string): Promise<void> {
-  if (!(await holds(db, actor, STORES_GRN_QC))) throw new StoresError("not_permitted", "non-drug QC is the materials head's and biomedical's", { permission: STORES_GRN_QC });
+  let may = await holds(db, actor, STORES_GRN_QC);
+  if (!may) for (const d of await nomineeDepartments(db, grnId)) if (await holds(db, actor, STORES_GRN_QC, d)) { may = true; break; }
+  if (!may) throw new StoresError("not_permitted", "non-drug QC is the materials head's and biomedical's", { permission: STORES_GRN_QC });
   const lines = await db.select({ itemId: grnLines.itemId, trackMode: items.trackMode, klass: items.class }).from(grnLines)
     .innerJoin(items, eq(items.id, grnLines.itemId)).where(eq(grnLines.grnId, grnId));
   if (lines.length === 0) throw new StoresError("unknown_grn", `GRN ${grnId} not found`, { grnId });
@@ -47,6 +65,8 @@ export async function postStoresGrn(db: Db, actor: Actor, grnId: string, now: Da
   return withTx(db, async (tx) => {
     const r = await postGrn(tx, actor, grnId, now);
     await recordAct(tx, actor, now, { act: "grn_post", refId: grnId, after: r.status });
+    // S5b (#1115, decision 10): a department request bought through an award gets its delivery ticket now.
+    await raiseDeliveriesForGrn(tx, actor, grnId, now);
     return r;
   });
 }

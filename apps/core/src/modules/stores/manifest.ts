@@ -59,6 +59,11 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * `stores.grn.qc` (the materials head and `biomedical_engineer` at hospital scope, `department_head` at its department)
  * signs a non-drug GRN's QC with no pharmacist. The phone and desk screen is `/stores/buy` (its own menu row).
  *
+ * S5b (#1115, decision 16) adds `stores.award.sign`: a committee seat's signature on a band C award (the materials head,
+ * `accounts_officer`, `medical_superintendent`, `biomedical_engineer` at hospital scope; `department_head` at its department
+ * for the user HOD's seat) and, with `stores.masters.manage`, the materials head's band B approval. The desk (16:9: Buy
+ * now, Grouping, RFQs, Comparisons, Awards, POs) and the phone approval sheet are `/stores/buying` (its own menu row).
+ *
  * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -73,6 +78,7 @@ export const storesManifest: ModuleManifest = {
     { label: "Control tower", path: "/stores/tower", permission: "stores.tower.read" },
     { label: "Assets", path: "/stores/assets", permission: "stores.assets.read" },
     { label: "Buying", path: "/stores/buy", permission: "stores.buying.manage" },
+    { label: "Buying desk", path: "/stores/buying", permission: "stores.buying.manage" },
   ],
   permissions: [
     "stores.masters.manage",
@@ -94,6 +100,7 @@ export const storesManifest: ModuleManifest = {
     "stores.buying.manage",
     "stores.budget.manage",
     "stores.grn.qc",
+    "stores.award.sign",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */

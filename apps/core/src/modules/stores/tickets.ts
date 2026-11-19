@@ -192,6 +192,33 @@ async function raise(db: Db, actor: Actor, input: RaiseTicketInput, now: Date, o
   return indent.id;
 }
 
+/**
+ * S5b (#1115, decision 10) — THE DELIVERY TICKET FROM A PURCHASE REQUEST, raised in the caller's transaction (the GRN's
+ * post) for the requester's shelf. It rides on the request's HOD approval (as S2's re-ask rides on the first ticket's):
+ * no stamp to wait for, no approver told, and the poster — not a holder of the department's shelf grant — raises it on
+ * the request's behalf. The act names the request (`after.prId`); issue, carry and receipt are S2's, unchanged.
+ */
+export async function raiseDeliveryTicketInTx(
+  tx: Tx, actor: Actor, input: { shelfId: string; lines: { itemId: string; qtyBase: number }[]; priority: TicketPriority; prId: string; prNo: string },
+  now: Date,
+): Promise<{ id: string; indentNo: string }> {
+  const shelf = await requireShelf(tx, input.shelfId);
+  if (shelf.suppliedBy === null) throw new StoresError("unknown_store", `${shelf.code} names no supplying store`, { storeId: shelf.id });
+  const { source, night } = await sourceFor(tx, shelf.suppliedBy, input.priority, now);
+  const note = `Purchase ${input.prNo}`;
+  const made = await raiseIndentScoped(tx, actor, { fromResourceId: shelf.id, toResourceId: source.id, lines: input.lines, note }, now, null);
+  await tx.insert(storesTicketDetails).values({
+    indentId: made.indentId, departmentId: shelf.departmentId, shelfId: shelf.id, priority: input.priority, channel: "agent",
+    emergencyReason: input.priority === "emergency" ? note : null, night, clockFrom: now,
+  });
+  await recordAct(tx, actor, now, {
+    act: "raise_ticket", storeId: shelf.id, refId: made.indentId,
+    after: { indentNo: made.indentNo, priority: input.priority, sourceId: source.id, night, origin: null, prId: input.prId },
+    lines: input.lines.map((l) => ({ itemId: l.itemId, qtyBase: l.qtyBase })),
+  });
+  return { id: made.indentId, indentNo: made.indentNo };
+}
+
 /** Decision 3: a declined ticket re-raises in one call with its lines, linked to the first and on the first's clock. */
 export async function reRaiseTicket(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView> {
   const first = await requireTicketRow(db, indentId);
