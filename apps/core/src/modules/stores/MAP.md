@@ -34,6 +34,10 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Every Stores place is a registry `store` resource with `attributes.domain = 'stores'` and `attributes.kind`
   (`central` | `sub` | `night` | `shelf`). `access.ts` `isStoresStore` is the one predicate; pharmacy stores carry
   no domain and are never listed here.
+- The other way round: `materials/stores.ts` `listStores` leaves every `domain = 'stores'` row out unless the caller
+  passes `includeStoresDomain: true` (only `shelves.ts` does), so pharmacy's pickers and lists never show a Stores
+  place. `POST /materials/transfers` refuses a Stores place as source or destination (`moves_through_stores`,
+  `materials/transfers.ts` `refuseStoresPlacesOnMaterialsRoute`); the Stores intents call the materials functions.
 - `GEN-MAIN` (custodianRoles `storekeeper`) and `GEN-NIGHT` are seeded by `seedStoresMasters`, called from
   `scripts/seed-materials.ts` (runs on every deploy; idempotent).
 - A shelf's parent is its FLOOR (kernel `floor` resource); it carries `departmentId`, `departmentCode` (the cost
