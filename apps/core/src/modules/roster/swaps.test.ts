@@ -145,17 +145,27 @@ describe("roster — covers and swaps (20-U U6)", () => {
   });
 
   it("who CAN take it, and for everybody else WHY NOT — unavailable, never the kind of leave; a rest rule named", async () => {
-    const o = await coverOptions(db, meena, meenaNight);
-    expect(o.duty.night).toBe(true);
-    expect(o.canTake.map((c) => [c.name, c.crossUnit])).toEqual([["Dr. Rohit Bansal", false], ["Dr. Sandeep Yadav", true]]);
-    expect(Object.fromEntries(o.cannot.map((c) => [c.name, c.reason.ruleKey]))).toEqual({
-      "Dr. Aman Gupta": "unavailable",
-      "Dr. Kavita Rao": "rest_after_duty",
-    });
-    // Nothing in the answer carries the leave's kind or reason (D6, A-4).
-    expect(JSON.stringify(o)).not.toMatch(/EL|wedding/);
-    // A swap is offered: Rohit's Sunday night, which Meena could take in exchange.
-    expect(o.canTake.find((c) => c.userId === ROHIT)!.swaps.map((s) => s.assignmentId)).toEqual([rohitNight]);
+    /*
+     * `coverOptions` offers a swap only for a duty that has not ended yet, read off `Date.now()`. Rohit's Sunday night
+     * ends 16 Nov 2026 08:00 IST, so on the real clock this line went red from that morning on. The question here is
+     * what is offered BEFORE the nights, so the clock the code reads is set to the day before Meena's night.
+     */
+    const clock = jest.spyOn(Date, "now").mockReturnValue(ist("2026-11-09T12:00").getTime());
+    try {
+      const o = await coverOptions(db, meena, meenaNight);
+      expect(o.duty.night).toBe(true);
+      expect(o.canTake.map((c) => [c.name, c.crossUnit])).toEqual([["Dr. Rohit Bansal", false], ["Dr. Sandeep Yadav", true]]);
+      expect(Object.fromEntries(o.cannot.map((c) => [c.name, c.reason.ruleKey]))).toEqual({
+        "Dr. Aman Gupta": "unavailable",
+        "Dr. Kavita Rao": "rest_after_duty",
+      });
+      // Nothing in the answer carries the leave's kind or reason (D6, A-4).
+      expect(JSON.stringify(o)).not.toMatch(/EL|wedding/);
+      // A swap is offered: Rohit's Sunday night, which Meena could take in exchange.
+      expect(o.canTake.find((c) => c.userId === ROHIT)!.swaps.map((s) => s.assignmentId)).toEqual([rohitNight]);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("a resident cannot ask for cover of somebody else's duty — that is the SR's act", async () => {
