@@ -127,6 +127,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/stores/assets` | `apps/web/src/screens/stores-assets` |
 | `/stores/assets/round` | `apps/web/src/screens/stores-assets` |
 | `/stores/assets/tag` | `apps/web/src/screens/stores-assets` |
+| `/stores/condemn` | `apps/web/src/screens/stores-assets` |
 | `/stores/gate` | `apps/web/src/screens/stores-gate` |
 | `/stores/passes` | `apps/web/src/screens/stores-gate` |
 | `/stores/pick` | `apps/web/src/screens/stores-tickets` |

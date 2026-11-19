@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/stores/`
 
 - **Depends on modules:** `materials`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `episodes`, `events`, `modules`, `printing`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `modules`, `printing`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -48,6 +48,7 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_ASSETS_READ`
   - `acceptUnitTransfer(db: Db, actor: Actor, input: { code?: string; unitId?: string }, now: Date = new Date()): Promise<WireAssetLookup>`
   - `addAssetDetails(db: Db, actor: Actor, unitId: string, input: AssetDetailsInput, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `addRegulatorPaper(db: Db, actor: Actor, unitId: string, input: { kind: "decommission" | "transfer" | "intimation"; refNo: string; documentI…`
   - `assetPassport(db: Db | Tx, actor: Actor, by: { unitId?: string; code?: string }, now: Date = new Date()): Promise<WireAssetLookup>`
   - `assetRegister(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<{ rows: WireAssetRegisterRow[] }>`
   - `closeRepair(db: Db, actor: Actor, unitId: string, input: { outcome: "repaired" | "not_repairable" | "preventive"; note?: string | null }, n…`
@@ -58,18 +59,36 @@ Source: `apps/core/src/modules/stores/`
   - `openRepair(db: Db, actor: Actor, unitId: string, input: { note?: string | null } = {}, now: Date = new Date()): Promise<WireAssetLookup>`
   - `openUnit(db: Db, actor: Actor, input: { storeId: string; itemId: string; serial?: string | null; make?: string | null; model?: string | nul…`
   - `proposeUnitTransfer(db: Db, actor: Actor, unitId: string, input: { toShelfId: string }, now: Date = new Date()): Promise<WireAssetLookup>`
-  - `reportFault(db: Db, actor: Actor, unitId: string, input: { text: string }, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `reportFault(db: Db, actor: Actor, unitId: string, input: { text: string; photoKey?: string | null }, now: Date = new Date()): Promise<WireA…`
   - `reportFoundHere(db: Db, actor: Actor, unitId: string, input: { shelfId: string }, now: Date = new Date()): Promise<{ told: number }>`
   - `retag(db: Db, actor: Actor, unitId: string, input: { reason: string; tagNo?: string }, now: Date = new Date()): Promise<{ tagNo: string }>`
+  - `returnToUse(db: Db, actor: Actor, unitId: string, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `setItemRegulation(db: Db, actor: Actor, itemId: string, regulatedBy: "radiation" | "ultrasound" | null, now: Date = new Date()): Promise<vo…`
   - `tagUnits(db: Db, actor: Actor, input: { grnLineId: string; units: readonly { serial?: string | null; tagNo?: string }[] }, now: Date = new …`
   - `unitsToAccept(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<{ rows: WireAssetRegisterRow[] }>`
   - `voidTag(db: Db, actor: Actor, unitId: string, input: { tagNo: string; reason: string }, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `withdrawUnit(db: Db, actor: Actor, unitId: string, input: { reason: string }, now: Date = new Date()): Promise<WireAssetLookup>`
 - `audit-pack.ts`
   - `storesAuditPack(db: Db, actor: Actor, filter: AuditPackFilter, now: Date = new Date()): Promise<AuditPack>`
 - `chaser.ts`
   - `APPROVAL_NUDGE_MIN`
   - `CHASER_WORDS`
   - `runStoresChaser(db: Db, now: Date = new Date()): Promise<ChaserRun>`
+- `condemnation.ts`
+  - `CONDEMN_OWNER_LINE_PAISE`
+  - `STORES_ASSETS_CONDEMN`
+  - `assetRemovals(db: Db, actor: Actor, month: string, now: Date = new Date()): Promise<{ month: string; rows: WireAssetRemoval[]; csv: string …`
+  - `condemnationsToSign(db: Db, actor: Actor, now: Date = new Date()): Promise<WireCondemnation[]>`
+  - `disposeUnit(db: Db, actor: Actor, id: string, input: DisposeInput, now: Date = new Date()): Promise<{ condemnation: WireCondemnation; saleI…`
+  - `getCondemnation(db: Db, actor: Actor, id: string, now: Date = new Date()): Promise<WireCondemnation>`
+  - `listCondemnations(db: Db, actor: Actor, now: Date = new Date()): Promise<{ rows: WireCondemnation[] }>`
+  - `markFound(db: Db, actor: Actor, unitId: string, input: { storeId: string }, now: Date = new Date()): Promise<{ unitId: string }>`
+  - `objectCondemnation(db: Db, actor: Actor, id: string, input: { reason: string }, now: Date = new Date()): Promise<WireCondemnation>`
+  - `proposeCondemnation(db: Db, actor: Actor, input: { unitId: string; reason: StoresCondemnationReason; note?: string | null; holdsData?: bool…`
+  - `runLossProposals(db: Db, now: Date = new Date()): Promise<number>`
+  - `settleCondemnations(db: Db, now: Date = new Date(), ids?: readonly string[]): Promise<number>`
+  - `signCondemnation(db: Db, actor: Actor, id: string, now: Date = new Date()): Promise<WireCondemnation>`
+  - `writeOffLoss(db: Db, actor: Actor, id: string, input: { inquiryNo: string }, now: Date = new Date()): Promise<WireCondemnation>`
 - `copilot-acts.ts`
   - `reorderTool: CopilotToolDecl`
 - `copilot-intents.ts`
@@ -224,7 +243,7 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`
+`stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_client_keys`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`
 
 Foreign keys into: `materials`, `resources`
 
