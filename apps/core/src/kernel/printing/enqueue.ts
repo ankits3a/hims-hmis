@@ -107,7 +107,12 @@ export type PrintDocument =
    * STORES S2c (#1119, decision 6) — the gate pass with its QR (the pass number only), returnable or not. Producer
    * `raiseGatePass` and renderer both in `modules/stores` (`gate-pass-print.ts`). Params: the pass id.
    */
-  | "stores_gate_pass";
+  | "stores_gate_pass"
+  /**
+   * STORES S4a (#1114, decision 3) — the unit label: its QR carries the tag number only, the last four printed large.
+   * Producers `tagUnits`, `retag`, `openUnit`; renderer `modules/stores/asset-label.ts`. Params: the unit id.
+   */
+  | "stores_asset_label";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -171,6 +176,9 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   stores_issue_voucher: "stores_a4",
   // STORES S2c — the same store counter: the keeper raises the pass and hands it to whoever carries the goods out.
   stores_gate_pass: "stores_a4",
+  // STORES S4a — the same store counter, where the keeper tags what came in on the GRN. DECIDED: no label printer of
+  // its own until the store has one; the relay maps `stores_a4` to whichever printer the store's labels come off.
+  stores_asset_label: "stores_a4",
 };
 
 /**

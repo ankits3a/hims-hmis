@@ -33,6 +33,9 @@ export const STORES_ACTS = [
   "raise_gate_pass", "gate_pass_out", "gate_pass_in", "close_gate_pass",
   // S3 (#1113): a reorder the copilot proposed and the person confirmed (refId = the ticket; after names the confirm).
   "copilot_reorder",
+  // S4a (#1114): the asset passport (refId = the unit, the GRN line for tag_units, the round for a verification).
+  "tag_units", "void_tag", "retag", "open_unit", "fill_cost", "asset_details", "link_device", "report_fault", "open_repair", "close_repair",
+  "found_here", "propose_unit_transfer", "accept_unit_transfer", "asset_export", "start_round", "close_round",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

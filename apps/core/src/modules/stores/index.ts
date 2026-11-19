@@ -47,3 +47,14 @@ export { APPROVAL_NUDGE_MIN, CHASER_WORDS, runStoresChaser } from "./chaser";
 export { storesCopilotIntents } from "./copilot-intents";
 export { indentNoOf, storesCopilotReadTools } from "./copilot-tools";
 export { reorderTool } from "./copilot-acts";
+// S4a (#1114): the asset passport — tag rule and decisions, units and events, passport, transfer, found here, repairs,
+// device link, reminders, verification, the opening sweep, the additions export.
+export { TAG_THRESHOLD_PAISE, categoryRules, tagDecisionFor, taggedBatchIds } from "./asset-rules";
+export {
+  ASSET_LABEL_DOCUMENT, ASSET_WORDS, STORES_ASSETS_EXPORT, STORES_ASSETS_MANAGE, STORES_ASSETS_READ, acceptUnitTransfer, addAssetDetails, assetPassport,
+  assetRegister, closeRepair, fillUnitCost, grnLineTagging, linkDevice, myAssets, openRepair, openUnit, proposeUnitTransfer, reportFault, reportFoundHere,
+  retag, tagUnits, unitsToAccept, voidTag,
+} from "./assets";
+export { assetAdditions, assetLedgerCheck, assetsCostUnknown, assetsDue, equipmentReceivedByMonth, runAssetReminders } from "./asset-reads";
+export { closeVerification, roundView, scanVerification, startVerification, verificationRounds } from "./verification";
+export { renderAssetLabel } from "./asset-label";

@@ -113,6 +113,8 @@ export function StoresShelf({ shelfId }: { shelfId: string }): React.ReactElemen
           <button type="button" style={btn} onClick={() => setMode({ kind: "check" })}>{t("stores.shelf.checkShelf")}</button>
         )}
         <button type="button" style={btn} onClick={() => setMode({ kind: "tickets" })}>{t("stores.ux.myTickets")}</button>
+        {/* S4a (#1114): the department's tagged units and the scanner that opens a passport. */}
+        <Link to="/stores/asset" className="stores-btn">{t("stores.assets.title")}</Link>
       </div>
       {/* S3 (#1113): the concierge on the shelf — "what is low", "where is my ticket", "reorder my shelf" (Send confirms). */}
       <div data-testid="shelf-copilot" style={{ minWidth: 0, maxWidth: "100%" }}><StoresCopilot variant="bar" /></div>

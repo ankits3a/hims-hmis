@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { StoresAssetsController } from "./assets.controller";
 import { StoresController } from "./stores.controller";
 import { registerStoresPrinting } from "./voucher";
 import type { OnModuleInit } from "@nestjs/common";
@@ -9,7 +10,8 @@ import type { OnModuleInit } from "@nestjs/common";
  * S2b (#1112): the issue voucher's renderer is registered here (the billing refund voucher's shape).
  */
 @Module({
-  controllers: [StoresController],
+  // S4a (#1114): `/stores/assets/*` is its own controller (the passport), declared before nothing else under /stores.
+  controllers: [StoresController, StoresAssetsController],
 })
 export class StoresModule implements OnModuleInit {
   onModuleInit(): void {

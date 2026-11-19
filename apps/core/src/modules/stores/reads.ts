@@ -137,6 +137,8 @@ export async function departmentChargeOn(db: Db, departmentCode: string, day: st
     .where(and(
       eq(stockLedger.costCenter, departmentCode), eq(stockLedger.reason, "receive"), sql`${stockLedger.qtyDelta} > 0`,
       sql`(${stockLedger.occurredAt} at time zone ${IST})::date = ${day}::date`,
+      // S4 (#1114, decision 19): a tagged unit is equipment received, never the day's consumable charge.
+      sql`not exists (select 1 from stores_asset_units u where u.batch_id = ${stockLedger.batchId})`,
     ));
   return { chargePaise: Number(r?.paise ?? 0), rows: r?.n ?? 0 };
 }

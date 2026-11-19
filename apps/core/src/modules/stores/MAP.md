@@ -16,7 +16,7 @@ with a module name, `kernel/`, `packages/` or `apps/`. Citations name a file and
 Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials core), 0081 (done-means tests).
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
-`docs/specs/1113-stores-control-tower.md` (S3, built).
+`docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4a built here; S4b next).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -243,6 +243,51 @@ department shelves every department (housekeeping included) receives from. Pharm
   inside natural Stores questions; every Stores phrase must out-score them by 2. Run the eval set after any cue change.
 - Not built: the porter's end-of-shift red card (no shift-end source yet: attendance does not publish one).
 
+## 10b. The asset passport (S4a #1114, `asset-rules.ts`, `assets.ts`, `asset-reads.ts`, `verification.ts`, `asset-label.ts`)
+- What gets a tag (decision 1): `item_categories.tag_rule` `always` (seeded `MEQ` "Medical equipment", items
+  `track_mode = 'tagged'`; `checkStoresItem` refuses any other pairing), `from_value` (ITP, FUR: a `durable` item's GRN
+  line at ≥ ₹5,000 per unit before GST is tagged, else counted), `never`. A sub-category takes the stronger of its own and
+  its top's rule (`categoryRules`); `needs_calibration` the same way. Migration 0242 sets ITP/FUR on existing rows.
+- CONFIRMED in code before building: a GRN line with an empty batch number already minted its own batch
+  (`findOrCreateBatch`); a typed one was reused. `materials/grn.ts` `opensOwnBatch` (additive) now mints one per line for
+  a `tagged` item and a `durable` item under a rule, typed number or not, so a counted and a tagged chair never share a pile.
+- The per-line decision is a row (`stores_tag_decisions`, append-only, threshold frozen) written by `tagDecisionFor` the
+  first time Stores reads the line (tagging screen, `tagUnits` — before its own transaction, so a refusal still leaves
+  "counted" on file). TRAP: nothing writes it at `postGrn` (materials cannot import stores); a decision read later is
+  judged against the threshold of that day.
+- Units: `stores_asset_units` written once (tag `AST`+yymm+6 digits from `episode_series` key `asset_tag`, one row per IST
+  month; serial unique per item; cost ex-GST from the GRN line, null = "Cost unknown" for an opening unit). Every later
+  fact is a `stores_asset_unit_events` row (append-only); a tag number is bound once in the house (unique index on
+  `data->>'tagNo'` over `tagged`/`retagged`). Place = the latest row with `store_id` (`PLACE_KINDS`); status, holder,
+  dues and put-to-use are derived (`derive`, `statusOf`, `duesOf`), never stored.
+- Units ride the ledger (decision 5): `tickets.ts` `planUnitIssue` turns scanned units into named batches (materials
+  `IssueIndentInput.lines[].batches`, additive) and keeps counted lines off tagged batches; a tagged item without its
+  units is `units_required`. Issue → `moved` to IN-TRANSIT (ref transfer); `custody.ts` `alignPlanToUnits` makes a tagged
+  line received by unit (`unitIds`; none = the whole line), `followTransit` places / moves units with every quantity that
+  leaves IN-TRANSIT (receipt, accepted send-back, short found / returned). A lost short carrying a unit is refused
+  `unit_loss_needs_committee` (S4b's loss path). Gate passes name `unit_ids` per line (new column); exit / entry write
+  `out_on_pass` / `back`; counted lines use `countedPick`.
+- `assetLedgerCheck`: per FULLY tagged batch (units ≥ what entered by GRN or opening) and store, live units vs
+  `stock_balances`. Read only. Tower red card `units_ledger`; also `calibration`, `amc`, `missing` (`assetRedCards`, called
+  inside `redCards`). TRAP: both read every unit's events on each tower read; fine at hundreds of units, index it before thousands.
+- Transfer (decision 17): `proposeUnitTransfer` (holding dept's `stores.shelf.work`) → `acceptUnitTransfer` (receiving
+  dept, never the proposer: `own_transfer`): materials `issueStock` with the PROPOSER as issuer (materials refuses the
+  issuer as receiver) + `receiveAtShelf` by the acceptor, so ledger and cost centre move together.
+- Spend: `departmentChargeOn` and `departmentSpendByMonth` leave out every batch that carries a unit (decision 19);
+  `equipmentReceivedByMonth` lists them; the tower shows it as `equipment` beside `spend`.
+- Reminders ride `runStoresChaser` (`runAssetReminders`): AMC/warranty ≤ 30 days, calibration ≤ 15 days (and past), one
+  notice per unit/kind/date (source key) to `stores.assets.manage` + `stores.masters.manage` holders. "Replace?" = 3
+  faults inside 30 days, one notice keyed on the window's first fault.
+- Access: `seesUnit` = assets read/manage/masters, the home department's shelf grants, the receiving department of an
+  open transfer, the keeper of the store it sits in. Anyone else with a shelf grant gets the foreign view (name, tag,
+  "Belongs to", Found here); cost only with `stores.assets.read`.
+- Verification: `stores_asset_verifications` start/close rows; scans are `verified_seen` events (shelf in `data`); close
+  stores Not seen / Wrong place on its row; "Missing" = not seen by the latest closed round and nothing since.
+- Exports: `assetAdditions(month)` (GRN units put to use in the IST month; installed date else first shelf day; GST =
+  cost × item GST rate; input credit blank until S6), one `asset_export` act per call.
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
-staff app); choosing which porter to send; tagged units (S4); purchasing (S5).
+staff app); choosing which porter to send; purchasing (S5). S4b (#1114): condemnation, loss, disposal, regulated
+equipment, scrap sales, removals export, the audit pack's `{unit}` (D11–D14, D17); `stores.assets.condemn` is not
+declared yet; "Withdrawn" has no act yet; the "Faults to see" Now card.

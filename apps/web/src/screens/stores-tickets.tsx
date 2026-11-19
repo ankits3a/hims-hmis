@@ -10,6 +10,9 @@ import {
 } from "../lib/stores-api";
 import "./stores.css";
 import { QrScan, cameraScanPossible } from "../components/qr-scan";
+import { ApiError } from "../lib/api";
+import { assetLookup } from "../lib/assets-api";
+import { ScanOrType } from "./stores-assets";
 import type { DeliverLine } from "../lib/stores-api";
 import type { WireCustodyLookup, WireLateScan, WireTicket, WireTimelineStep } from "@hmis/contracts";
 
@@ -342,6 +345,31 @@ function PickRow({ ticket, focused }: { ticket: WireTicket; focused: boolean }):
   const me = actor?.id ?? null;
   const theirs = ticket.claim !== null && !mine && me !== null && ticket.claim.by.id !== me;
   const claimed = mine || ticket.claim !== null;
+  // S4 (#1114, decision 5): a tagged line is picked by scanning each unit's label (no unit, no issue). The server says
+  // which line needs its units (`units_required`); that line turns into a scan, and Issue sends the scanned units.
+  const [scan, setScan] = useState<{ lineIdx: number; need: number; units: { id: string; last4: string }[] } | null>(null);
+  const onIssueRefused = (e: unknown): void => {
+    if (storesErrorCode(e) === "units_required" && e instanceof ApiError) {
+      const d = (e.body as { detail?: { lineIdx?: unknown; issuing?: unknown } } | null)?.detail;
+      const lineIdx = typeof d?.lineIdx === "number" ? d.lineIdx : 0;
+      const line = ticket.lines.find((l) => l.lineIdx === lineIdx);
+      const need = typeof d?.issuing === "number" && d.issuing > 0 ? d.issuing : (line?.qtyApproved ?? line?.qtyBase ?? 1);
+      setScan({ lineIdx, need, units: [] });
+      setNotice(t("stores.assets.scanEach"));
+      return;
+    }
+    setNotice(refuse(e));
+  };
+  const addUnit = (code: string): void => {
+    if (scan === null) return;
+    const line = ticket.lines.find((l) => l.lineIdx === scan.lineIdx);
+    assetLookup(code).then((p) => {
+      if (p.access !== "full" || p.unit.itemId !== line?.itemId) { setNotice(t("stores.err.unknown_unit")); return; }
+      if (scan.units.some((u) => u.id === p.unit.id)) return;
+      setScan((s) => (s === null ? s : { ...s, units: [...s.units, { id: p.unit.id, last4: p.unit.last4 }] }));
+      setNotice(null);
+    }).catch((e: unknown) => setNotice(refuse(e)));
+  };
   return (
     <div
       ref={ref as React.RefObject<HTMLDivElement>} data-testid={`pick-${ticket.id}`} data-focused={focused ? "true" : undefined}
@@ -356,7 +384,7 @@ function PickRow({ ticket, focused }: { ticket: WireTicket; focused: boolean }):
           ? null
           : !claimed
             ? <button type="button" style={primary} onClick={() => { claimTicket(ticket.id).then(() => { setMine(true); return refresh(); }).catch((e: unknown) => setNotice(refuse(e))); }}>{t("stores.ticket.claim")}</button>
-            : <button type="button" style={primary} onClick={() => { issueTicket(ticket.id).then(() => { setNotice(t("stores.ticket.issued")); return refresh(); }).catch((e: unknown) => setNotice(refuse(e))); }}>{t("stores.ticket.issue")}</button>}
+            : scan === null && <button type="button" style={primary} onClick={() => { issueTicket(ticket.id).then(() => { setNotice(t("stores.ticket.issued")); return refresh(); }).catch((e: unknown) => onIssueRefused(e)); }}>{t("stores.ticket.issue")}</button>}
       </div>
       {theirs && <span style={{ fontSize: 13, fontWeight: 700 }}>{`${t("stores.ticket.claimedBy")} ${ticket.claim!.by.name}`}</span>}
       {ticket.lines.map((l) => (
@@ -367,6 +395,18 @@ function PickRow({ ticket, focused }: { ticket: WireTicket; focused: boolean }):
         </div>
       ))}
       <span style={{ fontSize: 13, paddingLeft: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{`→ ${ticket.shelf.name}`}</span>
+      {scan !== null && (
+        <div data-testid={`pick-scan-${ticket.id}`} style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 12 }}>
+          <strong>{`${t("stores.assets.scanEach")} · ${t("stores.assets.scannedOf", { n: scan.units.length, m: scan.need })}`}</strong>
+          {scan.units.length > 0 && <span style={{ overflowWrap: "anywhere" }}>{scan.units.map((u) => u.last4).join(" · ")}</span>}
+          {scan.units.length < scan.need && <ScanOrType onCode={addUnit} label={t("stores.assets.scanUnit")} />}
+          <button type="button" style={primary} disabled={scan.units.length === 0}
+            onClick={() => {
+              issueTicket(ticket.id, [{ lineIdx: scan.lineIdx, qtyBase: scan.units.length, unitIds: scan.units.map((u) => u.id) }])
+                .then(() => { setScan(null); setNotice(t("stores.ticket.issued")); return refresh(); }).catch((e: unknown) => onIssueRefused(e));
+            }}>{t("stores.assets.issueUnits")}</button>
+        </div>
+      )}
       {notice !== null && <span role="status">{notice}</span>}
     </div>
   );

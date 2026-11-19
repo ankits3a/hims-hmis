@@ -1740,6 +1740,17 @@ sweep nudges inside the hospital, once per ticket per step: the approvers at 45 
 late, the porter and the store when a leg passes 30 minutes. The copilot answers "where is my ticket" and six other
 Stores questions by keyword, and its one act, a shelf's reorder, raises a ticket only after the person taps Send.
 
+**Stores asset passport (decision 0099 Q3, 0101, S4a #1114, 2026-11-19).** Every unit of medical equipment, and
+every IT or furniture unit bought at ₹5,000 or more, carries one QR label from the day it is received; cheaper
+durables stay counted. The label opens the unit's passport on any phone: what it is, where it is, which department
+holds it, its warranty, AMC and calibration dates with a word each, and its last five events. Where a unit is and
+what it is doing is read from its events every time, never typed, and the units always agree with the stock books.
+`stores.assets.manage` is held by `biomedical_engineer` and `materials_head`; `stores.assets.read` by
+`materials_head`, `biomedical_engineer`, `medical_superintendent`, `stores_auditor` and `owner`;
+`stores.assets.export` by the new role `accounts_officer`, which holds nothing else here and is assigned by no seed.
+A department's own shelf staff read their own units without any of the three; anyone else who scans a unit sees only
+whose it is and "Found here".
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the
