@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { grnLines, items, stockBatches, storeIndents, transferLines, transfers, vendors } from "./materials";
+import { grnLines, itemCategories, items, stockBatches, storeIndents, transferLines, transfers, vendors } from "./materials";
+import { orgDepartments } from "./org";
 import { resources } from "./resources";
 
 /**
@@ -611,4 +612,205 @@ export const storesScrapSales = pgTable(
     check("stores_scrap_sales_method_ck", sql`${t.method} in ('scrap_sale', 'buy_back', 'e_waste')`),
     check("stores_scrap_sales_amount_ck", sql`${t.amountPaise} >= 0`),
   ],
+);
+
+/* ═══════════════════════════════ STORES S5a (#1115): the front of the buying desk ═══════════════════════════════ */
+
+export const STORES_PR_SOURCES = ["department", "central", "planner", "copilot"] as const;
+export const STORES_PR_STAMP_KINDS = ["approved", "declined", "cancelled"] as const;
+export const STORES_PR_STAMP_ROLES = ["hod", "ms", "delegate", "materials"] as const;
+export const STORES_BANDS = ["A", "B", "C"] as const;
+
+/**
+ * STORES S5a (#1115, decision 1) — A PURCHASE REQUEST (`MPR` + yymmdd + 4 digits): a department's ask for a non-stock
+ * or capital item, or the central store's shortfall. Written once; its decision is a `stores_purchase_request_stamps`
+ * row and its status is DERIVED. APPEND-ONLY IN THE DATABASE (migration 0244).
+ */
+export const storesPurchaseRequests = pgTable(
+  "stores_purchase_requests",
+  {
+    id: text("id").primaryKey(),
+    prNo: text("pr_no").notNull(),
+    source: text("source").notNull(),
+    /** The asking department (null for the central store's and the planner's requests). */
+    departmentId: text("department_id").references(() => orgDepartments.id),
+    /** The shelf the goods go to when they arrive (S5b's delivery ticket); null when none was named. */
+    shelfId: text("shelf_id").references(() => resources.id),
+    priority: text("priority").notNull(),
+    note: text("note"),
+    raisedBy: text("raised_by").notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_purchase_requests_no_ux").on(t.prNo),
+    index("stores_purchase_requests_dept_idx").on(t.departmentId, t.raisedAt),
+    check("stores_purchase_requests_source_ck", sql`${t.source} in ('department', 'central', 'planner', 'copilot')`),
+    check("stores_purchase_requests_priority_ck", sql`${t.priority} in ('routine', 'urgent', 'emergency')`),
+    check("stores_purchase_requests_dept_ck", sql`${t.source} <> 'department' or ${t.departmentId} is not null`),
+  ],
+);
+
+/**
+ * STORES S5a (#1115, decisions 1, 2) — ONE LINE OF A PURCHASE REQUEST: an `items` row, always, and the estimate frozen
+ * at raise (per base unit, paise, before GST) with where it came from: an open rate contract, the last paid receipt,
+ * or the requester's own figure for a new item. `on_contract` lines order as band A and stay out of the split sums;
+ * `equipment` (a "Medical equipment" line) carries the three short answers. APPEND-ONLY IN THE DATABASE (0244).
+ */
+export const storesPurchaseRequestLines = pgTable(
+  "stores_purchase_request_lines",
+  {
+    id: text("id").primaryKey(),
+    prId: text("pr_id").notNull().references(() => storesPurchaseRequests.id),
+    lineIdx: integer("line_idx").notNull(),
+    itemId: text("item_id").notNull().references(() => items.id),
+    categoryId: text("category_id").references(() => itemCategories.id),
+    qtyBase: integer("qty_base").notNull(),
+    unitEstimatePaise: bigint("unit_estimate_paise", { mode: "number" }).notNull(),
+    estimateSource: text("estimate_source").notNull(),
+    onContract: boolean("on_contract").notNull().default(false),
+    equipment: boolean("equipment").notNull().default(false),
+    answers: jsonb("answers").$type<{ why: string; replacesTag: string | null; usePerDay: string }>(),
+  },
+  (t) => [
+    uniqueIndex("stores_purchase_request_lines_ux").on(t.prId, t.lineIdx),
+    index("stores_purchase_request_lines_item_idx").on(t.itemId),
+    check("stores_purchase_request_lines_qty_ck", sql`${t.qtyBase} > 0`),
+    check("stores_purchase_request_lines_estimate_ck", sql`${t.unitEstimatePaise} >= 0`),
+    check("stores_purchase_request_lines_source_ck", sql`${t.estimateSource} in ('contract', 'last', 'requester')`),
+    check("stores_purchase_request_lines_answers_ck", sql`not ${t.equipment} or ${t.answers} is not null`),
+  ],
+);
+
+/**
+ * STORES S5a (#1115, decisions 1, 11, 15) — THE STAMP: approved, declined or cancelled, ONE per request (unique), by
+ * whom, in which capacity (`hod` at the department, `ms` the stand-in, `delegate` for the named HOD inside a
+ * delegation's window, `materials` for a central request), and "over budget" when the month was past 100 %.
+ * WRITE-ONCE IN THE DATABASE (migration 0244).
+ */
+export const storesPurchaseRequestStamps = pgTable(
+  "stores_purchase_request_stamps",
+  {
+    id: text("id").primaryKey(),
+    prId: text("pr_id").notNull().references(() => storesPurchaseRequests.id),
+    kind: text("kind").notNull(),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    reason: text("reason"),
+    forRole: text("for_role"),
+    onBehalfOf: text("on_behalf_of"),
+    delegationId: text("delegation_id"),
+    overBudget: boolean("over_budget").notNull().default(false),
+    budgetPct: integer("budget_pct"),
+  },
+  (t) => [
+    uniqueIndex("stores_purchase_request_stamps_pr_ux").on(t.prId),
+    check("stores_purchase_request_stamps_kind_ck", sql`${t.kind} in ('approved', 'declined', 'cancelled')`),
+    check("stores_purchase_request_stamps_role_ck", sql`${t.forRole} is null or ${t.forRole} in ('hod', 'ms', 'delegate', 'materials')`),
+    check("stores_purchase_request_stamps_reason_ck", sql`${t.kind} <> 'declined' or ${t.reason} is not null`),
+  ],
+);
+
+/**
+ * STORES S5a (#1115, decision 3) — THE BUYER RAISES A BAND, never lowers it: the computed band (with the split check)
+ * is the floor, and a row here can only lift it. APPEND-ONLY IN THE DATABASE (0244); the newest row wins.
+ */
+export const storesPrBandSettings = pgTable(
+  "stores_pr_band_settings",
+  {
+    id: text("id").primaryKey(),
+    prId: text("pr_id").notNull().references(() => storesPurchaseRequests.id),
+    band: text("band").notNull(),
+    reason: text("reason").notNull(),
+    setBy: text("set_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_pr_band_settings_pr_idx").on(t.prId, t.at),
+    check("stores_pr_band_settings_band_ck", sql`${t.band} in ('A', 'B', 'C')`),
+  ],
+);
+
+/**
+ * STORES S5a (#1115, decision 15) — A DEPARTMENT'S MONTH BUDGET, set by finance (`stores.budget.manage`). Every change
+ * is a new row; the newest row for (department, month) is the figure. APPEND-ONLY IN THE DATABASE (0244).
+ */
+export const storesDepartmentBudgets = pgTable(
+  "stores_department_budgets",
+  {
+    id: text("id").primaryKey(),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    month: text("month").notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    note: text("note"),
+    setBy: text("set_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_department_budgets_dept_month_idx").on(t.departmentId, t.month, t.at),
+    check("stores_department_budgets_month_ck", sql`${t.month} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
+    check("stores_department_budgets_amount_ck", sql`${t.amountPaise} >= 0`),
+  ],
+);
+
+/**
+ * STORES S5a (#1115, decision 15) — "OVER BUDGET" ON A TICKET'S STAMP. A ticket's stamp is the materials indent's own
+ * (write-once there), so the mark rides beside it, once per ticket. APPEND-ONLY IN THE DATABASE (0244).
+ */
+export const storesOverBudgetMarks = pgTable(
+  "stores_over_budget_marks",
+  {
+    refType: text("ref_type").notNull(),
+    refId: text("ref_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    month: text("month").notNull(),
+    pct: integer("pct").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.refType, t.refId] }),
+    check("stores_over_budget_marks_ref_ck", sql`${t.refType} in ('ticket')`),
+  ],
+);
+
+/**
+ * STORES S5a (#1115, decision 11) — A DATED DELEGATION of the HOD's request and ticket approval to a colleague, at most
+ * 30 days, never to the requester or the buyer. A committee seat joins the scope in S5b; the PO tiers, the payment run
+ * and any owner approval are never delegable (kernel approvals and money). APPEND-ONLY IN THE DATABASE (0244).
+ */
+export const storesDelegations = pgTable(
+  "stores_delegations",
+  {
+    id: text("id").primaryKey(),
+    fromUserId: text("from_user_id").notNull(),
+    toUserId: text("to_user_id").notNull(),
+    scope: text("scope").notNull(),
+    departmentId: text("department_id").references(() => orgDepartments.id),
+    fromAt: timestamp("from_at", { withTimezone: true }).notNull(),
+    toAt: timestamp("to_at", { withTimezone: true }).notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_delegations_to_idx").on(t.toUserId, t.toAt),
+    check("stores_delegations_scope_ck", sql`${t.scope} in ('hod_approval')`),
+    check("stores_delegations_window_ck", sql`${t.toAt} > ${t.fromAt} and ${t.toAt} <= ${t.fromAt} + interval '30 days'`),
+    check("stores_delegations_self_ck", sql`${t.fromUserId} <> ${t.toUserId}`),
+    check("stores_delegations_dept_ck", sql`${t.scope} <> 'hod_approval' or ${t.departmentId} is not null`),
+  ],
+);
+
+/**
+ * STORES S5a (#1115, decision 12) — A SUPPLIER APPROVED FOR A CATEGORY by the materials head: one of the "KYC
+ * complete" conditions for an award and a Stores PO. APPEND-ONLY IN THE DATABASE (0244).
+ */
+export const storesVendorCategoryApprovals = pgTable(
+  "stores_vendor_category_approvals",
+  {
+    id: text("id").primaryKey(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    categoryId: text("category_id").notNull().references(() => itemCategories.id),
+    approvedBy: text("approved_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("stores_vendor_category_approvals_ux").on(t.vendorId, t.categoryId)],
 );
