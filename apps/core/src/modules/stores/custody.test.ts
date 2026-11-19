@@ -20,7 +20,7 @@ import {
   StoresError, addToOpenTicket, confirmLateScan, myCustody, openTicketFor, postTransitLoss, registerStoresPrinting, acceptReturn, approveTicket, claimPicking, createShelf, declineTicket, deliverTicket, departmentChargeOn, getTicket, handOver,
   issueTicket, lateScansToConfirm, listCategories, openStore, raiseReturn, raiseTicket, reAskShort, receiveReturn, registerStoresItem,
   resolveShort, returnUndelivered, seedStoresMasters, takeCustody, takeOverCustody, ticketTimeline, ticketsToPick, ticketsToReceive,
-  custodyLookup, storesTakeBackDesk, ticketsComingBack,
+  custodyLookup, storesTakeBackDesk, ticketsComingBack, shelfTickets, whoToAsk,
 } from "./index";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -166,6 +166,24 @@ describe("Stores S2b: the paths beside the done-means", () => {
     const losses = (await db.select().from(stockLedger)).filter((r) => r.refType === "transit_loss");
     expect(losses.map((r) => r.qtyDelta)).toEqual([-3]);
     expect((await getTicket(db, t.id, at(41)))!.shorts[0]!.resolution).toMatchObject({ kind: "lost", posted: true });
+  });
+
+  it("UX pass: a shelf's tickets, newest first, read by its department; an outsider is refused", async () => {
+    const first = await raiseTicket(db, inA.actor, { shelfId: shelfA, lines: [{ itemId: mop, qtyBase: 5 }], priority: "routine", channel: "phone" }, NOW);
+    const second = await issued();
+    const rows = await shelfTickets(db, inA.actor, shelfA, at(10));
+    expect(rows.map((r) => r.id)).toEqual([second.id, first.id]);
+    expect(rows.map((r) => r.stage)).toEqual(["to_receive", "to_approve"]);
+    expect((await shelfTickets(db, head.actor, shelfA, at(10))).length).toBe(2);
+    expect(await refusal(shelfTickets(db, porterA.actor, shelfA, at(10)))).toBe("not_permitted");
+  });
+
+  it("UX pass: who to ask names the department's HOD, by shelf or by ticket, for anyone refused", async () => {
+    const t = await raiseTicket(db, inA.actor, { shelfId: shelfA, lines: [{ itemId: mop, qtyBase: 5 }], priority: "routine", channel: "phone" }, NOW);
+    const byShelf = await whoToAsk(db, porterA.actor, { shelfId: shelfA });
+    expect(byShelf.department.name).toBe("Housekeeping");
+    expect(byShelf.ask.map((p) => p.id)).toEqual([hodA.id]);
+    expect((await whoToAsk(db, porterA.actor, { indentId: t.id })).ask.map((p) => p.id)).toEqual([hodA.id]);
   });
 
   it("Add to open ticket: the shelf's ticket waiting for its HOD takes new items; an item already on it is left off", async () => {
