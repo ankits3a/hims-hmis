@@ -471,3 +471,80 @@ export const storesRegulatorPaperBody = z.object({ kind: z.enum(["decommission",
 export const storesRegulationBody = z.object({ regulatedBy: z.enum(["radiation", "ultrasound"]).nullable() });
 export const storesWithdrawBody = z.object({ reason: z.string().trim().min(1).max(200) });
 
+
+/* ═══════════════════════════════ STORES S5a (#1115): the front of the buying desk ═══════════════════════════════ */
+
+/** Decision 2: One quote (A, ≤ ₹25,000), Three quotes (B, to ₹5 lakh), Committee (C, above, and any medical equipment). */
+export type StoresBand = "A" | "B" | "C";
+export const STORES_PR_PRIORITIES = ["routine", "urgent", "emergency"] as const;
+/** Decision 1: the words S5a can reach. Grouped … Received come with S5b's desk. */
+export type StoresPrStatus = "requested" | "approved" | "declined" | "cancelled";
+export type StoresPerson = { id: string; name: string };
+export type WirePurchaseRequestLine = {
+  lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number;
+  /** Per base unit, paise, before GST, frozen at raise. */
+  unitEstimatePaise: number; estimateSource: "contract" | "last" | "requester"; onContract: boolean; equipment: boolean;
+  answers: { why: string; replacesTag: string | null; usePerDay: string } | null;
+};
+export type WirePurchaseRequest = {
+  id: string; prNo: string; source: "department" | "central" | "planner" | "copilot"; priority: (typeof STORES_PR_PRIORITIES)[number];
+  note: string | null; status: StoresPrStatus;
+  department: { id: string; code: string; name: string } | null; shelfId: string | null;
+  raisedBy: StoresPerson; raisedAt: string;
+  lines: WirePurchaseRequestLine[];
+  estimatePaise: number;
+  band: StoresBand;
+  /** Decision 3: the sum over 30 days crossed a band edge — "Split? / टुकड़े?" and the requests it summed. */
+  split: { prIds: string[]; prNos: string[] } | null;
+  /** Decision 15, the department's month on the approval sheet; null for a central request. */
+  budget: { month: string; pct: number | null; over: boolean; noBudget: boolean } | null;
+  stamp: {
+    decision: "approved" | "declined" | "cancelled"; by: StoresPerson; at: string; reason: string | null;
+    forRole: "hod" | "ms" | "delegate" | "materials" | null; onBehalfOf: StoresPerson | null; overBudget: boolean;
+  } | null;
+};
+export type WireDepartmentBudget = {
+  departmentId: string; month: string; budgetPaise: number | null; spentPaise: number; pct: number | null;
+  /** Equipment is budgeted apart (decision 15): band C equipment requests approved in the month. */
+  equipment: { requests: { prId: string; prNo: string; estimatePaise: number }[] };
+};
+export type WireStoresDelegation = {
+  id: string; from: StoresPerson; to: StoresPerson; scope: "hod_approval"; departmentId: string | null; departmentName: string | null;
+  fromAt: string; toAt: string; reason: string | null; live: boolean;
+};
+export type StoresKycLevel = "none" | "can_quote" | "complete";
+export type WireSupplierKyc = { level: StoresKycLevel; missing: string[] };
+export type WireStoresSupplier = {
+  id: string; code: string; name: string; status: string; kyc: WireSupplierKyc; msmeClass: string | null; msmeActivity: string | null;
+  einvoiceApplicable: boolean | null; categories: { id: string; name: string }[];
+};
+export type WireStoresGrnForQc = {
+  id: string; grnNo: string; status: string; vendorName: string; challanNo: string; capturedAt: string;
+  lines: { itemId: string; itemName: string; qtyBase: number; baseUom: string; unitCostPaise: number; priceFlag: boolean }[];
+};
+const answersBody = z.object({ why: z.string().trim().min(1).max(200), replacesTag: z.string().trim().max(40).nullish(), usePerDay: z.string().trim().min(1).max(60) });
+export const storesPurchaseRequestBody = z.object({
+  source: z.enum(["department", "central"]), departmentId: id.nullish(), shelfId: id.nullish(),
+  priority: z.enum(STORES_PR_PRIORITIES).default("routine"), note: z.string().trim().max(300).nullish(),
+  lines: z.array(z.object({
+    itemId: id.nullish(), qtyBase: z.number().int().positive().max(1_000_000), estimatePaise: z.number().int().min(0).max(10_000_000_000).nullish(),
+    equipment: answersBody.nullish(),
+  })).min(1).max(30),
+});
+export const storesPrDeclineBody = z.object({ reason: z.string().trim().min(1).max(300) });
+export const storesPrBulkBody = z.object({ ids: z.array(id).min(1).max(50) });
+export const storesPrBandBody = z.object({ band: z.enum(["A", "B", "C"]), reason: z.string().trim().min(1).max(300) });
+export const storesBudgetBody = z.object({
+  departmentId: id, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), amountPaise: z.number().int().min(0).max(100_000_000_000),
+  annual: z.boolean().optional(), note: z.string().trim().max(200).nullish(),
+});
+export const storesDelegationBody = z.object({
+  toUserId: id, scope: z.string().min(1).max(40), departmentId: id.nullish(), from: z.string().datetime(), to: z.string().datetime(),
+  reason: z.string().trim().max(200).nullish(),
+});
+export const storesSupplierFieldsBody = z.object({
+  msmeActivity: z.enum(["maker", "service", "trader"]).nullish(), einvoiceApplicable: z.boolean().nullish(),
+  gstUnregisteredReason: z.string().trim().max(200).nullish(), msmeUdyamNo: z.string().trim().max(32).nullish(),
+  msmeClass: z.enum(["micro", "small", "medium"]).nullish(),
+});
+export const storesSupplierCategoryBody = z.object({ categoryId: id });

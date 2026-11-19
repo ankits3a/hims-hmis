@@ -173,6 +173,8 @@ export type TicketView = {
     /** The medical superintendent's stand-in approval (decision 3): the timeline reads "for HOD". */
     forHod: boolean;
     reason: string | null;
+    /** S5a (#1115, decision 15): approved when the department's month was used up. Absent otherwise. */
+    overBudget?: true;
   };
   /** Decision 4: the HOD's look at an emergency issued before approval. */
   review: { decision: "agree" | "query"; by: TicketPerson; at: string; note: string | null } | null;

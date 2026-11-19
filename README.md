@@ -1759,6 +1759,17 @@ recycler, and the guard's exit scan ends the unit's life; a lost unit is written
 `stores.assets.condemn` is held by `department_head` (at its department), `accounts_officer`, `materials_head` and
 `biomedical_engineer`.
 
+**Stores buying desk, front (decision 0100, S5a #1115, 2026-11-19).** A department asks to buy a non-stock or capital
+item on the phone and its HOD approves it in two taps, as a Stores ticket is approved; the medical superintendent stands
+in, and an HOD may hand the approval to a colleague for at most 30 days. The request is banded by value (one quote up to
+₹25,000, three quotes up to ₹5 lakh, the committee above that and for any medical equipment) and summed over 30 days so
+that splitting cannot lower a band. Finance sets each department's month budget: a warning at 80 % and at 100 %, never a
+refusal. A non-drug delivery's QC needs no pharmacist. A supplier "can quote" with PAN and GSTIN, and is "KYC complete"
+with its papers, a bank account past cooling-off and the category approved.
+`stores.purchase.request` is held by `department_store_incharge` and `department_head` (at their department);
+`stores.buying.manage` by `materials_head` and `purchase_officer`; `stores.budget.manage` by `accounts_officer` and
+`owner`; `stores.grn.qc` by `materials_head`, `biomedical_engineer` and `department_head` (at its department).
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

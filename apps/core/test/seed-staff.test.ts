@@ -219,6 +219,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // would be refused whole.
       "pharmacy_incharge",
       "phlebotomist",
+      "purchase_officer", // STORES S5a (#1115) — the Stores buyer, seeded with no holders
       "quality_manager", // COPILOT LEDGER E0.1 (decision 0064) — the copilot steward; reads the copilot health page
       /**
        * PLAN 18c T1, 2026-09-04 — the RSO, arriving here for FREE by the same derivation as the
@@ -262,7 +263,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(55); // STORES S4a (#1114): 54 -> 55 with `accounts_officer`; STORES S2c (#1119): 53 -> 54 with `security_guard`; STORES S2b (#1112): 52 -> 53 with `support_staff`; STORES S2a (#1112): 50 -> 52 with `nursing_supervisor` and `stores_auditor`; STORES S1 (#1111, decision 0099): 48 -> 50 with `department_head` and `department_store_incharge`; CRK FORMULARY (#618, decision 0053): 47 -> 48 with `pharmacology_reviewer`; COPILOT LEDGER E0.1: 46 -> 47 with `quality_manager`; STAFF ATTENDANCE (owner 2026-10-09): 45 -> 46 with `attendance_committee`; CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
+    expect(KNOWN_ROLE_KEYS).toHaveLength(56); // STORES S5a (#1115): 55 -> 56 with `purchase_officer`; STORES S4a (#1114): 54 -> 55 with `accounts_officer`; STORES S2c (#1119): 53 -> 54 with `security_guard`; STORES S2b (#1112): 52 -> 53 with `support_staff`; STORES S2a (#1112): 50 -> 52 with `nursing_supervisor` and `stores_auditor`; STORES S1 (#1111, decision 0099): 48 -> 50 with `department_head` and `department_store_incharge`; CRK FORMULARY (#618, decision 0053): 47 -> 48 with `pharmacology_reviewer`; COPILOT LEDGER E0.1: 46 -> 47 with `quality_manager`; STAFF ATTENDANCE (owner 2026-10-09): 45 -> 46 with `attendance_committee`; CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

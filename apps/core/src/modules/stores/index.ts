@@ -63,3 +63,16 @@ export {
   CONDEMN_OWNER_LINE_PAISE, STORES_ASSETS_CONDEMN, assetRemovals, condemnationsToSign, disposeUnit, getCondemnation, listCondemnations, markFound,
   objectCondemnation, proposeCondemnation, runLossProposals, settleCondemnations, signCondemnation, writeOffLoss,
 } from "./condemnation";
+// S5a (#1115): the front of the buying desk — purchase requests, bands and the split check, budgets, delegation and
+// bulk approval, non-drug GRN QC, supplier KYC levels.
+export {
+  PR_WORDS, approvePurchaseRequest, bulkApprovePurchaseRequests, cancelPurchaseRequest, declinePurchaseRequest, getPurchaseRequest,
+  myPurchaseRequests, purchaseRequestsToApprove, raisePurchaseRequest, setPurchaseRequestBand,
+} from "./purchase-requests";
+export type { PurchaseRequestLineInput, RaisePurchaseRequestInput } from "./purchase-requests";
+export { BAND_A_MAX_PAISE, BAND_B_MAX_PAISE, bandFor } from "./bands";
+export { BUDGET_WORDS, budgetView, departmentBudget, setDepartmentBudget, sweepBudgetWarnings } from "./budgets";
+export { DELEGATION_MAX_DAYS, delegateApprovals, myDelegations } from "./delegations";
+export { postStoresGrn, signStoresQc, storesGrnsForQc } from "./grn-qc";
+export { approveSupplierCategory, setSupplierFields, storesSuppliers, supplierKyc } from "./suppliers";
+export { STORES_BUDGET_MANAGE, STORES_BUYING_MANAGE, STORES_GRN_QC, STORES_PURCHASE_REQUEST } from "./access";
