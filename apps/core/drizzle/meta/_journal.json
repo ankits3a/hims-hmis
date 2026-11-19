@@ -1723,6 +1723,13 @@
       "when": 1795103365232,
       "tag": "0246_stores_s5b",
       "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1795108022644,
+      "tag": "0247_stores_s5c",
+      "breakpoints": true
     }
   ]
 }

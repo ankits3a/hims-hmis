@@ -1,5 +1,7 @@
 import { waitingItem } from "../../kernel/desk/waiting";
-import { STORES_INDENTS_APPROVE, STORES_SHELF_WORK } from "./access";
+import { STORES_AWARD_SIGN, STORES_INDENTS_APPROVE, STORES_SHELF_WORK } from "./access";
+import { listAwards } from "./awards";
+import { purchaseRequestsToApprove } from "./purchase-requests";
 import { lateScansToConfirm, returnsToReceive, ticketsComingBack } from "./custody";
 import { ticketsToApprove, ticketsToPick, ticketsToReceive } from "./tickets";
 import { STORES_TOWER_READ, boardCards } from "./tower";
@@ -155,4 +157,61 @@ export const storesCondemnDesk: DeskProvider = {
   waitingSelfGated: true,
 };
 
-export const STORES_DESK_PROVIDERS = [storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk, storesStuckDesk, storesFaultsDesk, storesCondemnDesk] as const;
+/**
+ * S5c (#1115, spec "Notices") — "Purchase to approve / खरीद मंज़ूरी बाकी": the requests waiting for this person (their
+ * department's as HOD, stand-in or delegate; the store's for the materials head). The HOD's grant is department-scoped,
+ * so it is also a waiting line. A request number and a department per row; never a supplier or money.
+ */
+const prsToApprove = (ctx: DeskProviderCtx) => purchaseRequestsToApprove(ctx.db, ctx.actor, ctx.now);
+export const storesPurchaseApproveDesk: DeskProvider = {
+  key: "stores.purchase", permission: STORES_INDENTS_APPROVE,
+  load: async (ctx) => {
+    const rows = await prsToApprove(ctx);
+    if (rows.length === 0) return [];
+    return [{
+      key: "stores.purchase", band: "now", titleKey: "stores.now.purchaseToApprove",
+      stats: [{ key: "count", value: String(rows.length), href: "/stores/buy" }],
+      rows: rows.slice(0, MAX_ROWS).map((r) => ({
+        id: r.id, badge: r.priority === "emergency" ? "!" : null, title: r.prNo, subtitle: `${r.department?.name ?? "Central store"} · ${String(r.lines.length)}`,
+        action: "Open", href: `/stores/buy?pr=${r.id}`, severity: r.priority === "emergency" ? "hot" as const : r.priority === "urgent" ? "warn" as const : null,
+      })),
+    }];
+  },
+  waiting: async (ctx) => {
+    const rows = await prsToApprove(ctx);
+    const item = waitingItem("stores.purchaseToApprove", rows.length, rows.reduce<string | null>((o, r) => (o === null || r.raisedAt < o ? r.raisedAt : o), null));
+    return item === null ? [] : [item];
+  },
+  waitingSelfGated: true,
+};
+
+/**
+ * S5c (#1115) — "Award to sign / आवंटन पर हस्ताक्षर": awards this person may sign now (a committee seat, the materials
+ * head's band B approval, the owner's last signature). The user HOD's seat is department-scoped: a waiting line too.
+ */
+const toSignAwards = async (ctx: DeskProviderCtx) => (await listAwards(ctx.db, ctx.actor, ctx.now)).filter((a) => a.mine?.canSign === true);
+export const storesAwardSignDesk: DeskProvider = {
+  key: "stores.award", permission: STORES_AWARD_SIGN,
+  load: async (ctx) => {
+    const rows = await toSignAwards(ctx);
+    if (rows.length === 0) return [];
+    return [{
+      key: "stores.award", band: "now", titleKey: "stores.now.awardToSign",
+      stats: [{ key: "count", value: String(rows.length), href: "/stores/buying" }],
+      rows: rows.slice(0, MAX_ROWS).map((a) => ({
+        id: a.id, badge: a.equipment ? "!" : null, title: a.rfqNo ?? a.band, subtitle: a.band, action: "Open", href: `/stores/buying?award=${a.id}`, severity: "warn" as const,
+      })),
+    }];
+  },
+  waiting: async (ctx) => {
+    const rows = await toSignAwards(ctx);
+    const item = waitingItem("stores.awardToSign", rows.length, rows.reduce<string | null>((o, a) => (o === null || a.proposedAt < o ? a.proposedAt : o), null));
+    return item === null ? [] : [item];
+  },
+  waitingSelfGated: true,
+};
+
+export const STORES_DESK_PROVIDERS = [
+  storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk, storesStuckDesk, storesFaultsDesk, storesCondemnDesk, storesPurchaseApproveDesk,
+  storesAwardSignDesk,
+] as const;

@@ -76,3 +76,31 @@ export const submitPo = (id: string): Promise<unknown> => api("POST", `/stores/b
 export const sendPo = (id: string): Promise<unknown> => api("POST", `/stores/buying/pos/${enc(id)}/send`);
 export const poSheet = (id: string): Promise<import("@hmis/contracts").WireStoresPoSheet> => api("GET", `/stores/buying/pos/${enc(id)}`);
 export const approvePoSheet = (id: string): Promise<import("@hmis/contracts").WireStoresPoSheet> => api("POST", `/stores/buying/pos/${enc(id)}/approve`);
+
+/* ─────────────── S5c (#1115): the buyer agent's drafts, the quote PDF reader, the scorecard, exceptions, advances ─────────────── */
+
+type Proposal = import("@hmis/contracts").WireAgentProposal;
+export const confirmGroupDraft = (id: string): Promise<{ group: import("@hmis/contracts").WireBuyGroup; actId: string }> => api("POST", `/stores/agent/drafts/${enc(id)}/group`);
+export const dismissDraft = (id: string, reason: string | null): Promise<Proposal> => api("POST", `/stores/agent/drafts/${enc(id)}/dismiss`, { reason });
+export const draftRfq = (groupId: string): Promise<Proposal> => api("POST", `/stores/buying/groups/${enc(groupId)}/rfq-draft`);
+export const confirmRfqDraft = (id: string, body: { vendorIds: string[]; replyBy?: string | null; deliveryDate?: string | null }): Promise<{ rfq: import("@hmis/contracts").WireRfq; actId: string }> =>
+  api("POST", `/stores/agent/drafts/${enc(id)}/rfq`, body);
+export const draftPo = (groupId: string): Promise<Proposal> => api("POST", `/stores/buying/groups/${enc(groupId)}/po-draft`);
+export const confirmPoDraft = (id: string, reason: string | null): Promise<unknown> => api("POST", `/stores/agent/drafts/${enc(id)}/po`, { reason });
+export const readQuotePdf = (body: { rfqId?: string | null; groupId?: string | null; vendorId: string; pdfBase64: string }): Promise<Proposal> => api("POST", "/stores/quotes/read", body);
+export const getDraft = (id: string): Promise<Proposal> => api("GET", `/stores/agent/drafts/${enc(id)}`);
+export const draftPdf = (id: string): Promise<{ pdfBase64: string }> => api("GET", `/stores/agent/drafts/${enc(id)}/pdf`);
+export const confirmQuoteLine = (id: string, body: { lineIdx: number; drop?: boolean; ratePaise?: number | null; discountBps?: number | null; gstRateBps?: number | null }): Promise<{ proposal: Proposal; quote: unknown }> =>
+  api("POST", `/stores/agent/drafts/${enc(id)}/lines`, body);
+export const scorecard = (vendorId: string): Promise<import("@hmis/contracts").WireSupplierScorecard> => api("GET", `/stores/suppliers/${enc(vendorId)}/scorecard`);
+export const requestException = (body: { kind: "single_source" | "emergency"; groupId: string; vendorId: string; reason: string }): Promise<import("@hmis/contracts").WireBuyException> =>
+  api("POST", "/stores/buying/exceptions", body);
+export const getException = (id: string): Promise<import("@hmis/contracts").WireBuyException> => api("GET", `/stores/buying/exceptions/${enc(id)}`);
+export const signException = (id: string): Promise<import("@hmis/contracts").WireBuyException> => api("POST", `/stores/buying/exceptions/${enc(id)}/sign`);
+export const refuseException = (id: string, reason: string): Promise<import("@hmis/contracts").WireBuyException> => api("POST", `/stores/buying/exceptions/${enc(id)}/refuse`, { reason });
+export const requestAdvance = (poId: string, body: { pctBps: number; guaranteeNo: string; guaranteeBank: string; guaranteeValidTo: string; guaranteePaise: number }): Promise<import("@hmis/contracts").WirePoAdvance> =>
+  api("POST", `/stores/buying/pos/${enc(poId)}/advance`, body);
+export const decideAdvance = (id: string, approve: boolean, reason: string | null): Promise<import("@hmis/contracts").WirePoAdvance> =>
+  api("POST", `/stores/buying/advances/${enc(id)}/decide`, { approve, reason });
+export const overBudget = (month: string): Promise<import("@hmis/contracts").WireOverBudgetMonth> => api("GET", `/stores/budgets/over?month=${enc(month)}`);
+

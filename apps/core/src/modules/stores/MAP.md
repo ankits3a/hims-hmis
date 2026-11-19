@@ -17,7 +17,7 @@ Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials co
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
 `docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
-`docs/specs/1115-stores-buying-desk.md` (S5: S5a and S5b built, S5c to come).
+`docs/specs/1115-stores-buying-desk.md` (S5, built: S5a, S5b, S5c).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -402,10 +402,48 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Web `/stores/buying` (`apps/web/src/screens/stores-buying.tsx`): the desk's one read `GET buying/desk`; notices
   `stores_award` / `stores_po` open the phone sheet (`?award=`, `?po=`).
 
+## 10f. The buyer agent, the scorecard and the rest of the desk (S5c #1115; ruling 0101 Q4, Q7)
+- Drafts (`buyer-agent.ts`, migration 0246): `stores_agent_proposals` (kind `grouping` | `rfq_draft` | `quote_read` |
+  `po_draft`, payload, `department_ids` for the cap) + `stores_agent_proposal_steps` (`confirmed` | `dismissed` |
+  `superseded`, one per draft by a partial unique index; `line_confirmed` | `line_dropped`, one per line). Status derived.
+  A confirm locks the draft row (`for update`; the trigger allows SELECT FOR UPDATE), re-reads the state (`state_changed`),
+  writes the record through the S5b intent AS THE PERSON (`groupRequests`, `createRfq` unsent, `makePoFromGroup` with
+  `source: agent`, `enterQuote`) and `recordConfirm`: a `copilot_acts` row (`confirm_id` = `sa_<draft>`, so the unique index
+  refuses a second act) + the closing step + one act. Nothing an agent writes sends, orders, awards or signs.
+- The night (`runBuyerNight`, 22:00 IST via `runBuyerNightIfDue` on the chaser's minute; S3 precedent, no new job name;
+  advisory xact lock; `nightOf` uses `istDayWindow`, never a hand-rolled offset — `test/ist-clock-parity`): the owner's
+  over-budget notice for last month (`sendOwnerOverBudgetList`, source key), then unless the copilot's `draft`/`global`
+  halt is set: the central shortfall (`raiseCentralShortfall`: Stores items at GEN-MAIN at or under reorder, less on order,
+  drafts and open central asks → ONE central PR raised by the agent actor via `raisePurchaseRequest(..., { agent: true })`;
+  items with no price are left out), stale drafts superseded, the grouping preview (routine approved lines, not grouped,
+  not in an open draft; bucket = category + likely supplier; ≤ 3 open per department, `central` counted as one), and one
+  `agent_night` act ALWAYS (the minute sweep's "ran" marker, `after.night`).
+- PDF (`pdf-text.ts`, no dependency: objects, object streams, Flate, Tj/TJ/'/" text, page order; encrypted/scan = no
+  text) → `quote-reader.ts`: model (kernel `openAiCompatibleClient(cfg.copilot)` via `SpendMeter`, masked by `maskQuestion`,
+  rehydrated) only when configured, not halted, under the ₹ cap; else and on any failure the rules. Each read = one
+  `copilot_asks` row (intent `stores.quote_read`, no text). TRAP: the API JSON body is 1 MB (`app.bootstrap.ts`), so the
+  base64 upload caps a PDF at ~700 KB.
+- Scorecard (`scorecard.ts`, read only, from rows): challan date in the calendar quarter; fill over POs expected in it;
+  drift = GRN cost vs PO net rate per base, accepted paid lines; RFQ response from `sent` steps. `scoreOf` orders
+  suggestions and breaks comparative ties (after delivery days); never shown as a grade.
+- Exceptions (`buy-exceptions.ts`): `stores_buy_exceptions` + steps (`certified` | `approved` | `confirmed` | `refused`,
+  one each). Approved → `approvedExceptionFor` lets `enterQuote` take the named supplier's quote without an RFQ and
+  `makePoFromGroup` buy a B/C group; the award's only seat is the buyer's, and `statusOf` now treats ANY buyer-only award
+  as band A does (approved by the buyer's stamp). Who may: `capacity` (HOD at a group department / materials head for a
+  central group; materials head ≤ ₹5 lakh, owner above, central or equipment; MS approves an emergency, owner confirms).
+- Advances (`advances.ts`): Stores PO (award) for equipment only, ≤ 30 %, guarantee ≥ amount and valid; owner decides.
+  `payTermsOf` is derived (`after_grn` unless an approved row); the PO sheet shows it. Paying is S6's.
+- Budgets: `departmentBudget.spentPaise` now includes `committedPaise` (`committedByPo`); `overBudgetList`/`overBudgetMonth`.
+- Now cards: `stores.purchase` ("Purchase to approve", waiting kind `stores.purchaseToApprove`) and `stores.award`
+  ("Award to sign", `stores.awardToSign`), both `waitingSelfGated` (department-scoped HOD).
+- TRAP (locked check): S3's acceptance D7 pins the Stores copilot intents at seven; a buyer intent in this manifest fails
+  it. Chat access to the drafts waits for the owner's `owner-approved-checks` label on a PR that moves that pin (#1133).
+- Web: `/stores/buying` Grouping (Agent's groups), RFQs (Read PDF, Quotes to confirm → Quote entry: PDF left, lines right,
+  Confirm line), "Draft by agent" on RFQ/PO, One supplier, Advance; sheets `?exception=`, `?po=` (advance). `/stores/buy`
+  Budgets: On order, the over-budget list (`?tab=budgets&month=` from the owner's notice).
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
 staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
-SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5a/S5b leave: the nightly central shortfall →
-PR job, the agent and the scorecard (S5c), the owner's monthly over-budget list, a Now card / waiting kind for "Purchase to
-approve" and "Award to sign" (notices open the screens), Stores PO value in a department's spent figure, splitting one
-request line across groups, a single-source certificate path and the emergency one-quote path (ruling 0101 Q4), advances.
+SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5 leaves: splitting one request line
+across groups; the buyer's chat intents (locked S3 D7 pin); paying an advance and "Pay after GRN" enforcement (S6).

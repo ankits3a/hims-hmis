@@ -66,7 +66,10 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   // STORES S5b (#1115): "Award to sign" / "PO to approve" open the phone sheet.
   stores_award: (refId) => ({ to: "/stores/buying", search: { award: refId } }),
   stores_po: (refId) => ({ to: "/stores/buying", search: { po: refId } }),
-  stores_budget: () => ({ to: "/stores/buy", search: {} }),
+  // S5c (#1115): the owner's monthly over-budget notice names the month and opens the budgets tab on it.
+  stores_budget: (refId) => ({ to: "/stores/buy", search: /^\d{4}-\d{2}$/.test(refId) ? { tab: "budgets", month: refId } as Record<string, string> : {} }),
+  // S5c (#1115): a single-source or emergency purchase's certificate, approval or confirmation opens its phone sheet.
+  stores_exception: (refId) => ({ to: "/stores/buying", search: { exception: refId } }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {

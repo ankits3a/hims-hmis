@@ -47,6 +47,11 @@ export const STORES_ACTS = [
   "group_requests", "move_group_line", "create_rfq", "invite_suppliers", "send_rfq", "move_reply_by", "close_rfq", "enter_quote",
   "open_quote", "admit_late_quote", "mark_technical", "propose_award", "approve_award", "sign_award", "object_award", "set_committee_seat",
   "po_from_award", "submit_po", "approve_po", "send_po",
+  // S5c (#1115): the buyer agent's night (refId = the run's PR or null), a person's confirm or dismissal of an agent draft
+  // (refId = the draft), a quote line confirmed from a PDF, single-source / emergency purchases (refId = the exception),
+  // equipment advances (refId = the advance).
+  "agent_night", "confirm_agent_draft", "dismiss_agent_draft", "confirm_quote_line", "read_quote_pdf", "request_exception", "certify_exception",
+  "approve_exception", "confirm_exception", "refuse_exception", "request_advance", "decide_advance",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

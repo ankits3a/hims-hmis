@@ -85,7 +85,13 @@ async function notifyPr(tx: Tx, userId: string, words: readonly [string, string]
   });
 }
 
-export async function raisePurchaseRequest(db: Db, actor: Actor, input: RaisePurchaseRequestInput, now: Date = new Date()): Promise<WirePurchaseRequest> {
+/**
+ * `opts.agent` (S5c, flow 3): the buyer agent's night shortfall request — a `central` request raised by the agent actor,
+ * which holds no grant. Only that pairing skips the grant check; the materials head still approves it.
+ */
+export async function raisePurchaseRequest(
+  db: Db, actor: Actor, input: RaisePurchaseRequestInput, now: Date = new Date(), opts: { agent?: boolean } = {},
+): Promise<WirePurchaseRequest> {
   const priority = input.priority ?? "routine";
   let departmentId: string | null = null;
   let shelfId: string | null = null;
@@ -101,7 +107,8 @@ export async function raisePurchaseRequest(db: Db, actor: Actor, input: RaisePur
       shelfId = shelf.id;
     }
   } else if (input.source === "central") {
-    if (!(await holds(db, actor, STORES_BUYING_MANAGE)) && !(await holds(db, actor, STORES_MASTERS))) {
+    const agent = opts.agent === true && actor.type === "agent";
+    if (!agent && !(await holds(db, actor, STORES_BUYING_MANAGE)) && !(await holds(db, actor, STORES_MASTERS))) {
       throw new StoresError("not_permitted", "the store's requests are the buyer's", { permission: STORES_BUYING_MANAGE });
     }
   } else {
