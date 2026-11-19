@@ -26,6 +26,44 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_NIGHTSTORE_ISSUE`
   - `STORES_SHELF_READ`
   - `STORES_SHELF_WORK`
+- `asset-label.ts`
+  - `renderAssetLabel(db: Db, params: Record<string, unknown>): Promise<RenderedDocument | null>`
+- `asset-reads.ts`
+  - `assetAdditions(db: Db, actor: Actor, month: string, now: Date = new Date()): Promise<{ month: string; rows: WireAssetAddition[]; csv: strin…`
+  - `assetLedgerCheck(db: Db, now: Date = new Date()): Promise<{ at: string; differences: LedgerDifference[] }>`
+  - `assetsCostUnknown(db: Db, actor: Actor): Promise<{ rows: { unitId: string; tagNo: string; name: string; place: string }[] }>`
+  - `assetsDue(db: Db, actor: Actor, now: Date = new Date()): Promise<{ rows: WireAssetDueRow[] }>`
+  - `equipmentReceivedByMonth(db: Db, month: string): Promise<WireEquipmentReceived[]>`
+  - `runAssetReminders(db: Db, now: Date = new Date()): Promise<number>`
+- `asset-rules.ts`
+  - `TAG_THRESHOLD_PAISE`
+  - `categoryRules(db: Db | Tx, categoryId: string | null): Promise<CategoryRules>`
+  - `tagDecisionFor(db: Db | Tx, grnLineId: string, now: Date): Promise<TagDecision | null>`
+  - `taggedBatchIds(db: Db | Tx, itemIds: readonly string[]): Promise<Set<string>>`
+- `assets.ts`
+  - `ASSET_LABEL_DOCUMENT`
+  - `ASSET_WORDS`
+  - `STORES_ASSETS_EXPORT`
+  - `STORES_ASSETS_MANAGE`
+  - `STORES_ASSETS_READ`
+  - `acceptUnitTransfer(db: Db, actor: Actor, input: { code?: string; unitId?: string }, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `addAssetDetails(db: Db, actor: Actor, unitId: string, input: AssetDetailsInput, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `assetPassport(db: Db | Tx, actor: Actor, by: { unitId?: string; code?: string }, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `assetRegister(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<{ rows: WireAssetRegisterRow[] }>`
+  - `closeRepair(db: Db, actor: Actor, unitId: string, input: { outcome: "repaired" | "not_repairable" | "preventive"; note?: string | null }, n…`
+  - `fillUnitCost(db: Db, actor: Actor, unitId: string, unitCostPaise: number, now: Date = new Date()): Promise<void>`
+  - `grnLineTagging(db: Db | Tx, grnLineId: string, now: Date): Promise<WireTagLine | null>`
+  - `linkDevice(db: Db, actor: Actor, unitId: string, deviceResourceId: string, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `myAssets(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<{ rows: WireAssetRegisterRow[] }>`
+  - `openRepair(db: Db, actor: Actor, unitId: string, input: { note?: string | null } = {}, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `openUnit(db: Db, actor: Actor, input: { storeId: string; itemId: string; serial?: string | null; make?: string | null; model?: string | nul…`
+  - `proposeUnitTransfer(db: Db, actor: Actor, unitId: string, input: { toShelfId: string }, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `reportFault(db: Db, actor: Actor, unitId: string, input: { text: string }, now: Date = new Date()): Promise<WireAssetLookup>`
+  - `reportFoundHere(db: Db, actor: Actor, unitId: string, input: { shelfId: string }, now: Date = new Date()): Promise<{ told: number }>`
+  - `retag(db: Db, actor: Actor, unitId: string, input: { reason: string; tagNo?: string }, now: Date = new Date()): Promise<{ tagNo: string }>`
+  - `tagUnits(db: Db, actor: Actor, input: { grnLineId: string; units: readonly { serial?: string | null; tagNo?: string }[] }, now: Date = new …`
+  - `unitsToAccept(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<{ rows: WireAssetRegisterRow[] }>`
+  - `voidTag(db: Db, actor: Actor, unitId: string, input: { tagNo: string; reason: string }, now: Date = new Date()): Promise<WireAssetLookup>`
 - `audit-pack.ts`
   - `storesAuditPack(db: Db, actor: Actor, filter: AuditPackFilter, now: Date = new Date()): Promise<AuditPack>`
 - `chaser.ts`
@@ -94,7 +132,7 @@ Source: `apps/core/src/modules/stores/`
 - `items.ts`
   - `CENTRAL_STORE_CODE`
   - `NIGHT_STORE_CODE`
-  - `STORES_TOP_CATEGORIES: readonly { code: string; name: string; nameHi: string }[]`
+  - `STORES_TOP_CATEGORIES: readonly { code: string; name: string; nameHi: string; tagRule?: "always" | "from_value"; needsCalibration?: boolean…`
   - `createCategory(db: Db, actor: Actor, input: { code: string; name: string; nameHi?: string | null; parentId?: string | null }, now: Date = n…`
   - `importStoresItems(db: Db, actor: Actor, rows: readonly StoresImportRow[], opts: { dryRun: boolean }, now: Date = new Date()): Promise<Impor…`
   - `listCategories(db: Db | Tx): Promise<CategoryRow[]>`
@@ -134,7 +172,7 @@ Source: `apps/core/src/modules/stores/`
   - `claimPicking(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
   - `declineTicket(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<TicketView>`
   - `getTicket(db: Db | Tx, indentId: string, now: Date = new Date()): Promise<TicketView | undefined>`
-  - `issueTicket(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<TicketView>`
+  - `issueTicket(db: Db, actor: Actor, indentId: string, input: { lines?: { lineIdx: number; qtyBase: number; unitIds?: string[] }[] } = {}, now…`
   - `openTicketFor(db: Db, actor: Actor, shelfId: string, now: Date = new Date()): Promise<TicketView | null>`
   - `overdueEmergencyReviews(db: Db | Tx, now: Date = new Date()): Promise<TicketView[]>`
   - `raiseTicket(db: Db, actor: Actor, input: RaiseTicketInput, now: Date = new Date()): Promise<TicketView>`
@@ -174,18 +212,25 @@ Source: `apps/core/src/modules/stores/`
   - `reverseShelfUse(db: Db, actor: Actor, rowId: string, reason: string, now: Date, expectShelfId?: string): Promise<{ ledgerEntryId: string }>`
   - `saveReorderDraft(db: Db, actor: Actor, shelfId: string, lines: readonly { itemId?: string | null; qty: number }[], now: Date): Promise<{ dr…`
   - `shelfReorderDraft(db: Db, actor: Actor, shelfId: string): Promise<{ lines: ReorderDraftLine[] }>`
+- `verification.ts`
+  - `closeVerification(db: Db, actor: Actor, roundId: string, now: Date = new Date()): Promise<WireVerificationRound>`
+  - `roundView(db: Db | Tx, roundId: string): Promise<WireVerificationRound>`
+  - `scanVerification(db: Db, actor: Actor, roundId: string, input: { unitId?: string; code?: string; shelfId: string }, now: Date = new Date())…`
+  - `startVerification(db: Db, actor: Actor, input: { departmentId: string }, now: Date = new Date()): Promise<{ roundId: string }>`
+  - `verificationRounds(db: Db, actor: Actor): Promise<{ rounds: WireVerificationRound[]; departments: { id: string; name: string }[] }>`
 - `voucher.ts`
   - `registerStoresPrinting(): () => void`
   - `renderIssueVoucher(db: Db, params: Record<string, unknown>): Promise<RenderedDocument | null>`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_ticket_details`, `stores_transit_resolutions`
+`stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`
 
 Foreign keys into: `materials`, `resources`
 
 ## HTTP routes
 
+- `assets.controller.ts` — `/stores/assets`
 - `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/tower`, `/stores/transit-losses`, `/stores/who-to-ask`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`
