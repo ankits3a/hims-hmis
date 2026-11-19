@@ -35,6 +35,10 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Every Stores place is a registry `store` resource with `attributes.domain = 'stores'` and `attributes.kind`
   (`central` | `sub` | `night` | `shelf`). `access.ts` `isStoresStore` is the one predicate; pharmacy stores carry
   no domain and are never listed here.
+- The other way round: `materials/stores.ts` `listStores` leaves every `domain = 'stores'` row out unless the caller
+  passes `includeStoresDomain: true` (only `shelves.ts` does), so pharmacy's pickers and lists never show a Stores
+  place. `POST /materials/transfers` refuses a Stores place as source or destination (`moves_through_stores`,
+  `materials/transfers.ts` `refuseStoresPlacesOnMaterialsRoute`); the Stores intents call the materials functions.
 - `GEN-MAIN` (custodianRoles `storekeeper`) and `GEN-NIGHT` are seeded by `seedStoresMasters`, called from
   `scripts/seed-materials.ts` (runs on every deploy; idempotent).
 - A shelf's parent is its FLOOR (kernel `floor` resource); it carries `departmentId`, `departmentCode` (the cost
@@ -73,7 +77,10 @@ department shelves every department (housekeeping included) receives from. Pharm
   emergency reason, `night`, origin link, `clock_from`). Shelf = indent `from`; supplying store = indent `to`.
 - Approval is the indent's own stamp (`store_indents.approval_*`, `store_indent_lines.qty_approved`), written by
   `materials.stampIndentApproval`. WRITE-ONCE in the database: migration 0238 REPLACES 0155's `store_indent_guard` /
-  `store_indent_line_guard` (same refusals plus exactly the stamp transitions). A decline closes the indent as
+  `store_indent_line_guard` (same refusals plus exactly the stamp transitions). A stamp is written WHOLE with its
+  decision: a reason or note on its own is refused. `stores_ticket_details` is append-only (trigger
+  `stores_ticket_details_append_only`); `stores_picking_claims` carries no trigger (rows are only ever inserted).
+  The `/materials/indents` routes refuse a Stores ticket (`moves_through_stores`). A decline closes the indent as
   `rejected` with the approver as `decided_by` in the same update; stage `declined` = rejected + decision declined.
 - `materials.issueIndent` refuses `indent_not_approved` when `approval_required` and no decision and not
   `issue_before_approval` (emergency). A pharmacy indent has `approval_required = false`, so it never refuses one.
@@ -99,8 +106,13 @@ department shelves every department (housekeeping included) receives from. Pharm
   receive from rows; minutes = since the step before. S2b adds the chain (take, hand_over, take_over, return_accepted),
   deliver / collect ("Collected at store" = no carrier leg), send_back, return_undelivered and each short's resolution.
   A hand-off whose phone time and server time differ by more than 5 min carries both (`phoneAt`, `recordedAt`).
-- `storesAuditPack` (`audit-pack.ts`) reads the events table only: `stores.act_recorded` + `material.*`, by window on
-  `occurred_at`, filters ANDed. Writes ONE `audit_export` act per call, after the read. TRAP: an event dated by the
+- `storesAuditPack` (`audit-pack.ts`) reads the events table only: `stores.act_recorded` + the `material.*` events
+  whose source, destination or store is a Stores place (pharmacy's stay out), by window on `occurred_at` (and
+  `recorded_at` ≥ from − 24 h, which prunes the monthly partitions), filters ANDed. At most `AUDIT_PACK_MAX_ROWS`
+  (5000) per pack: past that it returns `truncated` + `nextAfterSeq` (query `afterSeq`) and the CSV's last line says
+  so. CSV cells that start like a spreadsheet formula get a leading quote (`csvCell`). There is no index on
+  `events.occurred_at`; `events_name_idx` and the partition pruning carry the query.
+  Writes ONE `audit_export` act per call, after the read. TRAP: an event dated by the
   wall clock falls outside a stated window — `materials/transfers.ts` now dates `material.issued/received/
   discrepancy_flagged` by the movement's `occurredAt` (S2a).
 

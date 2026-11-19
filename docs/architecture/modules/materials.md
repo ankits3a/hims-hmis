@@ -294,7 +294,7 @@ Source: `apps/core/src/modules/materials/`
   - `ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureTransitStore(tx: Tx, siteId = "main"): Promise<string>`
   - `findStoreByCode(db: Db | Tx, code: string, siteId = "main"): Promise<StoreRow | undefined>`
-  - `listStores(db: Db | Tx, opts: { siteId?: string; includeTransit?: boolean } = {}): Promise<StoreRow[]>`
+  - `listStores(db: Db | Tx, opts: { siteId?: string; includeTransit?: boolean; includeStoresDomain?: boolean; } = {}): Promise<StoreRow[]>`
   - `requireStore(db: Db | Tx, resourceId: string): Promise<StoreRow>`
   - `setStoreCustodianRoles(tx: Tx, actor: Actor, storeId: string, roleKeys: readonly string[]): Promise<void>`
   - `storeCustodianRoles(store: Pick<StoreRow, "attributes">): string[]`

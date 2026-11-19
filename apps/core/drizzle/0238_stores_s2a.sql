@@ -89,6 +89,11 @@ BEGIN
   IF (approval_set AND OLD.approval_decision IS NOT NULL) OR (review_set AND OLD.review_decision IS NOT NULL) THEN
     RAISE EXCEPTION 'store_indent_stamp_write_once: an approval or review stamp is set once and never changed or cleared (id %)', OLD.id;
   END IF;
+  -- Pre-merge review S6: a stamp is written WHOLE, in the one update that carries its decision. A reason or a
+  -- note on its own would be a stamp with no decision, which the write-once check above would then never see.
+  IF (approval_set AND NEW.approval_decision IS NULL) OR (review_set AND NEW.review_decision IS NULL) THEN
+    RAISE EXCEPTION 'store_indent_stamp_write_once: a stamp is written whole, with its decision (id %)', OLD.id;
+  END IF;
   decided := (NEW.status, NEW.decided_by, NEW.decided_at, NEW.reject_reason, NEW.cancel_reason, NEW.transfer_id)
     IS DISTINCT FROM (OLD.status, OLD.decided_by, OLD.decided_at, OLD.reject_reason, OLD.cancel_reason, OLD.transfer_id);
   IF decided AND (OLD.status <> 'requested' OR NEW.status = 'requested') THEN
@@ -127,4 +132,12 @@ BEGIN
     RAISE EXCEPTION 'store_indent_immutable: an indent line takes one change, the quantity issued, once (id %)', OLD.id;
   END IF;
   RETURN NEW;
-END $$;
+END $$;--> statement-breakpoint
+-- Pre-merge review S6: a ticket's details (priority, shelf, deliver-to, the clock it runs on) are written once at
+-- raise and never changed or removed; nothing in the module updates them.
+CREATE OR REPLACE FUNCTION stores_ticket_details_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'stores_ticket_details_append_only: a ticket''s details are written once (indent %)', OLD.indent_id;
+END $$;--> statement-breakpoint
+CREATE TRIGGER stores_ticket_details_append_only BEFORE UPDATE OR DELETE ON "stores_ticket_details"
+  FOR EACH ROW EXECUTE FUNCTION stores_ticket_details_guard();

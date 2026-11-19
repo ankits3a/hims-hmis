@@ -144,6 +144,7 @@ export const storesIssueBody = z.object({ lines: z.array(z.object({ lineIdx: z.n
 export const storesAuditQuery = z.object({
   ticketId: id.optional(), itemId: id.optional(), personId: id.optional(), storeId: id.optional(),
   from: instant, to: instant, format: z.enum(["json", "csv"]).optional(),
+  afterSeq: z.coerce.number().int().nonnegative().optional(), limit: z.coerce.number().int().positive().max(5000).optional(),
 });
 
 // ── S2b (#1112): the custody chain, the receipt, shorts, returns ──

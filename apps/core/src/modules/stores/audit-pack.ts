@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
 import { events, roleAssignments, storeIndents, users } from "../../kernel/db/schema";
 import { STORES_AUDIT_READ, holds, recordAct } from "./access";
@@ -18,11 +18,16 @@ import type { Db } from "../../kernel/db/client";
  *
  * Roles are the actor's role keys as held when the pack is read (the role table keeps no history).
  */
-const MAX_ROWS = 5000;
+export const AUDIT_PACK_MAX_ROWS = 5000;
+/** Events are partitioned by `recorded_at`; a scan or a downtime entry is recorded after it occurred, never this long before. */
+const RECORDED_BEFORE_OCCURRED_MS = 24 * 60 * 60_000;
+/** A cell a spreadsheet would read as a formula starts with one of these; it is written with a leading quote. */
+const FORMULA_START = /^[=+\-@\t\r]/;
 const CSV_HEADER = ["seq", "at", "what", "actor", "actor_name", "roles", "store", "item", "ref", "before", "after", "reason"];
 
-function csvCell(v: unknown): string {
-  const s = v === null || v === undefined ? "" : typeof v === "string" ? v : JSON.stringify(v);
+export function csvCell(v: unknown): string {
+  const raw = v === null || v === undefined ? "" : typeof v === "string" ? v : JSON.stringify(v);
+  const s = FORMULA_START.test(raw) ? `'${raw}` : raw;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -32,10 +37,20 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
     throw new StoresError("bad_window", "the window is from ≤ to");
   }
 
+  const limit = filter.limit === undefined ? AUDIT_PACK_MAX_ROWS : Math.max(1, Math.min(AUDIT_PACK_MAX_ROWS, Math.trunc(filter.limit)));
+  // Only Stores' own places: a materials event is in the pack when a Stores store is its source, destination or store.
+  // Pharmacy's indents, transfers and GRNs share the stream and stay out of a Stores audit.
+  const storesPlaces = sql`(select r.id from resources r where r.kind = 'store' and r.attributes->>'domain' = 'stores')`;
   const conds = [
-    or(eq(events.name, STORES_ACT_EVENT), like(events.name, "material.%")),
+    // The window first: `recorded_at` prunes the monthly partitions, `occurred_at` is the window asked for.
+    gte(events.recordedAt, new Date(filter.from.getTime() - RECORDED_BEFORE_OCCURRED_MS)),
     gte(events.occurredAt, filter.from), lte(events.occurredAt, filter.to),
+    or(eq(events.name, STORES_ACT_EVENT), and(like(events.name, "material.%"), or(
+      sql`${events.payload}->>'fromResourceId' in ${storesPlaces}`, sql`${events.payload}->>'toResourceId' in ${storesPlaces}`,
+      sql`${events.payload}->>'storeResourceId' in ${storesPlaces}`,
+    ))),
   ];
+  if (filter.afterSeq !== undefined) conds.push(gt(events.seq, filter.afterSeq));
   if (filter.ticketId !== undefined) {
     const [ind] = await db.select({ transferId: storeIndents.transferId }).from(storeIndents).where(eq(storeIndents.id, filter.ticketId));
     const refs = [filter.ticketId, ...(ind?.transferId == null ? [] : [ind.transferId])];
@@ -52,7 +67,10 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
       sql`${events.payload}->>'toResourceId' = ${s}`, sql`${events.payload}->>'resourceId' = ${s}`,
     ));
   }
-  const found = await db.select().from(events).where(and(...conds)).orderBy(asc(events.seq)).limit(MAX_ROWS);
+  const page = await db.select().from(events).where(and(...conds)).orderBy(asc(events.seq)).limit(limit + 1);
+  const truncated = page.length > limit;
+  const found = truncated ? page.slice(0, limit) : page;
+  const nextAfterSeq = truncated ? found.at(-1)!.seq : null;
 
   const people = [...new Set(found.map((e) => e.actorId))];
   const names = new Map(people.length === 0 ? [] : (await db.select({ id: users.id, n: users.fullName }).from(users).where(inArray(users.id, people))).map((u) => [u.id, u.n] as const));
@@ -79,7 +97,8 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
   });
   const csv = [CSV_HEADER.join(","), ...rows.map((r) => [
     r.seq, r.at, r.what, r.actor.id, r.actor.name, r.actor.roles.join(";"), r.storeId, r.itemId, r.ref, r.before, r.after, r.reason,
-  ].map(csvCell).join(","))].join("\n") + "\n";
+  ].map(csvCell).join(","))].join("\n") + "\n"
+    + (truncated ? `# truncated at ${String(found.length)} rows; ask again with afterSeq=${String(nextAfterSeq)}\n` : "");
 
   const shown = {
     ticketId: filter.ticketId ?? null, itemId: filter.itemId ?? null, personId: filter.personId ?? null, storeId: filter.storeId ?? null,
@@ -87,7 +106,7 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
   };
   await withTx(db, (tx) => recordAct(tx, actor, now, {
     act: "audit_export", storeId: filter.storeId ?? null, itemId: filter.itemId ?? null, refId: filter.ticketId ?? null,
-    after: { ...shown, rows: rows.length },
+    after: { ...shown, rows: rows.length, truncated },
   }));
-  return { filter: shown, rows, csv };
+  return { filter: shown, rows, csv, truncated, nextAfterSeq };
 }

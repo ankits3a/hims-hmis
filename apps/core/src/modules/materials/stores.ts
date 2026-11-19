@@ -226,12 +226,23 @@ export async function requireStore(db: Db | Tx, resourceId: string): Promise<Sto
  */
 export async function listStores(
   db: Db | Tx,
-  opts: { siteId?: string; includeTransit?: boolean } = {},
+  opts: {
+    siteId?: string; includeTransit?: boolean;
+    /**
+     * STORES (pre-merge review S1) — the non-drug Stores places (`attributes.domain = 'stores'`: the central and
+     * night stores and every department shelf) are NOT pharmacy places, so every pharmacy picker and list leaves
+     * them out by default. Only the Stores module asks for them.
+     */
+    includeStoresDomain?: boolean;
+  } = {},
 ): Promise<StoreRow[]> {
   const clauses = [eq(resources.kind, "store"), ne(resources.status, "retired")];
   if (opts.siteId !== undefined) clauses.push(eq(resources.siteId, opts.siteId));
   if (opts.includeTransit !== true) {
     clauses.push(sql`lower(${resources.code}) <> ${TRANSIT_STORE_CODE.toLowerCase()}`);
+  }
+  if (opts.includeStoresDomain !== true) {
+    clauses.push(sql`coalesce(${resources.attributes}->>'domain', '') <> 'stores'`);
   }
   return db.select().from(resources).where(and(...clauses)).orderBy(asc(resources.code));
 }
