@@ -1,6 +1,6 @@
 ---
 issue: 1127
-status: approved
+status: built
 approved: 2026-11-19
 ---
 # SPEC — OPD Admin → Doctors works like the Users screen (owner 2026-11-19)
@@ -50,3 +50,16 @@ where every edit lives, and a New doctor panel that suggests staff. One build. T
 - D9: The yellow "no registration number" note names each doctor as a link that opens their panel at the registration
   number box.
 - D10: At phone width (390 px) there is no sideways scrolling and every control can be reached.
+
+## Built (2026-11-19)
+
+- Server: `apps/core/src/modules/opd/doctor-admin.ts` (admin list, staff search, change check, history),
+  `doctor-cascade.ts` (the rebooking predicate the check and the change share), `masters.ts` `updateDoctor`.
+  Routes `GET /opd/doctors/admin`, `/candidates`, `/:id/impact`, `/:id/history`; `PATCH /opd/doctors/:id` now
+  returns the bookings sent to rebooking and today's waiting count.
+- Web: `apps/web/src/screens/opd-admin-doctors.tsx` on `admin-users.css`.
+- Beyond the letter of D7: the history also shows the doctor's creation and the second department's start and end.
+- Today's waiting patients are reported, not moved, on deactivation (the leave rule): they stay in the queue and the
+  desk moves them with the patient's consent.
+- D10 was checked in Chromium at 390 px and 1366 px: no sideways scroll on the list, the panel or New doctor. That walk
+  found one defect, now fixed with a test: Escape on the deactivate check closed the panel behind it.

@@ -5,6 +5,7 @@
 */
 .au.od .od-grid { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.6fr) minmax(0, 1.5fr) 150px; gap: 12px; align-items: center; padding: 0 16px; }
 .au.od .au-list { max-height: calc(100vh - 330px); min-height: 220px; }
+.au.od .od-notes { display: flex; flex-direction: column; gap: 2px; }
 .au.od .od-dept, .au.od .od-desig { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13.5px; }
 .au.od .od-desig { align-items: flex-start; }
 .od .od-sub, .od-drawer .od-sub { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
@@ -31,10 +32,15 @@
 }
 @media (max-width: 640px) {
   .au.od .au-list { max-height: none; }
-  .au.od .od-grid { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "w s" "d d" "g g"; row-gap: 2px; padding: 8px 12px; }
+  /* `.au.od .od-grid` outranks admin-users.css's own phone rule, so the column heads are hidden here too. */
+  .au.od .au-colhead { display: none; }
+  .au.od .od-grid { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "w s" "d d" "g g" "n n"; row-gap: 2px; padding: 8px 12px; }
   .au.od .au-row > :nth-child(1) { grid-area: w; }
   .au.od .au-row > :nth-child(2) { grid-area: d; padding-left: 45px; flex-direction: row; flex-wrap: wrap; gap: 6px; }
   .au.od .au-row > :nth-child(3) { grid-area: g; padding-left: 45px; flex-direction: row; flex-wrap: wrap; gap: 6px; }
-  .au.od .au-row .au-status { grid-area: s; align-self: start; align-items: flex-end; }
+  /* The pill stays beside the name; the warnings drop under the row, so neither cuts the name. */
+  .au.od .au-row .au-status { display: contents; }
+  .au.od .au-row .au-status > .au-pill { grid-area: s; align-self: start; margin-top: 6px; }
+  .au.od .au-row .od-notes { grid-area: n; padding-left: 45px; flex-direction: row; flex-wrap: wrap; gap: 8px; }
   .au.od .od-desig:empty { display: none; }
 }

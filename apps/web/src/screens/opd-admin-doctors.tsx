@@ -284,8 +284,12 @@ function DoctorRow({ d, open, departmentName, onOpen }: {
       </div>
       <div className="au-status">
         <span className={d.active ? "au-pill on" : "au-pill off"}>{d.active ? t("opdAdmin.doctors.active") : t("opdAdmin.doctors.inactive")}</span>
-        {noRegn && <span className="au-note">{t("opdAdmin.doctors.chip.noRegn")}</span>}
-        {noSchedule && <span className="au-note">{t("opdAdmin.doctors.chip.noSchedule")}</span>}
+        {(noRegn || noSchedule) && (
+          <span className="od-notes">
+            {noRegn && <span className="au-note">{t("opdAdmin.doctors.chip.noRegn")}</span>}
+            {noSchedule && <span className="au-note">{t("opdAdmin.doctors.chip.noSchedule")}</span>}
+          </span>
+        )}
       </div>
     </div>
   );
