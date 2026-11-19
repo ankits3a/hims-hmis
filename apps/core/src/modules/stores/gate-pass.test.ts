@@ -5,7 +5,7 @@ import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { assignRole, grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { seedSodPairs } from "../../kernel/auth/sod";
 import { withTx } from "../../kernel/db/client";
-import { alerts, events, stockWriteOffLines, stockWriteOffs, supplierReturnLines, supplierReturns } from "../../kernel/db/schema";
+import { alerts, events, stockLedger, stockWriteOffLines, stockWriteOffs, supplierReturnLines, supplierReturns } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { ALL_MANIFESTS } from "../../kernel/modules/manifests";
 import { MaterialsError, OUT_ON_PASS_STORE_CODE, balances, findStoreByCode, registerMaterialsApprovalTypes, registerVendor } from "../materials";
@@ -170,11 +170,23 @@ describe("Stores S2c: gate pass details (#1119)", () => {
     expect(await refusal(gatePassLookup(db, guard.actor, pass.passNo, at(3)))).toBe("already_out");
   });
 
-  it("a scan older than 12 h is recorded at the phone's time and flagged late", async () => {
+  it("a scan older than 12 h is recorded at the server's time, keeps the phone's time, and is flagged late", async () => {
     const pass = await returnable(1);
     const r = await scanGatePass(db, guard.actor, { code: pass.passNo, act: "exit", scannedAt: at(10).toISOString() }, at(10 + 13 * 60));
     expect(r.flag).toBe("late");
-    expect(r.pass.scans[0]).toMatchObject({ kind: "exit", at: at(10).toISOString(), recordedAt: at(10 + 13 * 60).toISOString(), flag: "late" });
+    expect(r.pass.scans[0]).toMatchObject({ kind: "exit", at: at(10 + 13 * 60).toISOString(), phoneAt: at(10).toISOString(), recordedAt: at(10 + 13 * 60).toISOString(), flag: "late" });
+  });
+
+  it("pre-merge review M1: an entry whose phone time is before its exit, or an exit before the pass was raised, is dated at the server's time and flagged; the ledger never runs backwards", async () => {
+    const pass = await returnable(1);
+    const out = await scanGatePass(db, guard.actor, { code: pass.passNo, act: "exit", scannedAt: at(-30).toISOString() }, at(5));
+    expect(out.flag).toBe("late");
+    expect(out.pass.scans[0]).toMatchObject({ kind: "exit", at: at(5).toISOString(), phoneAt: at(-30).toISOString() });
+    const back = await scanGatePass(db, guard.actor, { code: pass.passNo, act: "entry", scannedAt: at(4).toISOString() }, at(20));
+    expect(back.flag).toBe("late");
+    expect(back.pass.scans.find((s) => s.kind === "entry")).toMatchObject({ at: at(20).toISOString(), phoneAt: at(4).toISOString() });
+    const rows = (await db.select().from(stockLedger)).filter((x) => x.refId === pass.id);
+    expect(rows.map((x) => x.occurredAt.toISOString()).sort()).toEqual([at(5), at(5), at(20), at(20)].map((d) => d.toISOString()));
   });
 
   it("prints the pass with its QR and its last four digits large, in English and Hindi", async () => {

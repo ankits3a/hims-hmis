@@ -315,7 +315,7 @@ export type GatePassView = {
   /** `qty` on the pass; `out` still outside (read off the ledger at OUT-ON-PASS); `back` returned. */
   lines: { itemId: string; itemCode: string; itemName: string; baseUom: string; qty: number; out: number; back: number }[];
   raisedBy: TicketPerson; raisedAt: string;
-  scans: { kind: "exit" | "entry" | "close"; by: TicketPerson; at: string; recordedAt: string; flag: ScanFlag | null; reason: string | null; lines: { itemId: string; qty: number }[] }[];
+  scans: { kind: "exit" | "entry" | "close"; by: TicketPerson; at: string; recordedAt: string; phoneAt: string | null; flag: ScanFlag | null; reason: string | null; lines: { itemId: string; qty: number }[] }[];
 };
 
 export type GatePassLookup = { pass: GatePassView; act: "exit" | "entry" };

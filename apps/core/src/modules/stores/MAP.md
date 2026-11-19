@@ -172,7 +172,9 @@ department shelves every department (housekeeping included) receives from. Pharm
   source − / `OUT-ON-PASS` + (`reason = 'issue'`, `ref_type = 'gate_pass'`, `ref_id` = pass); an entry scan posts the
   reverse (`reason = 'receive'`) for what came back, per batch in the order it went out. What is still out is READ OFF
   THE LEDGER at OUT-ON-PASS (`outstanding`), never stored. `OUT-ON-PASS` is materials `ensureOutOnPassStore`
-  (additive, the quarantine store's shape; no keepers; not a Stores store, so no Stores picker lists it).
+  (additive, the quarantine store's shape; no keepers; not a Stores store, so no Stores picker lists it). It is a
+  Stores system store (`materials/stores.ts` `STORES_SYSTEM_STORE_CODES`): out of pharmacy's `listStores` and refused
+  on `/materials/transfers`, like QUARANTINE.
 - Non-returnable: only against a supplier return that is dispatched (or later: credited, closed) or a posted
   write-off; its lines and party are COPIED from that record; one live (unclosed) pass per record (advisory lock).
   The exit scan posts no ledger row. S4's scrap sale joins `ref_type` later (a new CHECK value).
@@ -181,7 +183,9 @@ department shelves every department (housekeeping included) receives from. Pharm
   even when they also hold the scan grant. Close is only before the exit (`already_out` after).
 - Scan: the QR carries `MGP…` only; typed = last four digits among passes still in play (`ambiguous_code` on two).
   Idempotency is the scan row itself: unique `(actor_id, client_key)`; a key seen before answers `duplicate: true`.
-  `scanClock` (custody.ts) keeps the phone time and flags `late` / `future`; a late gate scan is NOT sent to a keeper
+  `scanClock` (custody.ts) keeps the phone time and dates the crossing (ledger rows included) by it only within 12 h
+  and not before the pass's raise or its last scan (an entry after its exit); otherwise server time, flagged
+  `late` / `future`; the view's scan carries `phoneAt`. A late gate scan is NOT sent to a keeper
   to confirm (no "Late scan to confirm" for passes: the guard's log is the record).
 - Audit: each act is one `stores.act_recorded` (`raise_gate_pass`, `gate_pass_out`, `gate_pass_in`, `close_gate_pass`)
   with `storeId` = OUT-ON-PASS, `refId` = pass, and the SOURCE store on every line; `storesAuditPack`'s store filter

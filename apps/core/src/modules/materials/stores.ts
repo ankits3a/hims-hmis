@@ -16,7 +16,7 @@ export type StoreRow = typeof resources.$inferSelect;
  * `domain` (they are created by materials helpers) but are Stores places all the same: out of pharmacy's lists and
  * refused on the materials transfer route, like every `domain = 'stores'` row.
  */
-export const STORES_SYSTEM_STORE_CODES: readonly string[] = [QUARANTINE_STORE_CODE];
+export const STORES_SYSTEM_STORE_CODES: readonly string[] = [QUARANTINE_STORE_CODE, OUT_ON_PASS_STORE_CODE];
 
 /** A Stores place: a `domain = 'stores'` row or one of the Stores system stores. */
 export function isStoresPlace(row: { code: string; attributes: unknown }): boolean {
