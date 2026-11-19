@@ -15,7 +15,7 @@ import type { DoctorListRow } from "./masters";
  */
 
 /** The admin list: the shared doctor row, plus the login it belongs to and whether it sits this week. */
-export type DoctorAdminRow = DoctorListRow & { username: string; scheduledThisWeek: boolean };
+export type DoctorAdminRow = DoctorListRow & { username: string; scheduledThisWeek: boolean; updatedByName: string | null };
 
 /** Monday..Sunday (IST) of the week holding `today`. */
 function weekOf(today: string): { from: string; to: string } {
@@ -27,9 +27,10 @@ function weekOf(today: string): { from: string; to: string } {
 export async function listDoctorsForAdmin(db: Db, now: Date = new Date()): Promise<DoctorAdminRow[]> {
   const rows = await listDoctors(db, {}, now);
   if (rows.length === 0) return [];
-  const logins = await db.select({ id: users.id, username: users.username }).from(users)
-    .where(inArray(users.id, rows.map((r) => r.userId)));
-  const usernameOf = new Map(logins.map((u) => [u.id, u.username]));
+  // The doctor's own login, and who last changed the row (the panel's "last changed by" before #1127's history).
+  const people = await db.select({ id: users.id, username: users.username, fullName: users.fullName }).from(users)
+    .where(inArray(users.id, [...new Set(rows.flatMap((r) => [r.userId, r.updatedBy]))]));
+  const person = new Map(people.map((u) => [u.id, u]));
   // "No schedule this week" = no active weekly row valid on any day of this IST week.
   const week = weekOf(istDate(now));
   const sitting = await db.selectDistinct({ doctorId: opdDoctorSchedules.doctorId }).from(opdDoctorSchedules)
@@ -38,7 +39,9 @@ export async function listDoctorsForAdmin(db: Db, now: Date = new Date()): Promi
       or(isNull(opdDoctorSchedules.validTo), gte(opdDoctorSchedules.validTo, week.from)),
     ));
   const sits = new Set(sitting.map((s) => s.doctorId));
-  return rows.map((r) => ({ ...r, username: usernameOf.get(r.userId) ?? "", scheduledThisWeek: sits.has(r.id) }));
+  return rows.map((r) => ({
+    ...r, username: person.get(r.userId)?.username ?? "", scheduledThisWeek: sits.has(r.id), updatedByName: person.get(r.updatedBy)?.fullName ?? null,
+  }));
 }
 
 /**

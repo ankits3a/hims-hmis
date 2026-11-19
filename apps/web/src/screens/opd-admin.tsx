@@ -13,8 +13,7 @@ import type { WireDepartment, WireDoctor, WireLeave, WireRoom, WireSchedule } fr
 import { FormKit, SelectField, TextField } from "../components/form-kit";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { useCopilot } from "../lib/use-copilot";
-import { useAuth } from "../lib/auth";
-import { fetchHeadsWithoutRegn } from "../lib/roster-api";
+import { DoctorsTab } from "./opd-admin-doctors";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import { ConsultLayoutAdmin } from "./opd-layout";
@@ -384,203 +383,7 @@ function RoomsTab({ items, queryClient }: { items: WireRoom[]; queryClient: Quer
 }
 
 // ——— doctors ———
-
-/**
- * NO `code` FIELD, DELIBERATELY. The doctor id is MINTED by the server at creation — this form
- * shipped for four hours with a "Doctor ID (blank to assign one)" box and the owner's first
- * question was why it was not automatic, which is the box answering for the behaviour. Adding a
- * doctor asks for the facts a human knows; the id is not one of them, and the table below shows
- * what was assigned. Overriding it with a college's own faculty number stays available on
- * `PATCH /opd/doctors/:id` and wants an edit affordance of its own, not a question here.
- */
-const doctorSchema = z.object({
-  username: z.string().min(1),
-  displayName: z.string().min(1),
-  registrationNo: z.string(),
-  departmentId: z.string().min(1),
-  specialty: z.string(),
-  designation: z.string(),
-});
-type DoctorValues = z.infer<typeof doctorSchema>;
-
-function DoctorsTab({
-  items, departments, queryClient,
-}: { items: WireDoctor[]; departments: WireDepartment[]; queryClient: QueryClient }): React.ReactElement {
-  const { t } = useTranslation();
-  const [error, setError] = useState<string | null>(null);
-  const form = useForm<DoctorValues>({
-    resolver: zodResolver(doctorSchema),
-    defaultValues: { username: "", displayName: "", registrationNo: "", departmentId: "", specialty: "", designation: "" },
-  });
-
-  const refresh = (): Promise<void> => queryClient.invalidateQueries({ queryKey: ["opd", "doctors"] });
-  /*
-    2026-10-04 (owner) — THE GAP MADE VISIBLE: the OPD prescription's "Dept. Regn" is the council number
-    of that day's unit head, and prints blank when the head has none on file. This names every such head.
-  */
-  const { can } = useAuth();
-  const heads = useQuery({
-    queryKey: ["roster", "heads-without-regn", todayIst()],
-    queryFn: () => fetchHeadsWithoutRegn(todayIst()),
-    enabled: can("roster.read"),
-    retry: false,
-  });
-  const departmentName = (id: string): string => departments.find((d) => d.id === id)?.name ?? id;
-
-  const submit = form.handleSubmit(async (v) => {
-    setError(null);
-    try {
-      // The doctor profile is created BY USERNAME — the server resolves it to a Plan 02 user and
-      // answers unknown_user (404) when there is none. No client-side existence check mirrors that.
-      const body: { username: string; displayName: string; departmentId: string; registrationNo?: string; specialty?: string; designation?: string } = {
-        username: v.username, displayName: v.displayName, departmentId: v.departmentId,
-      };
-      if (v.registrationNo.trim() !== "") body.registrationNo = v.registrationNo.trim();
-      if (v.specialty.trim() !== "") body.specialty = v.specialty.trim();
-      if (v.designation.trim() !== "") body.designation = v.designation.trim();
-      await api("POST", "/opd/doctors", body);
-      form.reset({ username: "", displayName: "", registrationNo: "", departmentId: "", specialty: "", designation: "" });
-      await refresh();
-    } catch (e) {
-      setError(opdErrorMessage(e));
-    }
-  });
-
-  const saveDesignation = async (row: WireDoctor, value: string): Promise<void> => {
-    setError(null);
-    try {
-      await api("PATCH", `/opd/doctors/${row.id}`, { designation: value === "" ? null : value });
-      await refresh();
-    } catch (e) {
-      setError(opdErrorMessage(e));
-    }
-  };
-
-  /* #914 (owner 2026-10-17) — a doctor covers a second department until its specialist joins. */
-  const [secondaryNote, setSecondaryNote] = useState<string | null>(null);
-  const setSecondary = async (row: WireDoctor, departmentId: string): Promise<void> => {
-    setError(null); setSecondaryNote(null);
-    try {
-      await api("PUT", `/opd/doctors/${row.id}/secondary-department`, { departmentId });
-      await refresh();
-    } catch (e) {
-      setError(opdErrorMessage(e));
-    }
-  };
-  const endSecondary = async (row: WireDoctor): Promise<void> => {
-    if (!row.secondary) return;
-    if (!window.confirm(t("opdAdmin.secondaryEndConfirm", { name: row.displayName, dept: departmentName(row.secondary.departmentId) }))) return;
-    setError(null); setSecondaryNote(null);
-    try {
-      const r = await api<{ affectedAppointmentIds: string[] }>("POST", `/opd/doctors/${row.id}/secondary-department/end`, {});
-      setSecondaryNote(t("opdAdmin.secondaryEnded", { count: r.affectedAppointmentIds.length }));
-      await refresh();
-    } catch (e) {
-      setError(opdErrorMessage(e));
-    }
-  };
-
-  const toggle = async (row: WireDoctor): Promise<void> => {
-    setError(null);
-    try {
-      await api("PATCH", `/opd/doctors/${row.id}`, { active: !row.active });
-      await refresh();
-    } catch (e) {
-      setError(opdErrorMessage(e));
-    }
-  };
-
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 22, alignItems: "start" }}>
-      {(heads.data ?? []).length > 0 && (
-        <p role="status" data-testid="heads-without-regn" style={{ gridColumn: "1 / -1", margin: 0, padding: "9px 12px", borderRadius: 6, background: "#fffaf1", border: "1px solid #f0d9ae", fontSize: 12.5, lineHeight: "18px" }}>
-          {t("opdAdmin.headsWithoutRegn", { names: (heads.data ?? []).map((h) => `${h.name} (${h.unitName})`).join(", ") })}
-        </p>
-      )}
-      {/* 2026-10-04 — the list spans the page: with Designation added it no longer fits half a page. */}
-      <div style={{ gridColumn: "1 / -1", overflowX: "auto" }}>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t("opdAdmin.doctorCode")}</TableHead>
-            <TableHead>{t("opd.labels.name")}</TableHead>
-            <TableHead>{t("opd.labels.department")}</TableHead>
-            <TableHead>{t("opdAdmin.secondaryDepartment")}</TableHead>
-            <TableHead>{t("opdAdmin.registrationNo")}</TableHead>
-            <TableHead>{t("opdAdmin.designation")}</TableHead>
-            <TableHead>{t("opd.labels.actions")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((d) => (
-            <TableRow key={d.id}>
-              <TableCell className="mo">{d.code}</TableCell>
-              <TableCell>{d.displayName}</TableCell>
-              <TableCell>{departmentName(d.departmentId)}</TableCell>
-              <TableCell>
-                {d.secondary ? (
-                  <span style={{ display: "inline-flex", gap: 8, alignItems: "center", whiteSpace: "nowrap" }}>
-                    {departmentName(d.secondary.departmentId)}
-                    <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
-                      {d.secondary.toDate === null
-                        ? t("opdAdmin.secondarySince", { date: d.secondary.fromDate })
-                        : t("opdAdmin.secondaryUntil", { date: d.secondary.toDate })}
-                    </span>
-                    {d.secondary.toDate === null && (
-                      <button type="button" className="sec" style={{ height: 26 }} onClick={() => void endSecondary(d)}>{t("opdAdmin.secondaryEnd")}</button>
-                    )}
-                  </span>
-                ) : (
-                  <select
-                    className="in" aria-label={`${t("opdAdmin.secondaryDepartment")} — ${d.displayName}`} value="" style={{ height: 30, minWidth: 140 }}
-                    onChange={(e) => { if (e.currentTarget.value !== "") void setSecondary(d, e.currentTarget.value); }}
-                  >
-                    <option value="">{t("opdAdmin.secondaryNone")}</option>
-                    {departments.filter((x) => x.active && x.id !== d.departmentId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                  </select>
-                )}
-              </TableCell>
-              <TableCell className="mo">{d.registrationNo ?? "—"}</TableCell>
-              <TableCell>
-                {/*
-                  2026-10-04 — the designation is edited IN the list ("Guest Faculty"): the one fact a
-                  desk shows beside the name that an admin changes after the doctor exists. Saved on
-                  leaving the box, only when it changed; blank clears it.
-                */}
-                <input
-                  className="in" aria-label={`${t("opdAdmin.designation")} — ${d.displayName}`} data-testid={`designation-${d.id}`}
-                  defaultValue={d.designation ?? ""} style={{ height: 30, minWidth: 140 }}
-                  onBlur={(e) => { const v = e.currentTarget.value.trim(); if (v !== (d.designation ?? "")) void saveDesignation(d, v); }}
-                />
-              </TableCell>
-              <TableCell><ActiveToggle active={d.active} onToggle={() => void toggle(d)} /></TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      </div>
-      {secondaryNote !== null && <p role="status" style={{ gridColumn: "1 / -1", margin: 0, fontSize: 12.5 }}>{secondaryNote}</p>}
-      <FormProvider {...form}>
-        <FormKit onSubmit={submit}>
-          <h2 className="tag" style={{ margin: 0 }}>{t("opdAdmin.newDoctor")}</h2>
-          <TextField name="username" label={t("opdAdmin.username")} />
-          <TextField name="displayName" label={t("opdAdmin.displayName")} />
-          <TextField name="registrationNo" label={t("opdAdmin.registrationNo")} />
-          <SelectField
-            name="departmentId"
-            label={t("opd.labels.department")}
-            options={[{ value: "", label: t("opdAdmin.pickDepartment") }, ...departments.map((d) => ({ value: d.id, label: d.name }))]}
-          />
-          <TextField name="specialty" label={t("opdAdmin.specialty")} />
-          <TextField name="designation" label={t("opdAdmin.designation")} />
-          <p style={{ margin: "-4px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{t("opdAdmin.designationHint")}</p>
-          <ErrorLine message={error} />
-          <button type="submit" className="pri">{t("opdAdmin.addDoctor")}</button>
-        </FormKit>
-      </FormProvider>
-    </div>
-  );
-}
+// #1127 (owner 2026-11-19) — the Doctors tab lives in `opd-admin-doctors.tsx`, on the Users screen's pattern.
 
 // ——— weekly schedules ———
 
@@ -802,10 +605,11 @@ function LeavesPanel({
 }
 
 function SchedulesAndLeavesTab({
-  doctors, rooms, departments, queryClient,
-}: { doctors: WireDoctor[]; rooms: WireRoom[]; departments: WireDepartment[]; queryClient: QueryClient }): React.ReactElement {
+  doctors, rooms, departments, queryClient, initialDoctorId = "",
+}: { doctors: WireDoctor[]; rooms: WireRoom[]; departments: WireDepartment[]; queryClient: QueryClient; initialDoctorId?: string }): React.ReactElement {
   const { t } = useTranslation();
-  const picker = useForm<{ doctorId: string }>({ defaultValues: { doctorId: "" } });
+  // #1127 — the Doctors panel's "Edit schedule & leaves" arrives here with that doctor already chosen.
+  const picker = useForm<{ doctorId: string }>({ defaultValues: { doctorId: initialDoctorId } });
   const doctorId = picker.watch("doctorId");
 
   const schedules = useQuery({
@@ -865,6 +669,7 @@ export function OpdAdmin(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules" | "vocabulary" | "layout" | "phone" | "nicknames">("departments");
+  const [schedulesFor, setSchedulesFor] = useState("");
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
   const departments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, refetchInterval: POLL_MS });
@@ -937,8 +742,13 @@ export function OpdAdmin(): React.ReactElement {
       <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "departments" && <DepartmentsTab items={departmentItems} queryClient={queryClient} />}
         {tab === "rooms" && <RoomsTab items={roomItems} queryClient={queryClient} />}
-        {tab === "doctors" && <DoctorsTab items={doctorItems} departments={departmentItems} queryClient={queryClient} />}
-        {tab === "schedules" && <SchedulesAndLeavesTab doctors={doctorItems} rooms={roomItems} departments={departmentItems} queryClient={queryClient} />}
+        {tab === "doctors" && (
+          <DoctorsTab departments={departmentItems} rooms={roomItems} queryClient={queryClient}
+            onOpenSchedules={(doctorId) => { setSchedulesFor(doctorId); setTab("schedules"); }} />
+        )}
+        {tab === "schedules" && (
+          <SchedulesAndLeavesTab key={schedulesFor} doctors={doctorItems} rooms={roomItems} departments={departmentItems} queryClient={queryClient} initialDoctorId={schedulesFor} />
+        )}
         {tab === "vocabulary" && <VocabularyTab queryClient={queryClient} />}
         {/* Board `Profiles` — the department default of the consult's sections (opd-layout.tsx). */}
         {tab === "layout" && <ConsultLayoutAdmin departments={departmentItems} />}
