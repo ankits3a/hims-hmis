@@ -311,10 +311,19 @@ function PrCard({ pr, bulk, ticked, onTick, onDone, onFail }: {
         <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 13 }}>{pr.prNo.slice(-4)}</span>
       </div>
       {pr.lines.map((l) => (
-        <div key={l.lineIdx} style={line}>
-          <span style={cell}>{l.itemName}</span>
-          <span style={{ fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{`× ${String(l.qtyBase)}`}</span>
-          <span style={{ fontVariantNumeric: "tabular-nums", flexShrink: 0, minWidth: 80, textAlign: "right" }}>{money(l.qtyBase * l.unitEstimatePaise)}</span>
+        <div key={l.lineIdx} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ ...line, alignItems: "flex-start" }}>
+            {/* The HOD reads the whole name: it wraps to a second line rather than being cut. */}
+            <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{l.itemName}</span>
+            <span style={{ fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{`× ${String(l.qtyBase)}`}</span>
+            <span style={{ fontVariantNumeric: "tabular-nums", flexShrink: 0, minWidth: 80, textAlign: "right" }}>{money(l.qtyBase * l.unitEstimatePaise)}</span>
+          </div>
+          {l.answers !== null && (
+            <span data-testid="equipment-answers" style={{ fontSize: 14, color: "var(--dim, #5c6f66)", overflowWrap: "anywhere" }}>
+              {[l.answers.why, l.answers.replacesTag === null ? null : `${t("stores.buy.replacesTag")} ${l.answers.replacesTag}`, `${t("stores.buy.usePerDay")}: ${l.answers.usePerDay}`]
+                .filter((x): x is string => x !== null && x !== "").join(" · ")}
+            </span>
+          )}
         </div>
       ))}
       <div style={{ ...line, flexWrap: "wrap", minHeight: 0 }}>
@@ -453,29 +462,27 @@ function BudgetsTab(): React.ReactElement {
       {q.data === undefined && !q.isError ? <GreyRows n={4} />
         : q.isError ? <p style={{ margin: 0, fontWeight: 700 }}>{refusal(q.error)}</p>
         : rows.length === 0 ? <p style={{ margin: 0 }}>{t("stores.buy.noDepartments")}</p> : (
-          <div style={{ overflowX: "auto", maxWidth: "100%" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr>
-                <th style={th}>{t("stores.buy.department")}</th><th style={th}>{t("stores.buy.budget")}</th><th style={th}>{t("stores.buy.spent")}</th>
-                <th style={th}>{t("stores.buy.used")}</th><th style={th}>{t("stores.buy.equipment")}</th><th style={th}>{t("stores.buy.save")}</th>
-              </tr></thead>
-              <tbody>
-                {rows.map((d) => (
-                  <tr key={d.departmentId}>
-                    <td style={td}>{d.name}</td>
-                    <td style={td}>
-                      <input aria-label={`${t("stores.buy.budget")} ${d.name}`} inputMode="decimal" placeholder={d.budgetPaise === null ? t("stores.buy.noBudget") : money(d.budgetPaise)}
-                        value={typed[d.departmentId] ?? ""} onChange={(e) => setTyped({ ...typed, [d.departmentId]: e.target.value.replace(/[^\d.]/g, "") })} style={{ width: 140 }} />
-                    </td>
-                    <td style={td}>{money(d.spentPaise)}</td>
-                    <td style={td}>{d.pct === null ? <span style={{ ...word, borderStyle: "dashed" }}>{t("stores.buy.noBudget")}</span>
-                      : <span style={{ ...word, borderStyle: d.pct >= 100 ? "dashed" : "solid" }}>{d.pct >= 100 ? t("stores.buy.overBudget") : t("stores.buy.budgetUsed", { pct: d.pct })}</span>}</td>
-                    <td style={td}>{d.equipment.requests.length === 0 ? "—" : money(d.equipment.requests.reduce((a, r) => a + r.estimatePaise, 0))}</td>
-                    <td style={td}><button type="button" style={primary} disabled={(typed[d.departmentId] ?? "") === ""} onClick={() => save(d.departmentId)}>{t("stores.buy.save")}</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          // One card per department, so the row fits a phone as well as the desk (the walk found Save off-screen at 390 px).
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 380px), 1fr))", gap: 12 }}>
+            {rows.map((d) => (
+              <article key={d.departmentId} data-testid={`budget-${d.code}`} style={card}>
+                <div style={line}>
+                  <strong style={cell}>{d.name}</strong>
+                  {d.pct === null ? <span style={{ ...word, borderStyle: "dashed" }}>{t("stores.buy.noBudget")}</span>
+                    : <span style={{ ...word, borderStyle: d.pct >= 100 ? "dashed" : "solid" }}>{d.pct >= 100 ? t("stores.buy.overBudget") : t("stores.buy.budgetUsed", { pct: d.pct })}</span>}
+                </div>
+                <div style={line}>
+                  <span style={cell}>{`${t("stores.buy.spent")} ${money(d.spentPaise)}`}</span>
+                  {d.equipment.requests.length > 0 && <span style={word}>{`${t("stores.buy.equipment")} ${money(d.equipment.requests.reduce((a, r) => a + r.estimatePaise, 0))}`}</span>}
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                  <label style={{ ...stack, flex: 1 }}><span>{t("stores.buy.budget")}</span>
+                    <input aria-label={`${t("stores.buy.budget")} ${d.name}`} inputMode="decimal" placeholder={d.budgetPaise === null ? t("stores.buy.noBudget") : money(d.budgetPaise)}
+                      value={typed[d.departmentId] ?? ""} onChange={(e) => setTyped({ ...typed, [d.departmentId]: e.target.value.replace(/[^\d.]/g, "") })} style={input} /></label>
+                  <button type="button" style={primary} disabled={(typed[d.departmentId] ?? "") === ""} onClick={() => save(d.departmentId)}>{t("stores.buy.save")}</button>
+                </div>
+              </article>
+            ))}
           </div>
         )}
     </section>

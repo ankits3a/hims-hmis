@@ -19,11 +19,15 @@ Source: `apps/core/src/modules/stores/`
 
 - `access.ts`
   - `STORES_AUDIT_READ`
+  - `STORES_BUDGET_MANAGE`
+  - `STORES_BUYING_MANAGE`
   - `STORES_GATEPASS_RAISE`
   - `STORES_GATEPASS_SCAN`
+  - `STORES_GRN_QC`
   - `STORES_INDENTS_APPROVE`
   - `STORES_MASTERS`
   - `STORES_NIGHTSTORE_ISSUE`
+  - `STORES_PURCHASE_REQUEST`
   - `STORES_SHELF_READ`
   - `STORES_SHELF_WORK`
 - `asset-label.ts`
@@ -70,6 +74,16 @@ Source: `apps/core/src/modules/stores/`
   - `withdrawUnit(db: Db, actor: Actor, unitId: string, input: { reason: string }, now: Date = new Date()): Promise<WireAssetLookup>`
 - `audit-pack.ts`
   - `storesAuditPack(db: Db, actor: Actor, filter: AuditPackFilter, now: Date = new Date()): Promise<AuditPack>`
+- `bands.ts`
+  - `BAND_A_MAX_PAISE`
+  - `BAND_B_MAX_PAISE`
+  - `bandFor(estimatePaise: number, opts: { equipment?: boolean } = {}): StoresBand`
+- `budgets.ts`
+  - `BUDGET_WORDS`
+  - `budgetView(db: Db, actor: Actor, departmentId: string, month: string): Promise<WireDepartmentBudget>`
+  - `departmentBudget(db: Db | Tx, departmentId: string, month: string): Promise<WireDepartmentBudget>`
+  - `setDepartmentBudget(db: Db, actor: Actor, input: { departmentId: string; month: string; amountPaise: number; annual?: boolean; note?: strin…`
+  - `sweepBudgetWarnings(db: Db, now: Date = new Date()): Promise<number>`
 - `chaser.ts`
   - `APPROVAL_NUDGE_MIN`
   - `CHASER_WORDS`
@@ -116,6 +130,10 @@ Source: `apps/core/src/modules/stores/`
   - `takeCustody(db: Db, actor: Actor, scan: ScanInput, now: Date = new Date()): Promise<CustodyResult>`
   - `takeOverCustody(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<CustodyResult>`
   - `ticketsComingBack(db: Db, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
+- `delegations.ts`
+  - `DELEGATION_MAX_DAYS`
+  - `delegateApprovals(db: Db, actor: Actor, input: DelegationInput, now: Date = new Date()): Promise<WireStoresDelegation>`
+  - `myDelegations(db: Db, actor: Actor, now: Date = new Date()): Promise<WireStoresDelegation[]>`
 - `desk.ts`
   - `STORES_DESK_PROVIDERS`
   - `storesApproveDesk: DeskProvider`
@@ -148,6 +166,10 @@ Source: `apps/core/src/modules/stores/`
   - `overdueGatePasses(db: Db | Tx, now: Date = new Date()): Promise<GatePassView[]>`
   - `raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassInput, now: Date = new Date()): Promise<GatePassView>`
   - `scanGatePass(db: Db, actor: Actor, input: GatePassScanInput, now: Date = new Date()): Promise<GatePassScanResult>`
+- `grn-qc.ts`
+  - `postStoresGrn(db: Db, actor: Actor, grnId: string, now: Date = new Date()): Promise<{ status: string; ledgerEntryIds: string[] }>`
+  - `signStoresQc(db: Db, actor: Actor, grnId: string, now: Date = new Date()): Promise<{ status: string; verdicts: { grnLineId: string; verdict…`
+  - `storesGrnsForQc(db: Db, actor: Actor): Promise<WireStoresGrnForQc[]>`
 - `items.ts`
   - `CENTRAL_STORE_CODE`
   - `NIGHT_STORE_CODE`
@@ -165,6 +187,18 @@ Source: `apps/core/src/modules/stores/`
   - `updateStoresItem(db: Db, actor: Actor, itemId: string, patch: { categoryId?: string; trackMode?: TrackMode; searchAliases?: string[] }, rea…`
 - `manifest.ts`
   - `storesManifest: ModuleManifest`
+- `purchase-requests.ts`
+  - `PR_WORDS`
+  - `approvePurchaseRequest(db: Db, actor: Actor, prId: string, now: Date = new Date()): Promise<WirePurchaseRequest>`
+  - `bulkApprovePurchaseRequests(db: Db, actor: Actor, prIds: readonly string[], now: Date = new Date()): Promise<WirePurchaseRequest[]>`
+  - `cancelPurchaseRequest(db: Db, actor: Actor, prId: string, now: Date = new Date()): Promise<WirePurchaseRequest>`
+  - `declinePurchaseRequest(db: Db, actor: Actor, prId: string, reason: string, now: Date = new Date()): Promise<WirePurchaseRequest>`
+  - `getPurchaseRequest(db: Db | Tx, prId: string, now: Date = new Date()): Promise<WirePurchaseRequest>`
+  - `myPurchaseRequests(db: Db, actor: Actor, now: Date = new Date()): Promise<WirePurchaseRequest[]>`
+  - `purchaseRequestsToApprove(db: Db, actor: Actor, now: Date = new Date()): Promise<WirePurchaseRequest[]>`
+  - `raisePurchaseRequest(db: Db, actor: Actor, input: RaisePurchaseRequestInput, now: Date = new Date()): Promise<WirePurchaseRequest>`
+  - `setPurchaseRequestBand(db: Db, actor: Actor, prId: string, band: StoresBand, reason: string, now: Date = new Date()): Promise<WirePurchaseR…`
+  - types: `PurchaseRequestLineInput`, `RaisePurchaseRequestInput`
 - `reads.ts`
   - `departmentChargeOn(db: Db, departmentCode: string, day: string): Promise<{ chargePaise: number; rows: number }>`
   - `floorShelfUseByMonth(db: Db, actor: Actor, shelfId: string, month: string): Promise<{ itemId: string; used: number }[]>`
@@ -180,8 +214,15 @@ Source: `apps/core/src/modules/stores/`
   - `openShelf(db: Db, actor: Actor, shelfId: string, lines: readonly { itemId: string; qty: number }[], now: Date): Promise<{ ledgerEntryIds: s…`
   - `openStore(db: Db, actor: Actor, storeCode: string, lines: readonly { itemId: string; qty: number; unitCostPaise?: number | null }[], now: D…`
   - `setShelfPar(db: Db, actor: Actor, input: { shelfId: string; itemId: string; minBase: number; reorderBase: number; maxBase: number }, now: D…`
+- `spend.ts`
+  - `departmentSpendByMonth(db: Db | Tx, month: string): Promise<Map<string, number>>`
 - `stores.module.ts`
   - `class StoresModule`
+- `suppliers.ts`
+  - `approveSupplierCategory(db: Db, actor: Actor, vendorId: string, categoryId: string, now: Date = new Date()): Promise<void>`
+  - `setSupplierFields(db: Db, actor: Actor, vendorId: string, patch: { msmeActivity?: "maker" | "service" | "trader" | null; einvoiceApplicable…`
+  - `storesSuppliers(db: Db, actor: Actor, now: Date = new Date()): Promise<WireStoresSupplier[]>`
+  - `supplierKyc(db: Db | Tx, vendorId: string, now: Date, opts: { categoryId?: string | null } = {}): Promise<WireSupplierKyc>`
 - `tickets.ts`
   - `CLAIM_IDLE_MS`
   - `EMERGENCY_REVIEW_MS`
@@ -212,7 +253,6 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_SPEND_READ`
   - `STORES_TOWER_READ`
   - `boardCards(db: Db | Tx, now: Date, indentIds?: readonly string[]): Promise<BoardCard[]>`
-  - `departmentSpendByMonth(db: Db | Tx, month: string): Promise<Map<string, number>>`
   - `towerSummary(db: Db, actor: Actor, now: Date = new Date()): Promise<WireTowerSummary>`
   - `towerView(db: Db, actor: Actor, now: Date = new Date()): Promise<WireTowerView>`
 - `types.ts`
@@ -243,13 +283,14 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_client_keys`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`
+`stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_client_keys`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_over_budget_marks`, `stores_picking_claims`, `stores_pr_band_settings`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
 
-Foreign keys into: `materials`, `resources`
+Foreign keys into: `materials`, `org`, `resources`
 
 ## HTTP routes
 
 - `assets.controller.ts` — `/stores/assets`
+- `buying.controller.ts` — `/stores/budgets`, `/stores/buy`, `/stores/delegations`, `/stores/grns`, `/stores/purchase-requests`, `/stores/suppliers`
 - `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/tower`, `/stores/transit-losses`, `/stores/who-to-ask`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`

@@ -16,7 +16,8 @@ with a module name, `kernel/`, `packages/` or `apps/`. Citations name a file and
 Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials core), 0081 (done-means tests).
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
-`docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b).
+`docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
+`docs/specs/1115-stores-buying-desk.md` (S5: S5a built, S5b and S5c to come).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -332,7 +333,45 @@ department shelves every department (housekeeping included) receives from. Pharm
   phone shows "Not your department: ask <names>". A fault may carry a photo (document store key on the event).
 - Receive: a ticket line's `units` (still in transit) let the receiver scan what arrived; `unitIds` go with the line.
 
+## 10d. The buying desk's front (S5a #1115; ruling 0099 Q4, decision 0100)
+- Purchase request (`purchase-requests.ts`, migration 0244): `stores_purchase_requests` + `_lines` written once; the
+  decision is ONE `stores_purchase_request_stamps` row (unique per request: approved / declined / cancelled), so the stamp
+  is write-once by the unique index and the append-only trigger. Status is derived. Number `MPR`+yymmdd+4 from
+  `episode_series` key `stores_purchase_request` (no kernel series entry). Lines name an `items` row (`item_required`);
+  a department never asks for a stock item (`stock_item` = a level at a central/sub Stores store). The estimate per base
+  unit is frozen at raise: open rate contract (`contractRatesFor`, cheapest) > last paid receipt > the requester's figure
+  (`estimate_required`). "Medical equipment" = category tag rule `always`; a department line needs the three answers.
+- Approval: department = the S2 rule (`stores.indents.approve` AT the department; hospital scope = the MS stand-in) or
+  a live delegation (`forRole` hod / ms / delegate / materials); central = `stores.masters.manage`. Never the requester
+  (`own_request`), nor a delegate acting for the requester. Bulk (`bulkApprovePurchaseRequests`): materials head or the
+  owner role, all-or-none in one tx, each its own stamp and act.
+- Bands (`bands.ts`): A ≤ ₹25,000 < B ≤ ₹5 lakh < C; any equipment line = C. Contract lines order as A and stay out of
+  every sum. Split check is computed ON READ over the 30 days before `now` (declined/cancelled out): department = same
+  department + same category; central/planner = same item. `setPurchaseRequestBand` lifts only (`band_lowered`).
+- Budgets (`budgets.ts`): newest `stores_department_budgets` row per (department, month); annual = 12 equal months, the
+  paise remainder on the last. Spent = S3's spend rule, MOVED unchanged to `spend.ts` (tickets.ts reads budgets and
+  tower.ts imports tickets.ts: a cycle with tower's top-level `CLOCKS`). S5b adds PO value. Warnings via the notice source
+  key `stores-budget:<dept>:<month>:80|100` (HODs else the stand-in, and `accounts_officer` holders), from approvals and
+  the chaser's minute sweep. Never refused: a PR stamp carries `over_budget` when spent + its value > budget (equipment
+  adds 0); a ticket gets a `stores_over_budget_marks` row when the month is used up (`approval.overBudget`, absent else).
+- Delegation (`delegations.ts`): `stores_delegations` scope `hod_approval` only (S5b adds committee seats), ≤ 30 days
+  (DB CHECK too), by an HOD assigned AT the department; refused to the buyer (`delegate_is_buyer`) or to anyone with an
+  open request/ticket of that department (`delegate_is_requester`); any other scope `not_delegable`. A delegate whose
+  window has passed is `delegation_ended`. `ticketsToApprove` and `requireApprover` (tickets) honour it too.
+- Non-drug QC (`grn-qc.ts`): `stores.grn.qc` (hospital scope for now) runs materials `runGateQc` / `postGrn` in its own
+  tx for a GRN whose EVERY line is a Stores item; any pharmacy line = `not_stores_line`. The 2 % price check is
+  materials' capture rule, unchanged. TRAP: the department nominee's scope waits for S5b's GRN → PR link.
+- KYC (`suppliers.ts`): levels derived from rows (`supplierKyc`): can quote = PAN + (GSTIN or unregistered reason) +
+  not suspended/blacklisted; complete adds GST/PAN paper, bank past `first_payment_allowed_at`, a
+  `stores_vendor_category_approvals` row (own category or its top), and for an MSME the Udyam paper, class, activity.
+  New nullable `vendors` columns go through materials `updateVendor` (three named fields, additive).
+- Web `/stores/buy` (`apps/web/src/screens/stores-buy.tsx`): tabs by grant (Ask, To approve, My requests, Hand over, Budgets, Suppliers, QC);
+  notices `stores_purchase_request` open it with `?pr=`.
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
 staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
-SITE (no sites yet), the dated HOD delegation (S5 decision 11), PDF/print of the removals export (CSV + screen only).
+SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5a leaves: the nightly central shortfall →
+PR job and the agent (S5c), committee seats and their delegation, RFQ/quotes/award/PO-from-award (S5b), the owner's monthly
+over-budget list, a Now card / waiting kind for "Purchase to approve" (the notice opens `/stores/buy`), the department
+nominee's QC scope.
