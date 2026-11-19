@@ -347,12 +347,12 @@ describe("supplier bills, payables and payment runs (parity P3)", () => {
     const bill = await payable(vendor, 10, 25_000, "R-3");
     const runId = await authorisedRun([{ billId: bill, payPaise: 250_000 }]);
     await expect(assertNotRunAuthoriser(db, owner.actor, runId)).rejects.toBeInstanceOf(SodViolationError);
-    await expect(recordVendorPayment(db, owner.actor, runId, vendor, { mode: "neft", reference: "UTR1" }, at(110))).rejects.toMatchObject({ code: "authoriser_recording" });
+    await expect(recordVendorPayment(db, owner.actor, runId, vendor, { mode: "neft", reference: "UTR1000000000001" }, at(110))).rejects.toMatchObject({ code: "authoriser_recording" });
     const blocked = await db.select().from(events).where(eq(events.name, "sod.violation_blocked"));
     expect(blocked.map((e) => (e.payload as { pairKey: string }).pairKey)).toEqual(["payment_authoriser_recorder"]);
-    const paid = await recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: "UTR1" }, at(110));
+    const paid = await recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: "UTR1000000000001" }, at(110));
     expect(paid.status).toBe("completed");
-    expect(paid.vendors[0]!.payment).toMatchObject({ mode: "neft", reference: "UTR1", amountPaise: 250_000, paymentNo: expect.stringMatching(/^MPV/) });
+    expect(paid.vendors[0]!.payment).toMatchObject({ mode: "neft", reference: "UTR1000000000001", amountPaise: 250_000, paymentNo: expect.stringMatching(/^MPV/) });
   });
 
   it("refuses paying a vendor in bank-change cooling-off, and a bank mode without its reference", async () => {
@@ -361,11 +361,11 @@ describe("supplier bills, payables and payment runs (parity P3)", () => {
     const until = new Date(at(110).getTime() + DAY * 60_000);
     await db.update(vendors).set({ firstPaymentAllowedAt: until }).where(eq(vendors.id, vendor));
     await expect(recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: null }, at(110))).rejects.toMatchObject({ code: "payment_reference_required" });
-    await expect(recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: "UTR9" }, at(110)))
+    await expect(recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: "UTR9000000000009" }, at(110)))
       .rejects.toMatchObject({ code: "vendor_cooling_off", detail: { firstPaymentAllowedAt: until.toISOString() } });
     // The day after the cooling-off ends, it is paid.
     const next = new Date(until.getTime() + 60_000);
-    expect((await recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: "UTR9" }, next)).status).toBe("completed");
+    expect((await recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: "UTR9000000000009" }, next)).status).toBe("completed");
   });
 
   it("cash to one vendor in one day stops at ₹10,000 (s.40A(3)), summed across payments; another day is another limit", async () => {
@@ -385,7 +385,7 @@ describe("supplier bills, payables and payment runs (parity P3)", () => {
       .rejects.toMatchObject({ code: "cash_limit_exceeded", detail: { alreadyPaise: 1_000_000, amountPaise: 1_000 } });
     // By bank it goes; tomorrow's cash is a fresh day.
     expect((await recordVendorPayment(db, head.actor, r3, vendor, { mode: "cash" }, at(110 + DAY))).status).toBe("completed");
-    expect((await recordVendorPayment(db, head.actor, r4, vendor, { mode: "rtgs", reference: "UTR-BIG" }, at(111))).status).toBe("completed");
+    expect((await recordVendorPayment(db, head.actor, r4, vendor, { mode: "rtgs", reference: "UTRBIG0000000000000001" }, at(111))).status).toBe("completed");
   });
 
   it("part payments leave the bill part_paid; what open runs hold cannot be put on another; the rest pays it off", async () => {
@@ -400,7 +400,7 @@ describe("supplier bills, payables and payment runs (parity P3)", () => {
     const r2 = await authorisedRun([{ billId: bill, payPaise: 150_000 }]);
     const view = await getPaymentRun(db, head.actor, r2, at(111));
     expect(view.vendors[0]!.lines.map((l) => [l.totalPaise, l.prevPaidPaise, l.creditPaise, l.payPaise, l.remainingPaise])).toEqual([[250_000, 100_000, 0, 150_000, 0]]);
-    await recordVendorPayment(db, head.actor, r2, vendor, { mode: "upi", reference: "UPI-77" }, at(112));
+    await recordVendorPayment(db, head.actor, r2, vendor, { mode: "upi", reference: "431200000077" }, at(112));
     b = await getSupplierBill(db, head.actor, bill);
     expect([b.status, b.paidPaise, b.outstandingPaise, b.payments.length]).toEqual(["paid", 250_000, 0, 2]);
     // A paid bill is not cancelled.
@@ -421,7 +421,7 @@ describe("supplier bills, payables and payment runs (parity P3)", () => {
     const b1 = await payable(vendor, 10, 25_000, "L-1"); // ₹2,500
     const b2 = await payable(vendor, 4, 25_000, "L-2"); // ₹1,000
     const runId = await authorisedRun([{ billId: b1, payPaise: 200_000 }]);
-    await recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: "UTR-L" }, at(110));
+    await recordVendorPayment(db, head.actor, runId, vendor, { mode: "neft", reference: "UTRL000000000001" }, at(110));
 
     const p = await payables(db, head.actor, at(40 * DAY));
     expect(p.bills.map((b) => [b.billNo.slice(0, 3), b.outstandingPaise, b.bucket, b.overdueDays])).toEqual([

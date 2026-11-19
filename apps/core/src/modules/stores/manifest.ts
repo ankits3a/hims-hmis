@@ -64,6 +64,12 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * for the user HOD's seat) and, with `stores.masters.manage`, the materials head's band B approval. The desk (16:9: Buy
  * now, Grouping, RFQs, Comparisons, Awards, POs) and the phone approval sheet are `/stores/buying` (its own menu row).
  *
+ * S6a (#1116, decision 12) adds two: `stores.ses.confirm` (department; `department_head`, `department_store_incharge`, and
+ * `biomedical_engineer` at hospital scope for AMC visits) confirms a service entry sheet; `stores.holds.release` (hospital;
+ * the materials head up to ₹50,000, the owner) releases or keeps a payment hold. The paying desk (16:9: To book, Holds,
+ * Due, Runs, Payments, Exports) is `/stores/pay` (its own menu row, `materials.bills.manage`); the department's phone
+ * "Service to confirm" is `/stores/services`.
+ *
  * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -79,6 +85,7 @@ export const storesManifest: ModuleManifest = {
     { label: "Assets", path: "/stores/assets", permission: "stores.assets.read" },
     { label: "Buying", path: "/stores/buy", permission: "stores.buying.manage" },
     { label: "Buying desk", path: "/stores/buying", permission: "stores.buying.manage" },
+    { label: "Paying desk", path: "/stores/pay", permission: "materials.bills.manage" },
   ],
   permissions: [
     "stores.masters.manage",
@@ -101,6 +108,8 @@ export const storesManifest: ModuleManifest = {
     "stores.budget.manage",
     "stores.grn.qc",
     "stores.award.sign",
+    "stores.ses.confirm",
+    "stores.holds.release",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */

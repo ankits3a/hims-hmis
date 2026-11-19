@@ -742,3 +742,115 @@ export const storesAdvanceBody = z.object({
   guaranteeValidTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), guaranteePaise: z.number().int().min(1).max(100_000_000_000),
 });
 export const storesDecideBody = z.object({ approve: z.boolean(), reason: z.string().trim().max(300).nullish() });
+
+// ═══════════════════════════════ S6a (#1116): the paying desk ═══════════════════════════════
+
+/** Decision 2: where a service entry sheet's quantities came from. */
+export const SES_SOURCES = ["laundry_month", "amc_visit", "manpower_month", "canteen_month", "term_start"] as const;
+export type WireSesSource = (typeof SES_SOURCES)[number];
+export const SES_PERIOD_KINDS = ["month", "quarter", "visit", "term_start"] as const;
+export type WireSesPeriodKind = (typeof SES_PERIOD_KINDS)[number];
+
+export type WireServiceEntry = {
+  id: string; sesNo: string; purchaseOrderId: string; poNo: string; vendorId: string; vendorName: string;
+  department: { id: string; code: string; name: string };
+  period: { kind: WireSesPeriodKind; key: string; start: string; end: string };
+  source: WireSesSource; sourceRef: string | null;
+  /** `short` when any line was confirmed below what the contract names. */
+  status: "confirmed" | "short";
+  lines: { itemId: string; itemName: string; baseUom: string; orderedBase: number; qtyBase: number; shortBase: number; shortReason: string | null; ratePaise: number; multiplier: number }[];
+  confirmedBy: { id: string; name: string }; confirmedAt: string; billNo: string | null;
+};
+
+/** A service PO whose period is due and not yet confirmed, with the quantities prefilled. */
+export type WireServiceToConfirm = {
+  purchaseOrderId: string; poNo: string; vendorName: string; department: { id: string; code: string; name: string };
+  period: { kind: WireSesPeriodKind; key: string; start: string; end: string }; source: WireSesSource;
+  lines: { itemId: string; itemName: string; baseUom: string; qtyBase: number }[];
+};
+
+export const PAY_HOLD_KINDS = ["duplicate_like", "out_of_pattern", "bank_cooling_off", "kyc_incomplete", "above_po", "pay_after_grn", "irn_missing"] as const;
+export type WirePayHoldKind = (typeof PAY_HOLD_KINDS)[number];
+export type WirePayHoldRefusal = "own_bill" | "po_approver" | "above_limit" | "ends_by_itself" | "run_authoriser" | "not_permitted";
+
+export type WirePayHold = {
+  id: string; billId: string; billNo: string; vendorName: string; totalPaise: number; msme: boolean; dueDate: string | null;
+  kind: WirePayHoldKind;
+  /** The documents behind the hold: `{ type: "bill" | "po" | "grn" | "ses" | "vendor", id, no }`. */
+  evidence: { type: string; id: string; no: string }[];
+  placedAt: string; endsAt: string | null;
+  status: "open" | "kept" | "released" | "ended";
+  kept: { reason: string; reviewOn: string; by: { id: string; name: string } } | null;
+  released: { reason: string; at: string; by: { id: string; name: string } } | null;
+  /** May the reader release it; else why not (and who to ask). */
+  canRelease: boolean;
+  refusal: { code: WirePayHoldRefusal; ask: string | null; on: string | null } | null;
+};
+
+export type WirePayBillStatus = "booked" | "matched" | "difference" | "accepted" | "on_hold" | "in_run" | "paid" | "cancelled";
+
+export type WirePayToBook = { kind: "grn" | "ses"; id: string; no: string; vendorId: string; vendorName: string; at: string; poNo: string | null };
+
+export type WirePayDue = {
+  billId: string; billNo: string; vendorBillNo: string; vendorName: string; msme: boolean; dueDate: string; daysLeft: number;
+  outstandingPaise: number; status: WirePayBillStatus; dueWord: "due_soon" | "overdue" | null;
+};
+
+export type WirePayRun = {
+  id: string; runNo: string; status: "draft" | "pending_authorisation" | "authorised" | "completed" | "cancelled";
+  totalPaise: number; bills: number; msme: number; heldOut: number;
+};
+
+export type WirePayPayment = { id: string; paymentNo: string; runNo: string; vendorName: string; mode: string; reference: string | null; paidOn: string; amountPaise: number };
+
+export type WirePayingSettings = {
+  version: number; holdsCoverPharmacy: boolean; msmeRule: "as_today" | "act"; outOfPatternMultipleBps: number; firstBillLimitPaise: number;
+  setAt: string | null; setBy: { id: string; name: string } | null;
+};
+
+export type WirePayingDesk = {
+  can: { book: boolean; release: boolean; prepare: boolean; record: boolean; owner: boolean; export: boolean };
+  toBook: WirePayToBook[]; holds: WirePayHold[]; due: WirePayDue[]; runs: WirePayRun[]; payments: WirePayPayment[];
+  settings: WirePayingSettings;
+};
+
+/** The owner's phone line for a run: "₹ total · n bills · m MSME · k held out". */
+export type WireRunToAuthorise = {
+  runId: string; runNo: string; status: WirePayRun["status"]; totalPaise: number; bills: number; msme: number; heldOut: number; canDecide: boolean;
+};
+
+export type WireHoldsDryRun = { at: string; bills: { billId: string; billNo: string; vendorName: string; totalPaise: number; kinds: WirePayHoldKind[] }[] };
+
+export type WirePayablesByGroup = {
+  asOf: string; totalPaise: number;
+  byGroup: { group: string; name: string; paise: number }[];
+  byDepartment: { costCentre: string; name: string; paise: number }[];
+};
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const storesSesBody = z.object({
+  purchaseOrderId: id, departmentId: id,
+  period: z.object({ kind: z.enum(SES_PERIOD_KINDS), key: z.string().trim().min(1).max(20), start: isoDay, end: isoDay }),
+  source: z.enum(SES_SOURCES), sourceRef: z.string().trim().max(80).nullish(),
+  lines: z.array(z.object({
+    itemId: id, qtyBase: z.number().int().min(0).max(10_000_000), shortReason: z.string().trim().max(200).nullish(),
+  })).max(100).optional(),
+  note: z.string().trim().max(300).nullish(),
+});
+export const storesHoldReleaseBody = z.object({ reason: z.string().trim().max(300) });
+export const storesHoldKeepBody = z.object({ reason: z.string().trim().max(300), reviewOn: isoDay });
+export const storesPayingSettingsBody = z.object({ holdsCoverPharmacy: z.boolean(), dryRunAt: z.string().datetime() });
+export const storesRecordPaymentBody = z.object({
+  vendorId: id, mode: z.enum(["neft", "rtgs", "upi", "cheque", "cash"]), reference: z.string().trim().max(64).nullish(), paidOn: isoDay.nullish(),
+});
+export const storesRunDecideBody = z.object({ approve: z.boolean(), reason: z.string().trim().max(300).nullish() });
+/** Book a bill from a GRN or a service entry: only what is on the paper (number, date; a line's quantity or rate when they differ). */
+export const storesPayBookBody = z.object({
+  kind: z.enum(["grn", "ses"]), id, vendorBillNo: z.string().trim().min(1).max(64), billDate: isoDay,
+  lines: z.array(z.object({ itemId: id, qtyPacks: z.number().int().min(0).max(1_000_000), ratePaise: z.number().int().min(0).max(1_000_000_000) })).max(300).optional(),
+});
+export type WirePayBookDraft = {
+  kind: "grn" | "ses"; id: string; no: string; vendorId: string; vendorName: string; poNo: string | null; vendorBillNo: string; billDate: string;
+  lines: { itemId: string; itemName: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number }[]; expectedTotalPaise: number;
+};
+export type WirePayBooked = { billId: string; billNo: string; status: WirePayBillStatus; totalPaise: number; holds: WirePayHoldKind[] };

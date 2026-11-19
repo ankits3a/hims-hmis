@@ -58,7 +58,12 @@ export type BillMismatch = "not_received" | "qty_over" | "qty_under" | "rate" | 
 const HOLDING: readonly BillMismatch[] = ["not_received", "qty_over", "gst_rate", "value"];
 
 export type BillLineInput = {
-  grnId: string;
+  /**
+   * The GRN this line bills — or, for a service, the service entry sheet (`sesId`, STORES S6a #1116, decision 3):
+   * exactly one of the two (`bill_invalid` otherwise).
+   */
+  grnId?: string | null;
+  sesId?: string | null;
   itemId: string;
   /** The pack billed. Defaults to the item's purchase pack. */
   uom?: string | null;
@@ -88,7 +93,8 @@ export type BillInput = {
 };
 
 export type BillLineView = {
-  id: string; grnId: string; grnNo: string; itemId: string; itemCode: string; itemName: string; uom: string; multiplier: number;
+  /** STORES S6a (#1116): a service line has a null `grnId` and an empty `grnNo`, and carries `sesId` and `sesNo`. */
+  id: string; grnId: string | null; grnNo: string; sesId?: string; sesNo?: string; itemId: string; itemCode: string; itemName: string; uom: string; multiplier: number;
   qtyPacks: number; ratePaise: number; taxablePaise: number; gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
   /** #637 — list rate per pack before the vendor's discount (null when none was named), the percent, the amount off per pack. */
   listRatePaise: number | null; discountBps: number; discountPaise: number;
@@ -109,7 +115,7 @@ export type BillView = BillSummary & {
   note: string | null; poNo: string | null; cancelReason: string | null; differenceAcceptedBy: string | null;
   names: Record<string, string>; lines: BillLineView[];
   /** GRN items accepted but not on the bill — counted in the expected total. */
-  unbilled: { grnId: string; grnNo: string; itemId: string; itemCode: string; itemName: string; expectedBase: number; expectedTaxablePaise: number }[];
+  unbilled: { grnId: string | null; grnNo: string; sesId?: string; itemId: string; itemCode: string; itemName: string; expectedBase: number; expectedTaxablePaise: number }[];
   /** Recorded payments against this bill; `creditPaise` is the vendor credit set off on the same voucher (P4). */
   payments: { paymentId: string; paymentNo: string; runNo: string; mode: string; reference: string | null; paidOn: string; paidPaise: number; creditPaise: number }[];
 };
@@ -171,6 +177,33 @@ function isIsoDate(s: string): boolean {
 
 const isMsme = (v: { msmeClass: string | null }): boolean => v.msmeClass !== null && v.msmeClass.trim() !== "";
 
+// ═══════════════════════════════════ STORES S6a — payment holds ═══════════════════════════════════
+
+/**
+ * STORES S6a (#1116, decisions 7–8) — payment holds are Stores' rows and rules (materials knows no Stores table); Stores
+ * registers these at import. With none registered nothing is held. With them registered and every S6a switch off, a
+ * pharmacy-only bill is never held (`stores-s6a-no-change.test.ts`): booking, payables, the run and the payment are as
+ * before.
+ */
+export type BillHoldHooks = {
+  /** A bill was booked (accepted), inside the act's transaction: the rules place what they find. */
+  onBooked(tx: Tx, actor: Actor, billId: string, now: Date): Promise<void>;
+  /** Before a run is drafted or submitted, in its own transaction: the rules run again over these bills. */
+  recheck(db: Db, actor: Actor, billIds: readonly string[], now: Date): Promise<void>;
+  /** The bills among these with an open hold. */
+  openHolds(db: Db | Tx, billIds: readonly string[], now: Date): Promise<Set<string>>;
+};
+let holdHooks: BillHoldHooks | null = null;
+
+export function registerBillHoldHooks(hooks: BillHoldHooks): () => void {
+  holdHooks = hooks;
+  return () => { if (holdHooks === hooks) holdHooks = null; };
+}
+
+export function billHoldHooks(): BillHoldHooks | null {
+  return holdHooks;
+}
+
 // ═══════════════════════════════════ who may ═══════════════════════════════════
 
 async function requirePerm(db: Db | Tx, actor: Actor, perm: string, what: string): Promise<void> {
@@ -190,13 +223,82 @@ export async function requirePayablesReader(db: Db, actor: Actor): Promise<void>
 // ═══════════════════════════════════ what the GRN says ═══════════════════════════════════
 
 type Expectation = {
-  grnId: string; grnNo: string; itemId: string; acceptedBase: number;
+  /** A GRN's line — or (STORES S6a #1116) a service entry sheet's: `grnId` null, `sesId` set, `grnNo` its SES number. */
+  grnId: string | null; grnNo: string; sesId?: string; itemId: string; acceptedBase: number;
   /** Rate per BASE unit, as a fraction: `ratePaise / multiplier` of the PO line, or the GRN's own unit cost. */
   rate: { paise: number; per: number };
   gstRateBps: number;
 };
 
 type GrnRow = typeof grns.$inferSelect;
+
+/** The key of a line's expectation: the GRN's (as always) or, for a service, the SES's. */
+const docKey = (l: { grnId?: string | null; sesId?: string | null; itemId: string }): string =>
+  (l.grnId != null ? `${l.grnId}|${l.itemId}` : `ses:${l.sesId ?? ""}|${l.itemId}`);
+
+// ═══════════════════════════════════ STORES S6a — what a service entry sheet says ═══════════════════════════════════
+
+/** One line of a confirmed service entry sheet, as the bill is matched against it (the PO's rate and GST). */
+export type ServiceEntryLine = {
+  sesId: string; sesNo: string; vendorId: string; purchaseOrderId: string; itemId: string; acceptedBase: number;
+  ratePaise: number; multiplier: number; gstRateBps: number;
+  /** The MSMED Act's day of acceptance: the period's last day, or its first for a "term started" sheet. */
+  acceptanceDay: string;
+};
+
+/**
+ * STORES S6a (#1116, decision 3) — the service entry sheets are Stores' rows; materials knows no Stores table (the
+ * `registerAwardPoGuard` precedent). Stores registers the reader at import. A bill line naming an SES with no reader
+ * loaded is refused (fail closed); a bill with GRN lines only never asks it.
+ */
+export type ServiceEntrySource = {
+  /** The lines of these sheets (reversed ones left out), locked FOR UPDATE when `lock`. A sheet with no row is absent. */
+  lines(db: Db | Tx, sesIds: readonly string[], opts: { lock: boolean }): Promise<ServiceEntryLine[]>;
+};
+let sesSource: ServiceEntrySource | null = null;
+
+export function registerServiceEntrySource(source: ServiceEntrySource): () => void {
+  sesSource = source;
+  return () => { if (sesSource === source) sesSource = null; };
+}
+
+function requireSesSource(): ServiceEntrySource {
+  if (sesSource === null) throw new MaterialsError("bill_invalid", "a line names a service entry sheet and the service entries are not loaded");
+  return sesSource;
+}
+
+const sesExpectations = (rows: readonly ServiceEntryLine[]): Map<string, Expectation> => {
+  const out = new Map<string, Expectation>();
+  for (const r of rows) {
+    out.set(docKey({ sesId: r.sesId, itemId: r.itemId }), {
+      grnId: null, grnNo: r.sesNo, sesId: r.sesId, itemId: r.itemId, acceptedBase: r.acceptedBase,
+      rate: { paise: r.ratePaise, per: r.multiplier }, gstRateBps: r.gstRateBps,
+    });
+  }
+  return out;
+};
+
+/** Lock the sheets a bill names: each exists, is this vendor's and is on no other live bill. */
+async function lockSes(tx: Tx, vendorId: string, sesIds: readonly string[], exceptBillId: string | null): Promise<ServiceEntryLine[]> {
+  if (sesIds.length === 0) return [];
+  const rows = await requireSesSource().lines(tx, sesIds, { lock: true });
+  for (const id of sesIds) {
+    const mine = rows.filter((r) => r.sesId === id);
+    if (mine.length === 0) throw new MaterialsError("unknown_document", `service entry sheet ${id} not found`);
+    if (mine[0]!.vendorId !== vendorId) throw new MaterialsError("bill_invalid", `service entry ${mine[0]!.sesNo} is another vendor's`, { sesNo: mine[0]!.sesNo });
+  }
+  const taken = await tx.select({ sesId: supplierBillLines.sesId, billNo: supplierBills.billNo }).from(supplierBillLines)
+    .innerJoin(supplierBills, eq(supplierBills.id, supplierBillLines.billId))
+    .where(and(
+      inArray(supplierBillLines.sesId, [...sesIds]), ne(supplierBills.status, "cancelled"),
+      ...(exceptBillId === null ? [] : [ne(supplierBills.id, exceptBillId)]),
+    )).limit(1);
+  if (taken[0] !== undefined) {
+    const no = rows.find((r) => r.sesId === taken[0]!.sesId)!.sesNo;
+    throw new MaterialsError("ses_already_billed", `service entry ${no} is already on bill ${taken[0].billNo}`, { sesNo: no, billNo: taken[0].billNo });
+  }
+  return rows;
+}
 
 /**
  * For each GRN: every item it ACCEPTED (paid quantity only), the rate it should be billed at (the PO
@@ -247,7 +349,7 @@ const packRate = (multiplier: number, rate: { paise: number; per: number }): num
 // ═══════════════════════════════════ lines ═══════════════════════════════════
 
 type ResolvedLine = {
-  grnId: string; itemId: string; uom: string; multiplier: number; qtyPacks: number; ratePaise: number; taxablePaise: number;
+  grnId: string | null; sesId: string | null; itemId: string; uom: string; multiplier: number; qtyPacks: number; ratePaise: number; taxablePaise: number;
   listRatePaise: number | null; discountBps: number; discountPaise: number;
   gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
   expectedBase: number; expectedRatePaise: number; expectedTaxablePaise: number; expectedGstRateBps: number;
@@ -332,15 +434,25 @@ export function discountOf(l: Pick<BillLineInput, "ratePaise" | "listRatePaise" 
 }
 
 async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineInput[], interState: boolean, exceptBillId: string | null): Promise<{
-  lines: ResolvedLine[]; grnRows: GrnRow[]; expectations: Map<string, Expectation>;
+  lines: ResolvedLine[]; grnRows: GrnRow[]; sesRows: ServiceEntryLine[]; expectations: Map<string, Expectation>;
 }> {
   if (input.length === 0) throw new MaterialsError("bill_invalid", "a bill carries at least one line");
   if (input.length > MAX_LINES) throw new MaterialsError("bill_invalid", `a bill carries at most ${String(MAX_LINES)} lines`);
-  const keys = new Set(input.map((l) => `${l.grnId}|${l.itemId}`));
+  // STORES S6a (#1116, decision 3): each line names its GRN or its service entry sheet — one of the two.
+  const named = (v: string | undefined | null): v is string => typeof v === "string" && v !== "";
+  for (const l of input) {
+    if (named(l.grnId) === named(l.sesId)) {
+      throw new MaterialsError("bill_invalid", "a bill line names the GRN it bills or the service entry sheet — one of the two", { itemId: l.itemId });
+    }
+  }
+  const keys = new Set(input.map((l) => docKey(l)));
   if (keys.size !== input.length) throw new MaterialsError("bill_invalid", "an item appears twice for one GRN — put it on one line");
-  const grnIds = [...new Set(input.map((l) => l.grnId))];
-  const grnRows = await lockGrns(tx, vendorId, grnIds, exceptBillId);
+  const grnIds = [...new Set(input.map((l) => l.grnId).filter(named))];
+  const sesIds = [...new Set(input.map((l) => l.sesId).filter(named))];
+  const grnRows = grnIds.length === 0 ? [] : await lockGrns(tx, vendorId, grnIds, exceptBillId);
+  const sesRows = await lockSes(tx, vendorId, sesIds, exceptBillId);
   const expectations = await expectationsOf(tx, grnRows);
+  for (const [k, e] of sesExpectations(sesRows)) expectations.set(k, e);
   const itemIds = [...new Set(input.map((l) => l.itemId))];
   const found = await tx.select().from(items).where(inArray(items.id, itemIds));
   const packs = await tx.select().from(itemUoms).where(inArray(itemUoms.itemId, itemIds));
@@ -359,14 +471,14 @@ async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineIn
     if (!okInt(l.qtyPacks, 0, MAX_PACKS) || !okInt(d.ratePaise, 0, MAX_RATE_PAISE) || !okInt(l.gstRateBps, 0, 2_800)) {
       throw new MaterialsError("bill_invalid", `line for ${item.code}: quantity, rate or GST is out of range`, { itemId: l.itemId });
     }
-    const e = expectations.get(`${l.grnId}|${l.itemId}`);
+    const e = expectations.get(docKey(l));
     const expectedBase = e?.acceptedBase ?? 0;
     const rate = e?.rate ?? { paise: 0, per: 1 };
     // GST is on the DISCOUNTED value: packs × net rate (#637).
     const taxablePaise = l.qtyPacks * d.ratePaise;
     const split = splitGst(lineGstPaise(taxablePaise, l.gstRateBps), interState);
     const resolved = {
-      grnId: l.grnId, itemId: l.itemId, uom: pack?.uom ?? item.baseUom, multiplier, qtyPacks: l.qtyPacks, ratePaise: d.ratePaise,
+      grnId: named(l.grnId) ? l.grnId : null, sesId: named(l.sesId) ? l.sesId : null, itemId: l.itemId, uom: pack?.uom ?? item.baseUom, multiplier, qtyPacks: l.qtyPacks, ratePaise: d.ratePaise,
       listRatePaise: d.listRatePaise, discountBps: d.discountBps, discountPaise: d.discountPaise,
       taxablePaise, gstRateBps: l.gstRateBps, ...split,
       expectedBase, expectedRatePaise: packRate(multiplier, rate), expectedTaxablePaise: valueAt(expectedBase, rate),
@@ -374,7 +486,7 @@ async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineIn
     };
     return { ...resolved, mismatch: lineMismatches(resolved).reasons };
   });
-  return { lines, grnRows, expectations };
+  return { lines, grnRows, sesRows, expectations };
 }
 
 function totalsOf(lines: readonly ResolvedLine[], roundOffPaise: number): {
@@ -397,7 +509,7 @@ function expectedTotalOf(expectations: Map<string, Expectation>): number {
 
 async function insertLines(tx: Tx, billId: string, lines: readonly ResolvedLine[]): Promise<void> {
   await tx.insert(supplierBillLines).values(lines.map((l) => ({
-    id: newId(), billId, grnId: l.grnId, itemId: l.itemId, uom: l.uom, multiplier: l.multiplier, qtyPacks: l.qtyPacks,
+    id: newId(), billId, grnId: l.grnId, sesId: l.sesId, itemId: l.itemId, uom: l.uom, multiplier: l.multiplier, qtyPacks: l.qtyPacks,
     ratePaise: l.ratePaise, taxablePaise: l.taxablePaise, gstRateBps: l.gstRateBps, cgstPaise: l.cgstPaise, sgstPaise: l.sgstPaise,
     listRatePaise: l.listRatePaise, discountBps: l.discountBps, discountPaise: l.discountPaise,
     igstPaise: l.igstPaise, expectedBase: l.expectedBase, expectedRatePaise: l.expectedRatePaise,
@@ -438,9 +550,9 @@ async function assertNotDuplicate(tx: Tx, vendorId: string, key: string, fy: str
   }
 }
 
-/** The one PO every GRN on the bill was received against, when there is exactly one. */
-const poOf = (grnRows: readonly GrnRow[]): string | null => {
-  const pos = [...new Set(grnRows.map((g) => g.purchaseOrderId))];
+/** The one PO every GRN (and, STORES S6a, every service entry sheet) on the bill was received against, when there is exactly one. */
+const poOf = (grnRows: readonly GrnRow[], sesRows: readonly ServiceEntryLine[] = []): string | null => {
+  const pos = [...new Set([...grnRows.map((g) => g.purchaseOrderId), ...sesRows.map((r) => r.purchaseOrderId)])];
   return pos.length === 1 ? pos[0]! : null;
 };
 
@@ -461,7 +573,7 @@ const header = (b: Pick<BillRow, "id" | "billNo" | "vendorId" | "vendorBillNo" |
 
 type Change = { field: string; before: string | number | boolean | null; after: string | number | boolean | null };
 type LineMoney = {
-  grnId: string; itemId: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number; taxablePaise: number;
+  grnId: string | null; sesId?: string | null; itemId: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number; taxablePaise: number;
   listRatePaise: number | null; discountBps: number; discountPaise: number;
 };
 
@@ -475,7 +587,7 @@ export function billChanges(before: BillRow, after: BillRow, beforeLines: readon
   for (const f of ["vendorBillNo", "billDate", "interState", "taxablePaise", "cgstPaise", "sgstPaise", "igstPaise", "roundOffPaise", "totalPaise"] as const) {
     if (before[f] !== after[f]) out.push({ field: f, before: before[f], after: after[f] });
   }
-  const key = (l: LineMoney): string => `${l.grnId}|${l.itemId}`;
+  const key = (l: LineMoney): string => docKey(l);
   const old = new Map(beforeLines.map((l) => [key(l), l] as const));
   const now = new Map(afterLines.map((l) => [key(l), l] as const));
   for (const k of new Set([...old.keys(), ...now.keys()])) {
@@ -514,13 +626,13 @@ export async function createSupplierBill(
       const h = cleanHeader(input, now);
       await assertNotDuplicate(tx, input.vendorId, h.key, h.fy, null);
       const interState = input.interState ?? false;
-      const { lines, grnRows, expectations } = await resolveLines(tx, input.vendorId, input.lines, interState, null);
+      const { lines, grnRows, sesRows, expectations } = await resolveLines(tx, input.vendorId, input.lines, interState, null);
       const id = newId();
       const billNo = await nextEpisodeNo(tx, "supplier_bill", istDay(now));
       const totals = totalsOf(lines, h.roundOffPaise);
       await tx.insert(supplierBills).values({
         id, billNo, vendorId: input.vendorId, vendorBillNo: h.vendorBillNo, vendorBillKey: h.key, billDate: h.billDate, fy: h.fy,
-        purchaseOrderId: poOf(grnRows), status: "draft", interState, ...totals, expectedTotalPaise: expectedTotalOf(expectations),
+        purchaseOrderId: poOf(grnRows, sesRows), status: "draft", interState, ...totals, expectedTotalPaise: expectedTotalOf(expectations),
         msme: isMsme(vendor), termsDays: vendor.paymentTermsDays, note: cleanText(input.note, "the note"),
         createdBy: actor.id, updatedBy: actor.id, createdAt: now, updatedAt: now,
       });
@@ -530,6 +642,7 @@ export async function createSupplierBill(
         payload: {
           billId: id, billNo, vendorId: input.vendorId, vendorBillNo: h.vendorBillNo, totalPaise: totals.totalPaise,
           grnIds: grnRows.map((g) => g.id), lines: lines.length, source: opts.source ?? "manual",
+          ...(sesRows.length === 0 ? {} : { sesIds: [...new Set(sesRows.map((r) => r.sesId))] }),
         },
       }));
       return id;
@@ -544,7 +657,7 @@ export async function createSupplierBill(
 /** Header and, when given, the whole set of lines. A matched or held bill edited goes back to draft. */
 /** A stored line read back as the input that wrote it (an edit or a match re-resolves it), discount included. */
 const storedInput = (l: typeof supplierBillLines.$inferSelect): BillLineInput => ({
-  grnId: l.grnId, itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
+  ...(l.grnId !== null ? { grnId: l.grnId } : { sesId: l.sesId ?? "" }), itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
   ...(l.listRatePaise === null ? {} : { listRatePaise: l.listRatePaise, ...(l.discountBps !== 0 ? { discountBps: l.discountBps } : { discountPaise: l.discountPaise }) }),
 });
 
@@ -565,13 +678,13 @@ export async function updateSupplierBill(
       const beforeLines = await tx.select().from(supplierBillLines).where(eq(supplierBillLines.billId, billId));
       const inputLines: BillLineInput[] = patch.lines ?? beforeLines
         .map((l) => storedInput(l));
-      const { lines, grnRows, expectations } = await resolveLines(tx, b.vendorId, inputLines, interState, billId);
+      const { lines, grnRows, sesRows, expectations } = await resolveLines(tx, b.vendorId, inputLines, interState, billId);
       await tx.delete(supplierBillLines).where(eq(supplierBillLines.billId, billId));
       await insertLines(tx, billId, lines);
       const totals = totalsOf(lines, h.roundOffPaise);
       const [after] = await tx.update(supplierBills).set({
         vendorBillNo: h.vendorBillNo, vendorBillKey: h.key, billDate: h.billDate, fy: h.fy, interState, ...totals,
-        purchaseOrderId: poOf(grnRows), expectedTotalPaise: expectedTotalOf(expectations), status: "draft", heldReason: null, matchedAt: null,
+        purchaseOrderId: poOf(grnRows, sesRows), expectedTotalPaise: expectedTotalOf(expectations), status: "draft", heldReason: null, matchedAt: null,
         ...(patch.note !== undefined ? { note: cleanText(patch.note, "the note") } : {}),
         updatedBy: actor.id, updatedAt: now,
       }).where(eq(supplierBills.id, billId)).returning();
@@ -603,8 +716,8 @@ export async function matchSupplierBill(db: Db, actor: Actor, billId: string, no
     await insertLines(tx, billId, lines);
     const expectedTotalPaise = expectedTotalOf(expectations);
     const out = lines.filter((l) => lineMismatches(l).out);
-    const billed = new Set(lines.map((l) => `${l.grnId}|${l.itemId}`));
-    const unbilled = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(`${e.grnId}|${e.itemId}`));
+    const billed = new Set(lines.map((l) => docKey(l)));
+    const unbilled = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(docKey(e)));
     const totalOk = withinMatch(b.totalPaise, expectedTotalPaise);
     const held = out.length > 0 || !totalOk || unbilled.length > 0;
     const reasons = [
@@ -621,8 +734,8 @@ export async function matchSupplierBill(db: Db, actor: Actor, billId: string, no
       payload: {
         ...header(after!), expectedTotalPaise, outcome: held ? "held_for_match" : "matched",
         mismatches: [
-          ...out.map((l) => ({ itemId: l.itemId, grnId: l.grnId, reasons: l.mismatch })),
-          ...unbilled.map((e) => ({ itemId: e.itemId, grnId: e.grnId, reasons: ["not_billed"] })),
+          ...out.map((l) => ({ itemId: l.itemId, grnId: l.grnId, ...(l.sesId === null ? {} : { sesId: l.sesId }), reasons: l.mismatch })),
+          ...unbilled.map((e) => ({ itemId: e.itemId, grnId: e.grnId, ...(e.sesId === undefined ? {} : { sesId: e.sesId }), reasons: ["not_billed"] })),
         ],
       },
     }));
@@ -630,12 +743,18 @@ export async function matchSupplierBill(db: Db, actor: Actor, billId: string, no
   return (await readSupplierBill(db, billId))!;
 }
 
-/** The earliest posting day (IST) of the bill's GRNs — the MSME Act's day of acceptance. */
+/**
+ * The earliest posting day (IST) of the bill's GRNs — the MSME Act's day of acceptance. STORES S6a (#1116): a service
+ * line's day is its sheet's (the period's last day, or the start of a "term started" sheet).
+ */
 async function acceptanceDayOf(tx: Tx, billId: string): Promise<string> {
   const rows = await tx.select({ postedAt: grns.postedAt }).from(grns)
     .innerJoin(supplierBillLines, eq(supplierBillLines.grnId, grns.id))
     .where(eq(supplierBillLines.billId, billId));
-  const days = rows.map((r) => (r.postedAt === null ? null : istDay(r.postedAt))).filter((d): d is string => d !== null).sort();
+  const sesIds = (await tx.select({ sesId: supplierBillLines.sesId }).from(supplierBillLines)
+    .where(and(eq(supplierBillLines.billId, billId), isNotNull(supplierBillLines.sesId)))).map((r) => r.sesId!);
+  const sesDays = sesIds.length === 0 ? [] : (await requireSesSource().lines(tx, sesIds, { lock: false })).map((r) => r.acceptanceDay);
+  const days = [...rows.map((r) => (r.postedAt === null ? null : istDay(r.postedAt))).filter((d): d is string => d !== null), ...sesDays].sort();
   if (days[0] === undefined) throw new MaterialsError("bill_invalid", "the bill names no posted GRN");
   return days[0];
 }
@@ -654,6 +773,8 @@ async function book(tx: Tx, actor: Actor, b: BillRow, now: Date, difference: { r
     occurredAt: now, actor, correlationId: b.id,
     payload: { ...header(b), dueDate, msme, differenceReason: difference?.reason ?? null, differencePaise: b.totalPaise - b.expectedTotalPaise },
   }));
+  // STORES S6a (#1116, decision 7): the hold rules, in the booking's own transaction.
+  if (holdHooks !== null) await holdHooks.onBooked(tx, actor, b.id, now);
 }
 
 /** Matched → accepted: now a payable, due by `dueDateFor`. */
@@ -784,8 +905,9 @@ export type UnbilledGrn = { grnId: string; grnNo: string; vendorId: string; vend
  */
 export async function unbilledGrns(db: Db, actor: Actor, limit = 200): Promise<UnbilledGrn[]> {
   await requirePayablesReader(db, actor);
+  // STORES S6a (#1116): a service line has a null GRN; `not in` over a set holding a null matches nothing, so it is left out.
   const billed = db.select({ grnId: supplierBillLines.grnId }).from(supplierBillLines)
-    .innerJoin(supplierBills, eq(supplierBills.id, supplierBillLines.billId)).where(ne(supplierBills.status, "cancelled"));
+    .innerJoin(supplierBills, eq(supplierBills.id, supplierBillLines.billId)).where(and(ne(supplierBills.status, "cancelled"), isNotNull(supplierBillLines.grnId)));
   const rows = await db.select({ g: grns, vendorName: sql<string>`coalesce(${vendors.tradeName}, ${vendors.legalName})`, poNo: purchaseOrders.poNo })
     .from(grns).innerJoin(vendors, eq(vendors.id, grns.vendorId))
     .leftJoin(purchaseOrders, eq(purchaseOrders.id, grns.purchaseOrderId))
@@ -825,14 +947,19 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
     .leftJoin(purchaseOrders, eq(purchaseOrders.id, supplierBills.purchaseOrderId))
     .where(eq(supplierBills.id, billId));
   if (row === undefined) return undefined;
+  // STORES S6a (#1116): a service line names no GRN (left join; its SES number from the Stores reader), after the GRN lines.
   const lines = await db.select({ l: supplierBillLines, code: items.code, name: items.name, grnNo: grns.grnNo }).from(supplierBillLines)
-    .innerJoin(items, eq(items.id, supplierBillLines.itemId)).innerJoin(grns, eq(grns.id, supplierBillLines.grnId))
-    .where(eq(supplierBillLines.billId, billId)).orderBy(asc(grns.grnNo), asc(items.name));
-  const grnIds = [...new Set(lines.map((l) => l.l.grnId))];
+    .innerJoin(items, eq(items.id, supplierBillLines.itemId)).leftJoin(grns, eq(grns.id, supplierBillLines.grnId))
+    .where(eq(supplierBillLines.billId, billId)).orderBy(asc(grns.grnNo), asc(supplierBillLines.sesId), asc(items.name));
+  const grnIds = [...new Set(lines.map((l) => l.l.grnId).filter((g): g is string => g !== null))];
   const grnRows = grnIds.length === 0 ? [] : await db.select().from(grns).where(inArray(grns.id, grnIds));
   const expectations = await expectationsOf(db, grnRows);
-  const billed = new Set(lines.map((l) => `${l.l.grnId}|${l.l.itemId}`));
-  const missing = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(`${e.grnId}|${e.itemId}`));
+  const sesIds = [...new Set(lines.map((l) => l.l.sesId).filter((x): x is string => x !== null))];
+  const sesRows = sesIds.length === 0 ? [] : await requireSesSource().lines(db, sesIds, { lock: false });
+  for (const [k, e] of sesExpectations(sesRows)) expectations.set(k, e);
+  const sesNo = new Map(sesRows.map((r) => [r.sesId, r.sesNo] as const));
+  const billed = new Set(lines.map((l) => docKey(l.l)));
+  const missing = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(docKey(e)));
   const missingItems = missing.length === 0 ? [] : await db.select().from(items).where(inArray(items.id, missing.map((m) => m.itemId)));
   const payments = await db.select({ p: supplierPayments, runNo: supplierPaymentRuns.runNo, paid: supplierPaymentRunLines.payPaise, credit: supplierPaymentRunLines.creditPaise })
     .from(supplierPaymentRunLines)
@@ -846,7 +973,7 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
     lines: lines.map(({ l, code, name, grnNo }) => {
       const m = lineMismatches(l);
       return {
-        id: l.id, grnId: l.grnId, grnNo, itemId: l.itemId, itemCode: code, itemName: name, uom: l.uom, multiplier: l.multiplier,
+        id: l.id, grnId: l.grnId, grnNo: grnNo ?? "", ...(l.sesId === null ? {} : { sesId: l.sesId, sesNo: sesNo.get(l.sesId) ?? "" }), itemId: l.itemId, itemCode: code, itemName: name, uom: l.uom, multiplier: l.multiplier,
         qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, taxablePaise: l.taxablePaise, gstRateBps: l.gstRateBps, cgstPaise: l.cgstPaise,
         listRatePaise: l.listRatePaise, discountBps: l.discountBps, discountPaise: l.discountPaise,
         sgstPaise: l.sgstPaise, igstPaise: l.igstPaise, totalPaise: l.taxablePaise + l.cgstPaise + l.sgstPaise + l.igstPaise,
@@ -858,7 +985,7 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
     unbilled: missing.map((e) => {
       const it = missingItems.find((i) => i.id === e.itemId);
       return {
-        grnId: e.grnId, grnNo: e.grnNo, itemId: e.itemId, itemCode: it?.code ?? "", itemName: it?.name ?? "",
+        grnId: e.grnId, grnNo: e.grnNo, ...(e.sesId === undefined ? {} : { sesId: e.sesId }), itemId: e.itemId, itemCode: it?.code ?? "", itemName: it?.name ?? "",
         expectedBase: e.acceptedBase, expectedTaxablePaise: valueAt(e.acceptedBase, e.rate),
       };
     }),

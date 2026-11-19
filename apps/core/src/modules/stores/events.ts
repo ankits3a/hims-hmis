@@ -52,6 +52,9 @@ export const STORES_ACTS = [
   // equipment advances (refId = the advance).
   "agent_night", "confirm_agent_draft", "dismiss_agent_draft", "confirm_quote_line", "read_quote_pdf", "request_exception", "certify_exception",
   "approve_exception", "confirm_exception", "refuse_exception", "request_advance", "decide_advance",
+  // S6a (#1116): a service entry sheet confirmed (refId = the SES), a payment hold placed by a rule, released or kept
+  // (refId = the hold), the paying desk's switches set (refId = the settings row), a run authorised from the phone.
+  "ses_confirm", "hold_placed", "hold_release", "hold_keep", "paying_settings",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

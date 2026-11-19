@@ -68,6 +68,9 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   stores_budget: (refId) => ({ to: "/stores/buy", search: /^\d{4}-\d{2}$/.test(refId) ? { tab: "budgets", month: refId } as Record<string, string> : {} }),
   // S5c (#1115): a single-source or emergency purchase's certificate, approval or confirmation opens its phone sheet.
   stores_exception: (refId) => ({ to: "/stores/buying", search: { exception: refId } }),
+  // S6a (#1116): "Holds to clear" opens the bill's hold cards; "Run to authorise" opens the owner's two-tap sheet.
+  stores_pay_hold: (refId) => ({ to: "/stores/pay", search: { bill: refId } }),
+  stores_pay_run: (refId) => ({ to: "/stores/pay", search: { run: refId } }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {

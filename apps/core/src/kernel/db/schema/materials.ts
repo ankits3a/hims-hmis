@@ -1286,7 +1286,13 @@ export const supplierBillLines = pgTable(
   {
     id: text("id").primaryKey(),
     billId: text("bill_id").notNull().references(() => supplierBills.id),
-    grnId: text("grn_id").notNull().references(() => grns.id),
+    /**
+     * STORES S6a (#1116, decision 3) — a line names the GRN it bills OR (a service) the service entry sheet,
+     * `ses_id`, never both and never neither (`supplier_bill_lines_doc_ck`). Every pharmacy line names a GRN, as before.
+     * `ses_id` is plain text (the `award_id` precedent): materials knows no Stores table.
+     */
+    grnId: text("grn_id").references(() => grns.id),
+    sesId: text("ses_id"),
     itemId: text("item_id").notNull().references(() => items.id),
     uom: text("uom").notNull(),
     multiplier: integer("multiplier").notNull(),
@@ -1318,7 +1324,10 @@ export const supplierBillLines = pgTable(
       sql`(${t.listRatePaise} is null and ${t.discountBps} = 0 and ${t.discountPaise} = 0) or (${t.listRatePaise} >= 0 and ${t.discountBps} between 0 and 10000 and ${t.discountPaise} between 0 and ${t.listRatePaise} and ${t.ratePaise} = ${t.listRatePaise} - ${t.discountPaise} and (${t.discountBps} = 0 or ${t.discountPaise} = ${t.listRatePaise} - (${t.listRatePaise} * (10000 - ${t.discountBps}) + 5000) / 10000))`,
     ),
     uniqueIndex("supplier_bill_lines_grn_item_ux").on(t.billId, t.grnId, t.itemId),
+    uniqueIndex("supplier_bill_lines_ses_item_ux").on(t.billId, t.sesId, t.itemId).where(sql`${t.sesId} is not null`),
     index("supplier_bill_lines_grn_idx").on(t.grnId),
+    index("supplier_bill_lines_ses_idx").on(t.sesId),
+    check("supplier_bill_lines_doc_ck", sql`(${t.grnId} is null) <> (${t.sesId} is null)`),
     check("supplier_bill_lines_qty_ck", sql`${t.qtyPacks} >= 0 and ${t.multiplier} > 0 and ${t.expectedBase} >= 0`),
     check("supplier_bill_lines_money_ck", sql`${t.ratePaise} >= 0 and ${t.gstRateBps} >= 0 and ${t.taxablePaise} = ${t.qtyPacks} * ${t.ratePaise}`),
   ],
@@ -1385,9 +1394,16 @@ export const supplierPayments = pgTable(
     amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
     recordedBy: text("recorded_by").notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * STORES S6a (#1116, decision 9) — true on every payment recorded after the cut-over: its reference was checked for
+     * shape (NEFT 16, RTGS 22, UPI 12 digits) and reuse. Old rows stay false, so an old duplicate cannot fail the
+     * partial unique index below (or the deploy that builds it).
+     */
+    referenceChecked: boolean("reference_checked").notNull().default(false),
   },
   (t) => [
     uniqueIndex("supplier_payments_payment_no_ux").on(t.paymentNo),
+    uniqueIndex("supplier_payments_bank_reference_ux").on(t.mode, t.reference).where(sql`${t.referenceChecked} and ${t.mode} in ('neft', 'rtgs', 'upi')`),
     uniqueIndex("supplier_payments_run_vendor_ux").on(t.runId, t.vendorId),
     index("supplier_payments_vendor_idx").on(t.vendorId, t.paidOn),
     check("supplier_payments_mode_ck", sql`${t.mode} in ('neft', 'rtgs', 'upi', 'cheque', 'cash')`),

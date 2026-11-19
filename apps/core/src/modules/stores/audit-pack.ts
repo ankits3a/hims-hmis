@@ -1,8 +1,8 @@
 import { and, asc, eq, gt, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
 import {
-  events, grns, purchaseOrders, roleAssignments, storeIndents, storesAssetUnitEvents, storesAwards, storesBuyGroupMoves, storesPrDeliveries, storesQuotes,
-  storesRfqs, users,
+  events, grns, purchaseOrders, roleAssignments, storeIndents, storesAssetUnitEvents, storesAwards, storesBillHolds, storesBuyGroupMoves, storesPrDeliveries,
+  storesQuotes, storesRfqs, storesServiceEntries, supplierBillLines, supplierBills, supplierPaymentRunLines, users,
 } from "../../kernel/db/schema";
 import { STORES_AUDIT_READ, holds, recordAct } from "./access";
 import { StoresError } from "./errors";
@@ -47,6 +47,9 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
   // S5b (#1115, D18): a purchase request's chain — its groups, RFQs, quotes, awards, the POs made from them, their GRNs
   // and the delivery tickets raised from it. The PO's and GRN's own materials events join by their correlation id.
   const prRefs = filter.prId === undefined ? null : await purchaseChain(db, filter.prId);
+  // S6a (#1116, D8): a bill's money chain — its PO(s), GRNs or service entries, the bill, its holds and their releases,
+  // the runs that carried it (draft, submit, authorisation) and the payments with their references.
+  const billRefs = filter.billId === undefined ? null : await billChain(db, filter.billId);
   const conds = [
     // The window first: `recorded_at` prunes the monthly partitions, `occurred_at` is the window asked for.
     gte(events.recordedAt, new Date(filter.from.getTime() - RECORDED_BEFORE_OCCURRED_MS)),
@@ -54,8 +57,15 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
     or(eq(events.name, STORES_ACT_EVENT), and(like(events.name, "material.%"), or(
       sql`${events.payload}->>'fromResourceId' in ${storesPlaces}`, sql`${events.payload}->>'toResourceId' in ${storesPlaces}`,
       sql`${events.payload}->>'storeResourceId' in ${storesPlaces}`,
-    )), ...(prRefs === null ? [] : [and(or(like(events.name, "purchase_order.%"), like(events.name, "grn.%")), inArray(events.correlationId, prRefs))])),
+    )), ...(prRefs === null ? [] : [and(or(like(events.name, "purchase_order.%"), like(events.name, "grn.%")), inArray(events.correlationId, prRefs))]),
+    ...(billRefs === null ? [] : [and(or(
+      like(events.name, "purchase_order.%"), like(events.name, "grn.%"), like(events.name, "supplier_bill.%"), like(events.name, "payment_run.%"),
+      like(events.name, "supplier_payment.%"),
+    ), inArray(events.correlationId, billRefs))])),
   ];
+  if (billRefs !== null) {
+    conds.push(or(inArray(events.correlationId, billRefs), sql`${events.payload}->>'refId' in (${sql.join(billRefs.map((r) => sql`${r}`), sql`, `)})`));
+  }
   if (prRefs !== null) {
     conds.push(or(inArray(events.correlationId, prRefs), sql`${events.payload}->>'refId' in (${sql.join(prRefs.map((r) => sql`${r}`), sql`, `)})`));
   }
@@ -116,7 +126,8 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
       itemId: str("itemId"),
       ref: str("refId") ?? str("indentId") ?? str("transferId") ?? e.correlationId,
       before: isAct ? (p.before ?? null) : null,
-      after: isAct ? (p.after ?? null) : (p.lines ?? p.gaps ?? null),
+      after: isAct ? (p.after ?? null) : (p.lines ?? p.gaps ?? (e.name === "supplier_payment.recorded"
+        ? { mode: p.mode ?? null, reference: p.reference ?? null, amountPaise: p.amountPaise ?? null, paidOn: p.paidOn ?? null } : null)),
       reason: str("reason"),
     };
   });
@@ -129,10 +140,11 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
     ticketId: filter.ticketId ?? null, itemId: filter.itemId ?? null, personId: filter.personId ?? null, storeId: filter.storeId ?? null,
     ...(filter.unitId === undefined ? {} : { unitId: filter.unitId }),
     ...(filter.prId === undefined ? {} : { prId: filter.prId }),
+    ...(filter.billId === undefined ? {} : { billId: filter.billId }),
     from: filter.from.toISOString(), to: filter.to.toISOString(),
   };
   await withTx(db, (tx) => recordAct(tx, actor, now, {
-    act: "audit_export", storeId: filter.storeId ?? null, itemId: filter.itemId ?? null, refId: filter.ticketId ?? filter.prId ?? null,
+    act: "audit_export", storeId: filter.storeId ?? null, itemId: filter.itemId ?? null, refId: filter.ticketId ?? filter.prId ?? filter.billId ?? null,
     after: { ...shown, rows: rows.length, truncated },
   }));
   return { filter: shown, rows, csv, truncated, nextAfterSeq };
@@ -154,5 +166,25 @@ async function purchaseChain(db: Db, prId: string): Promise<string[]> {
     if (pos.length > 0) for (const g of await db.select({ id: grns.id }).from(grns).where(inArray(grns.purchaseOrderId, pos))) refs.add(g.id);
   }
   for (const d of await db.select({ i: storesPrDeliveries.indentId }).from(storesPrDeliveries).where(eq(storesPrDeliveries.prId, prId))) refs.add(d.i);
+  return [...refs];
+}
+
+/** Every record a supplier bill's money chain names (S6a): bill, PO(s), GRNs, service entries, holds, runs, payments. */
+async function billChain(db: Db, billId: string): Promise<string[]> {
+  const refs = new Set<string>([billId]);
+  const [b] = await db.select({ po: supplierBills.purchaseOrderId }).from(supplierBills).where(eq(supplierBills.id, billId));
+  if (b?.po != null) refs.add(b.po);
+  for (const l of await db.select({ g: supplierBillLines.grnId, s: supplierBillLines.sesId }).from(supplierBillLines).where(eq(supplierBillLines.billId, billId))) {
+    if (l.g !== null) refs.add(l.g);
+    if (l.s !== null) refs.add(l.s);
+  }
+  const grnIds = [...refs];
+  for (const g of await db.select({ po: grns.purchaseOrderId }).from(grns).where(inArray(grns.id, grnIds))) if (g.po !== null) refs.add(g.po);
+  for (const s of await db.select({ po: storesServiceEntries.purchaseOrderId }).from(storesServiceEntries).where(inArray(storesServiceEntries.id, grnIds))) refs.add(s.po);
+  for (const h of await db.select({ id: storesBillHolds.id }).from(storesBillHolds).where(eq(storesBillHolds.billId, billId))) refs.add(h.id);
+  for (const r of await db.select({ run: supplierPaymentRunLines.runId, pay: supplierPaymentRunLines.paymentId }).from(supplierPaymentRunLines).where(eq(supplierPaymentRunLines.billId, billId))) {
+    refs.add(r.run);
+    if (r.pay !== null) refs.add(r.pay);
+  }
   return [...refs];
 }

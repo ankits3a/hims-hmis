@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { grnLines, grns, itemCategories, items, stockBatches, storeIndents, transferLines, transfers, vendors } from "./materials";
+import { grnLines, grns, itemCategories, items, purchaseOrders, stockBatches, storeIndents, supplierBills, transferLines, transfers, vendors } from "./materials";
 import { orgDepartments } from "./org";
 import { resources } from "./resources";
 
@@ -1280,5 +1280,133 @@ export const storesPoAdvanceSteps = pgTable(
     uniqueIndex("stores_po_advance_steps_once_ux").on(t.advanceId),
     check("stores_po_advance_steps_kind_ck", sql`${t.kind} in ('approved', 'refused')`),
     check("stores_po_advance_steps_reason_ck", sql`${t.kind} <> 'refused' or ${t.reason} is not null`),
+  ],
+);
+
+/**
+ * STORES S6a (#1116, decision 2) — A SERVICE ENTRY SHEET: the GRN of a service. A department confirms that a service
+ * contract (a PO on `service` items) was rendered for a period (a month, a quarter, one visit, or "term started" for a
+ * contract billed in advance by its own terms), with the quantities per line (prefilled from the PO or the source
+ * module; a short is a line below the contract, with its reason). One per PO and period (`ses_exists`, in the intent
+ * under an advisory lock). APPEND-ONLY (0247): a correction is a reversing SES naming the first (`reverses_id`).
+ * `supplier_bill_lines.ses_id` (plain text) names it when it is billed.
+ */
+export const STORES_SES_SOURCES = ["laundry_month", "amc_visit", "manpower_month", "canteen_month", "term_start"] as const;
+export const storesServiceEntries = pgTable(
+  "stores_service_entries",
+  {
+    id: text("id").primaryKey(),
+    sesNo: text("ses_no").notNull(),
+    purchaseOrderId: text("purchase_order_id").notNull().references(() => purchaseOrders.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    periodKind: text("period_kind").notNull(),
+    periodKey: text("period_key").notNull(),
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    periodEnd: date("period_end", { mode: "string" }).notNull(),
+    source: text("source").notNull(),
+    sourceRef: text("source_ref"),
+    reversesId: text("reverses_id"),
+    note: text("note"),
+    confirmedBy: text("confirmed_by").notNull(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_service_entries_no_ux").on(t.sesNo),
+    index("stores_service_entries_po_idx").on(t.purchaseOrderId, t.periodKey),
+    check("stores_service_entries_period_ck", sql`${t.periodKind} in ('month', 'quarter', 'visit', 'term_start') and ${t.periodStart} <= ${t.periodEnd}`),
+    check("stores_service_entries_source_ck", sql`${t.source} in ('laundry_month', 'amc_visit', 'manpower_month', 'canteen_month', 'term_start')`),
+  ],
+);
+
+export const storesServiceEntryLines = pgTable(
+  "stores_service_entry_lines",
+  {
+    id: text("id").primaryKey(),
+    sesId: text("ses_id").notNull().references(() => storesServiceEntries.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    /** The PO line's quantity in base units, and what was confirmed (≤ ordered; the difference is the short). */
+    orderedBase: integer("ordered_base").notNull(),
+    qtyBase: integer("qty_base").notNull(),
+    shortReason: text("short_reason"),
+    /** The PO line's rate per pack of `multiplier` base units, and its GST — what the bill is matched against. */
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    multiplier: integer("multiplier").notNull(),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_service_entry_lines_item_ux").on(t.sesId, t.itemId),
+    check("stores_service_entry_lines_qty_ck", sql`${t.qtyBase} >= 0 and ${t.qtyBase} <= ${t.orderedBase} and ${t.multiplier} > 0 and ${t.ratePaise} >= 0`),
+    check("stores_service_entry_lines_short_ck", sql`${t.qtyBase} = ${t.orderedBase} or ${t.shortReason} is not null`),
+  ],
+);
+
+/**
+ * STORES S6a (#1116, decisions 7–8) — A PAYMENT HOLD on a supplier bill, placed by a rule (never by the agent), citing
+ * the rows behind it (`evidence`). "Open" is derived: placed, not released, and (for `bank_cooling_off`) before
+ * `ends_at`. Released or kept by a `stores_bill_hold_steps` row (one release per hold; a keep carries its review date).
+ * A re-placed hold is a new row. Both APPEND-ONLY (0247). `bill_id` names a pharmacy-shared `supplier_bills` row.
+ */
+export const storesBillHolds = pgTable(
+  "stores_bill_holds",
+  {
+    id: text("id").primaryKey(),
+    billId: text("bill_id").notNull().references(() => supplierBills.id),
+    kind: text("kind").notNull(),
+    evidence: jsonb("evidence").notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    trigger: text("trigger").notNull(),
+    placedBy: text("placed_by").notNull(),
+    placedAt: timestamp("placed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_bill_holds_bill_idx").on(t.billId, t.kind),
+    check("stores_bill_holds_kind_ck", sql`${t.kind} in ('duplicate_like', 'out_of_pattern', 'bank_cooling_off', 'kyc_incomplete', 'above_po', 'pay_after_grn', 'irn_missing')`),
+    check("stores_bill_holds_ends_ck", sql`(${t.kind} = 'bank_cooling_off') = (${t.endsAt} is not null)`),
+  ],
+);
+
+export const storesBillHoldSteps = pgTable(
+  "stores_bill_hold_steps",
+  {
+    id: text("id").primaryKey(),
+    holdId: text("hold_id").notNull().references(() => storesBillHolds.id),
+    step: text("step").notNull(),
+    reason: text("reason").notNull(),
+    reviewOn: date("review_on", { mode: "string" }),
+    asRole: text("as_role").notNull(),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_bill_hold_steps_release_ux").on(t.holdId).where(sql`${t.step} = 'released'`),
+    check("stores_bill_hold_steps_step_ck", sql`${t.step} in ('released', 'kept')`),
+    check("stores_bill_hold_steps_reason_ck", sql`length(${t.reason}) > 0 and ((${t.step} = 'kept') = (${t.reviewOn} is not null))`),
+  ],
+);
+
+/**
+ * STORES S6a (#1116, decision 13) — THE PAYING DESK'S SWITCHES, versioned (newest row wins; none = the defaults). Every
+ * switch that could move a pharmacy number defaults OFF: `holds_cover_pharmacy` false, `msme_rule` `as_today` (S6b
+ * wires it). The out-of-pattern thresholds are the materials head's (decision 7, DECIDED: 2 × p90, first bill ₹1,00,000).
+ * A switch names the dry run it followed (`dry_run_at`). APPEND-ONLY (0247).
+ */
+export const storesPayingSettings = pgTable(
+  "stores_paying_settings",
+  {
+    id: text("id").primaryKey(),
+    version: integer("version").notNull(),
+    holdsCoverPharmacy: boolean("holds_cover_pharmacy").notNull(),
+    msmeRule: text("msme_rule").notNull(),
+    outOfPatternMultipleBps: integer("out_of_pattern_multiple_bps").notNull(),
+    firstBillLimitPaise: bigint("first_bill_limit_paise", { mode: "number" }).notNull(),
+    dryRunAt: timestamp("dry_run_at", { withTimezone: true }),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_paying_settings_version_ux").on(t.version),
+    check("stores_paying_settings_msme_ck", sql`${t.msmeRule} in ('as_today', 'act')`),
+    check("stores_paying_settings_limits_ck", sql`${t.outOfPatternMultipleBps} >= 10000 and ${t.firstBillLimitPaise} > 0`),
   ],
 );

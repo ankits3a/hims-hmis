@@ -822,6 +822,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.assets.read",
       // STORES S5a (#1115, decision 15) — sets the departments' month budgets beside finance (warned, never blocked).
       "stores.budget.manage",
+      // STORES S6a (#1116, decision 8; ruling 0101 Q6) — releases a payment hold above ₹50,000, or when the materials
+      // head is barred; the paying switches are the owner's by role (asked in the intent).
+      "stores.holds.release",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -1254,6 +1257,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.grn.qc",
       // STORES S5b (#1115, decision 9; ruling 0101 Q3) — the biomedical seat of the purchase committee (medical equipment).
       "stores.award.sign",
+      // STORES S6a (#1116, decision 12) — confirms an AMC visit's service entry sheet (hospital scope: any department).
+      "stores.ses.confirm",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1365,6 +1370,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.buying.manage", "stores.grn.qc",
       // STORES S5b (#1115, decision 9) — the materials head's committee seat and its band B award approval.
       "stores.award.sign",
+      // STORES S6a (#1116, decision 8; ruling 0101 Q6) — releases or keeps a payment hold up to ₹50,000, never on a bill it
+      // booked or whose PO it approved (asked in the intent).
+      "stores.holds.release",
     ],
   },
   {
@@ -2054,11 +2062,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * The materials head keeps the Stores masters (`stores.masters.manage`, in its own row above).
    */
   // STORES S5a (#1115, decision 16): + `stores.purchase.request` (asked AT the department), "Ask to buy".
-  { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work", "stores.purchase.request"] },
+  // STORES S6a (#1116, decision 12): + `stores.ses.confirm` (AT the department), "Service to confirm".
+  { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work", "stores.purchase.request", "stores.ses.confirm"] },
   // STORES S4b (#1114, decision 13): + `stores.assets.condemn`, the user department's seat (asked AT the department).
   // STORES S5a (#1115, decisions 14, 16): + `stores.purchase.request` and `stores.grn.qc` (the department's nominee), AT it.
   // STORES S5b (#1115, decision 9): + `stores.award.sign`, the user HOD's committee seat (asked AT the department).
-  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve", "stores.assets.condemn", "stores.purchase.request", "stores.grn.qc", "stores.award.sign"] },
+  // STORES S6a (#1116, decision 12): + `stores.ses.confirm` (AT the department).
+  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve", "stores.assets.condemn", "stores.purchase.request", "stores.grn.qc", "stores.award.sign", "stores.ses.confirm"] },
   /**
    * STORES S2a (#1112, decisions 3, 5, 16). `department_head` above approves its department's tickets
    * (`stores.indents.approve`, asked AT the department). Two more roles, assigned by nobody:
@@ -2089,7 +2099,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // STORES S4b (#1114, decision 13): + `stores.assets.condemn`, the accounts seat of the condemnation committee.
   // STORES S5a (#1115, decision 15): + `stores.budget.manage`, the departments' month budgets.
   // STORES S5b (#1115, decision 9): + `stores.award.sign`, the accounts head's committee seat.
-  { roleKey: "accounts_officer", permissions: ["stores.assets.export", "stores.assets.condemn", "stores.budget.manage", "stores.award.sign"] },
+  // STORES S6a (#1116, decision 12): + the paying desk — books bills, prepares and records payments, the Tally export, the
+  // audit pack. Still assigned by nobody.
+  {
+    roleKey: "accounts_officer",
+    permissions: [
+      "stores.assets.export", "stores.assets.condemn", "stores.budget.manage", "stores.award.sign",
+      "materials.bills.manage", "materials.payments.prepare", "materials.payments.record", "pharmacy.tally.export", "stores.audit.read",
+    ],
+  },
   /**
    * STORES S5a (#1115, decision 16) — the buyer: `purchase_officer`, seeded with no holders (the materials head buys
    * until one is appointed). The buying desk only: the store's requests, bands and the supplier's Stores fields. Never

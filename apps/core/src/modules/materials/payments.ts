@@ -17,7 +17,7 @@ import {
   paymentRunUpdated, supplierPaymentRecorded,
 } from "./events";
 import { istDay } from "./grn";
-import { addDays, billsDueBy, daysBetween, requirePayablesReader, reservedByBill, vendorCredits } from "./supplier-bills";
+import { addDays, billHoldHooks, billsDueBy, daysBetween, requirePayablesReader, reservedByBill, vendorCredits } from "./supplier-bills";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -145,7 +145,11 @@ export type PaymentPlan = {
 export async function planPaymentRun(db: Db, now: Date = new Date()): Promise<PaymentPlan> {
   const today = istDay(now);
   const until = addDays(today, PAYMENT_RUN_HORIZON_DAYS);
-  const due = await billsDueBy(db, until);
+  // STORES S6a (#1116, decision 7): a bill with an open payment hold is never planned (none held = as before).
+  const hooks = billHoldHooks();
+  const dueAll = await billsDueBy(db, until);
+  const held = hooks === null || dueAll.length === 0 ? new Set<string>() : await hooks.openHolds(db, dueAll.map((b) => b.id), now);
+  const due = held.size === 0 ? dueAll : dueAll.filter((b) => !held.has(b.id));
   const reserved = await reservedByBill(db, due.map((b) => b.id));
   const vendorIds = [...new Set(due.map((b) => b.vendorId))];
   const vs = vendorIds.length === 0 ? [] : await db.select().from(vendors).where(inArray(vendors.id, vendorIds));
@@ -195,7 +199,17 @@ type RunRow = typeof supplierPaymentRuns.$inferSelect;
 
 type ResolvedRunLine = { billId: string; vendorId: string; payPaise: number; creditPaise: number };
 
-async function resolveLines(tx: Tx, runId: string | null, lines: readonly RunLineInput[]): Promise<ResolvedRunLine[]> {
+/** STORES S6a (#1116, decision 7): no line of a run may carry a bill with an open payment hold. */
+async function refuseHeld(db: Db | Tx, billIds: readonly string[], billNos: ReadonlyMap<string, string>, now: Date): Promise<void> {
+  const hooks = billHoldHooks();
+  if (hooks === null || billIds.length === 0) return;
+  const held = await hooks.openHolds(db, billIds, now);
+  if (held.size === 0) return;
+  const nos = billIds.filter((b) => held.has(b)).map((b) => billNos.get(b) ?? b);
+  throw new MaterialsError("line_on_hold", `bill ${nos.join(", ")} is on hold; the hold is cleared first, or the bill comes off the run`, { billNos: nos });
+}
+
+async function resolveLines(tx: Tx, runId: string | null, lines: readonly RunLineInput[], now: Date): Promise<ResolvedRunLine[]> {
   if (lines.length === 0) throw new MaterialsError("run_invalid", "a run carries at least one bill");
   if (lines.length > 500) throw new MaterialsError("run_invalid", "a run carries at most 500 bills");
   const ids = [...new Set(lines.map((l) => l.billId))];
@@ -223,6 +237,7 @@ async function resolveLines(tx: Tx, runId: string | null, lines: readonly RunLin
     }
     return { billId: b.id, vendorId: b.vendorId, payPaise: l.payPaise, creditPaise: credit };
   });
+  await refuseHeld(tx, ids, new Map(bills.map((b) => [b.id, b.billNo] as const)), now);
   // PARITY P4 — per vendor: the credit set off is the vendor's to spend (under the lock taken above),
   // and money still moves.
   const credits = await vendorCredits(tx, vendorIds, runId ?? undefined);
@@ -270,7 +285,7 @@ export async function createPaymentRun(
   await requirePerm(db, actor, PREPARE, "preparing a payment run");
   const now = opts.now ?? new Date();
   const runId = await withTx(db, async (tx) => {
-    const lines = await resolveLines(tx, null, input.lines);
+    const lines = await resolveLines(tx, null, input.lines, now);
     const id = newId();
     const runNo = await nextEpisodeNo(tx, "payment_run", istDay(now));
     const note = input.note?.trim().slice(0, 500) || null;
@@ -291,6 +306,12 @@ export async function createPaymentRun(
 /** The person's press of "make the draft": the agent's plan, as a DRAFT run. Nothing is submitted. */
 export async function draftPaymentRun(db: Db, actor: Actor, now: Date = new Date()): Promise<RunView> {
   await requirePerm(db, actor, PREPARE, "preparing a payment run");
+  // STORES S6a (#1116, decision 7): the hold rules run again over what is due before the plan is read.
+  const hooks = billHoldHooks();
+  if (hooks !== null) {
+    const due = await billsDueBy(db, addDays(istDay(now), PAYMENT_RUN_HORIZON_DAYS));
+    if (due.length > 0) await hooks.recheck(db, actor, due.map((b) => b.id), now);
+  }
   const plan = await planPaymentRun(db, now);
   const lines = plan.groups.flatMap((g) => g.bills.map((b) => ({ billId: b.billId, payPaise: b.payablePaise, creditPaise: b.creditPaise })));
   if (lines.length === 0) throw new MaterialsError("run_invalid", "nothing is due to pay: no accepted bill falls due in the next week that another run does not already hold");
@@ -309,7 +330,7 @@ export async function updatePaymentRun(
     if (patch.note !== undefined) set.note = patch.note?.trim().slice(0, 500) || null;
     let bills = (await tx.select({ id: supplierPaymentRunLines.id }).from(supplierPaymentRunLines).where(eq(supplierPaymentRunLines.runId, runId))).length;
     if (patch.lines !== undefined) {
-      const lines = await resolveLines(tx, runId, patch.lines);
+      const lines = await resolveLines(tx, runId, patch.lines, now);
       await tx.delete(supplierPaymentRunLines).where(eq(supplierPaymentRunLines.runId, runId));
       set.totalPaise = await writeLines(tx, runId, lines);
       bills = lines.length;
@@ -329,12 +350,18 @@ export async function updatePaymentRun(
  */
 export async function submitPaymentRun(db: Db, actor: Actor, runId: string, now: Date = new Date()): Promise<RunView> {
   await requirePerm(db, actor, PREPARE, "submitting a payment run");
+  // STORES S6a (#1116, decision 7): a hold placed after drafting refuses the submit — the rules run again first.
+  const hooks = billHoldHooks();
+  if (hooks !== null) {
+    const onRun = await db.select({ billId: supplierPaymentRunLines.billId }).from(supplierPaymentRunLines).where(eq(supplierPaymentRunLines.runId, runId));
+    if (onRun.length > 0) await hooks.recheck(db, actor, onRun.map((l) => l.billId), now);
+  }
   await withTx(db, async (tx) => {
     const r = await lockRun(tx, runId);
     if (r.status !== "draft") throw wrongStatus(r, "submitting", ["draft"]);
     if (r.createdBy !== actor.id) throw new MaterialsError("run_not_preparer", `payment run ${r.runNo} is submitted by the person who prepared it`, { runNo: r.runNo });
     const lines = await tx.select().from(supplierPaymentRunLines).where(eq(supplierPaymentRunLines.runId, runId));
-    await resolveLines(tx, runId, lines.map((l) => ({ billId: l.billId, payPaise: l.payPaise, creditPaise: l.creditPaise })));
+    await resolveLines(tx, runId, lines.map((l) => ({ billId: l.billId, payPaise: l.payPaise, creditPaise: l.creditPaise })), now);
     const vendorsOn = new Set(lines.map((l) => l.vendorId)).size;
     const { approvalId } = await requestApproval(tx, actor, {
       typeKey: PAYMENT_RUN_APPROVAL_TYPE,
@@ -439,6 +466,23 @@ export async function assertNotRunAuthoriser(db: Db, actor: Actor, runId: string
 
 export type PaymentInput = { mode: PaymentMode; reference?: string | null; paidOn?: string | null };
 
+/**
+ * STORES S6a (#1116, decision 9, DECIDED shapes) — what a bank reference looks like, for payments recorded from the day
+ * S6a ships (pharmacy's included; old rows are never touched): NEFT 16 letters and digits, RTGS 22, UPI 12 digits. Spaces
+ * are dropped and letters upper-cased before the check (and stored so). A cheque number and cash are as before.
+ */
+export const REFERENCE_SHAPES: Readonly<Partial<Record<PaymentMode, { re: RegExp; words: string }>>> = {
+  neft: { re: /^[A-Z0-9]{16}$/, words: "NEFT has 16 letters and digits" },
+  rtgs: { re: /^[A-Z0-9]{22}$/, words: "RTGS has 22 letters and digits" },
+  upi: { re: /^\d{12}$/, words: "UPI has 12 digits" },
+};
+
+/** The reference as it is checked and stored: a bank mode's without spaces, upper-cased; any other as typed. */
+export function normaliseReference(mode: PaymentMode, reference: string | null): string | null {
+  if (reference === null || REFERENCE_SHAPES[mode] === undefined) return reference;
+  return reference.replace(/\s+/g, "").toUpperCase();
+}
+
 function isIsoDate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const t = Date.parse(`${s}T00:00:00Z`);
@@ -448,8 +492,9 @@ function isIsoDate(s: string): boolean {
 /**
  * One vendor on an authorised run paid: every unpaid line of that vendor, in one voucher (`MPV…`) of
  * one mode and reference. Refuses, in this order: a run not authorised; the run's authoriser as the
- * recorder; a bank mode without its reference; a vendor still in its bank-change cooling-off; cash
- * past the day's s.40A(3) limit for this vendor; a bill that would be paid past its total.
+ * recorder; a bank mode without its reference; a vendor still in its bank-change cooling-off; (STORES
+ * S6a) a bank reference out of shape or already used, a bill on hold; cash past the day's s.40A(3) limit
+ * for this vendor; a bill that would be paid past its total.
  */
 export async function recordVendorPayment(
   db: Db, actor: Actor, runId: string, vendorId: string, input: PaymentInput, now: Date = new Date(),
@@ -463,9 +508,12 @@ export async function recordVendorPayment(
     throw new MaterialsError("payment_reference_required", `a ${mode.toUpperCase()} payment carries its reference (${mode === "cheque" ? "the cheque number" : "the UTR"})`, { mode });
   }
   if (reference !== null && reference.length > 64) throw new MaterialsError("run_invalid", "the reference is longer than 64 characters");
+  const ref = normaliseReference(mode, reference);
+  const shape = REFERENCE_SHAPES[mode];
   const today = istDay(now);
   const paidOn = input.paidOn ?? today;
   if (!isIsoDate(paidOn) || paidOn > today) throw new MaterialsError("run_invalid", `paid on "${paidOn}" is not a date on or before today`);
+  try {
   await withTx(db, async (tx) => {
     const r = await lockRun(tx, runId);
     if (r.status !== "authorised") throw wrongStatus(r, "recording a payment", ["authorised"]);
@@ -483,6 +531,19 @@ export async function recordVendorPayment(
     const lines = await tx.select().from(supplierPaymentRunLines)
       .where(and(eq(supplierPaymentRunLines.runId, runId), eq(supplierPaymentRunLines.vendorId, vendorId), isNull(supplierPaymentRunLines.paymentId)));
     if (lines.length === 0) throw new MaterialsError("run_invalid", `payment run ${r.runNo} owes this vendor nothing unpaid`, { runNo: r.runNo });
+    // STORES S6a (#1116, decision 9): the reference's shape, after every refusal that came before it (same order as before).
+    if (shape !== undefined && ref !== null && !shape.re.test(ref)) {
+      throw new MaterialsError("reference_shape", `check the number: ${shape.words}`, { mode, length: ref.length });
+    }
+    // STORES S6a (#1116, decision 9): a bank reference is used once per mode (old payments included). The partial
+    // unique index over checked rows backs this up when two are recorded at once.
+    if (shape !== undefined && ref !== null) {
+      const [used] = await tx.select({ paymentNo: supplierPayments.paymentNo }).from(supplierPayments)
+        .where(and(eq(supplierPayments.mode, mode), sql`upper(replace(${supplierPayments.reference}, ' ', '')) = ${ref}`)).limit(1);
+      if (used !== undefined) throw new MaterialsError("utr_reused", `this ${mode.toUpperCase()} reference is already on payment ${used.paymentNo}`, { paymentNo: used.paymentNo });
+    }
+    // STORES S6a (#1116, decision 7): HMIS never pays around a hold.
+    await refuseHeld(tx, lines.map((l) => l.billId), new Map(), now);
     const amount = lines.reduce((s, l) => s + l.payPaise, 0);
     if (mode === "cash") {
       const [row] = await tx.select({ paise: sql<string>`coalesce(sum(${supplierPayments.amountPaise}), 0)` }).from(supplierPayments)
@@ -500,7 +561,9 @@ export async function recordVendorPayment(
     const bills = await tx.select().from(supplierBills).where(inArray(supplierBills.id, lines.map((l) => l.billId))).for("update");
     const paymentId = newId();
     const paymentNo = await nextEpisodeNo(tx, "supplier_payment", istDay(now));
-    await tx.insert(supplierPayments).values({ id: paymentId, paymentNo, runId, vendorId, mode, reference, paidOn, amountPaise: amount, recordedBy: actor.id, recordedAt: now });
+    await tx.insert(supplierPayments).values({
+      id: paymentId, paymentNo, runId, vendorId, mode, reference: ref, paidOn, amountPaise: amount, recordedBy: actor.id, recordedAt: now, referenceChecked: true,
+    });
     const settled: { billId: string; billNo: string; paidPaise: number; creditPaise: number; status: "part_paid" | "paid" }[] = [];
     for (const l of lines) {
       const b = bills.find((x) => x.id === l.billId)!;
@@ -519,7 +582,7 @@ export async function recordVendorPayment(
     }
     await appendEvent(tx, supplierPaymentRecorded.make({
       occurredAt: now, actor, correlationId: paymentId,
-      payload: { paymentId, paymentNo, runId, vendorId, mode, reference, paidOn, amountPaise: amount, bills: settled },
+      payload: { paymentId, paymentNo, runId, vendorId, mode, reference: ref, paidOn, amountPaise: amount, bills: settled },
     }));
     const left = await tx.select({ id: supplierPaymentRunLines.id }).from(supplierPaymentRunLines)
       .where(and(eq(supplierPaymentRunLines.runId, runId), isNull(supplierPaymentRunLines.paymentId))).limit(1);
@@ -529,6 +592,13 @@ export async function recordVendorPayment(
       await appendEvent(tx, paymentRunCompleted.make({ occurredAt: now, actor, correlationId: runId, payload: { ...header(r), payments: Number(n?.n ?? 1) } }));
     }
   });
+  } catch (e) {
+    const err = e as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
+    if ((err.code ?? err.cause?.code) === "23505" && (err.constraint ?? err.cause?.constraint) === "supplier_payments_bank_reference_ux") {
+      throw new MaterialsError("utr_reused", `this ${mode.toUpperCase()} reference is already on another payment`);
+    }
+    throw e;
+  }
   return (await readPaymentRun(db, runId))!;
 }
 

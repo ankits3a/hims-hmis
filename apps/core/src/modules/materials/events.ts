@@ -357,7 +357,9 @@ const billHeader = { billId: id, billNo: z.string().min(1), vendorId: id, vendor
 
 /** A bill entered (from a GRN the agent prefilled, or by hand); `source` says which. */
 export const supplierBillDrafted = defineEvent("supplier_bill.drafted", MODULE, z.object({
-  ...billHeader, grnIds: z.array(id).min(1), lines: z.number().int().nonnegative(), source: z.enum(["manual", "agent"]),
+  ...billHeader, grnIds: z.array(id), lines: z.number().int().nonnegative(), source: z.enum(["manual", "agent"]),
+  /** STORES S6a (#1116, additive) — the service entry sheets a service bill names; absent on every GRN-only bill. */
+  sesIds: z.array(id).min(1).optional(),
 }));
 /**
  * A draft (or a held bill sent back to draft) changed. PARITY P5 (additive): `changes` names each
@@ -372,7 +374,8 @@ export const supplierBillUpdated = defineEvent("supplier_bill.updated", MODULE, 
 /** The three-way match ran: inside the tolerance (`matched`) or not (`held_for_match`, with the lines out and why). */
 export const supplierBillMatched = defineEvent("supplier_bill.matched", MODULE, z.object({
   ...billHeader, expectedTotalPaise: paise, outcome: z.enum(["matched", "held_for_match"]),
-  mismatches: z.array(z.object({ itemId: id, grnId: id, reasons: z.array(z.string()) })),
+  /** STORES S6a (#1116, additive): a service line names its `sesId` and a null `grnId`; a GRN line is as before. */
+  mismatches: z.array(z.object({ itemId: id, grnId: id.nullable(), sesId: id.optional(), reasons: z.array(z.string()) })),
 }));
 /** Booked as payable. `differenceReason` is set when a held bill's difference was accepted. */
 export const supplierBillAccepted = defineEvent("supplier_bill.accepted", MODULE, z.object({

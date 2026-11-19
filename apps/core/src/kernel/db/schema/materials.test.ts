@@ -164,18 +164,20 @@ const CENSUS: Record<string, string[]> = {
     "terms_days", "total_paise", "updated_at", "updated_by", "vendor_bill_key", "vendor_bill_no", "vendor_id",
   ],
   // #637 — the vendor's trade discount on the line: list rate, percent, amount off per pack.
+  // STORES S6a (#1116, decision 3) — `ses_id`, a service line's entry sheet (`grn_id` now nullable; exactly one is set).
   supplier_bill_lines: [
     "bill_id", "cgst_paise", "discount_bps", "discount_paise", "expected_base", "expected_gst_rate_bps", "expected_rate_paise",
     "expected_taxable_paise", "grn_id", "gst_rate_bps", "id", "igst_paise", "item_id", "list_rate_paise", "mismatch", "multiplier",
-    "qty_packs", "rate_paise", "sgst_paise", "taxable_paise", "uom",
+    "qty_packs", "rate_paise", "ses_id", "sgst_paise", "taxable_paise", "uom",
   ],
   supplier_payment_runs: [
     "approval_id", "authorised_at", "authorised_by", "cancel_reason", "cancelled_at", "cancelled_by", "completed_at",
     "created_at", "created_by", "id", "note", "rejection_note", "run_no", "source", "status", "submitted_at",
     "total_paise", "updated_at", "updated_by",
   ],
+  // STORES S6a (#1116, decision 9) — `reference_checked`: recorded after the cut-over, its reference's shape and reuse checked.
   supplier_payments: [
-    "amount_paise", "id", "mode", "paid_on", "payment_no", "recorded_at", "recorded_by", "reference", "run_id",
+    "amount_paise", "id", "mode", "paid_on", "payment_no", "recorded_at", "recorded_by", "reference", "reference_checked", "run_id",
     "vendor_id",
   ],
   supplier_payment_run_lines: [

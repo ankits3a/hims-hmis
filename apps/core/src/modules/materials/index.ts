@@ -144,13 +144,16 @@ export {
   AGE_BUCKETS, PAYABLE_BILL_STATUSES, acceptBillDifference, acceptSupplierBill, ageBucketOf, billDraftFromGrn, billsDueBy,
   cancelSupplierBill, createSupplierBill, dueDateFor, financialYearOf, getSupplierBill, lineMismatches, listSupplierBills,
   matchSupplierBill, matchTolerancePaise, payables, supplierLedger, unbilledGrns, updateSupplierBill, vendorBillKey, vendorCredits, withinMatch,
+  // STORES S6a (#1116): the service entry reader and the payment-hold hooks Stores registers.
+  billHoldHooks, registerBillHoldHooks, registerServiceEntrySource,
 } from "./supplier-bills";
 export type {
   AgeBucket, BillDraft, BillFilter, BillInput, BillLineInput, BillLineView, BillMismatch, BillStatus, BillSummary, BillView,
   LedgerEntry, PayableRow, Payables, SupplierLedger, SupplierSummaryRow, UnbilledGrn, VendorCredit,
+  BillHoldHooks, ServiceEntryLine, ServiceEntrySource,
 } from "./supplier-bills";
 export {
-  PAYMENT_MODES, assertNotRunAuthoriser, cancelPaymentRun, createPaymentRun, decidePaymentRun, draftPaymentRun, getPaymentRun,
+  PAYMENT_MODES, REFERENCE_SHAPES, normaliseReference, assertNotRunAuthoriser, cancelPaymentRun, createPaymentRun, decidePaymentRun, draftPaymentRun, getPaymentRun,
   listPaymentRuns, planPaymentRun, recordVendorPayment, settlePaymentRuns, submitPaymentRun, updatePaymentRun,
 } from "./payments";
 export type {
