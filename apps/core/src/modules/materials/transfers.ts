@@ -222,6 +222,26 @@ export async function issueStock(
  * Receiving MORE than was issued is refused outright: there is no honest source for the excess, and
  * "the receiver counted more than the sender sent" is a counting problem, not a stock movement.
  */
+/**
+ * STORES (pre-merge review S1) — the `/materials/transfers` routes move pharmacy stock. A transfer whose source or
+ * destination is a Stores place (`attributes.domain = 'stores'`) goes through the Stores intents, which ask the
+ * department-scoped grant, name the keepers and write the cost centre; this route checks none of that, so it
+ * refuses. Function callers (the Stores intents themselves) are unaffected. Pharmacy stores carry no domain.
+ */
+export async function refuseStoresPlacesOnMaterialsRoute(db: Db | Tx, storeIds: readonly string[]): Promise<void> {
+  if (storeIds.length === 0) return;
+  const rows = await db.select({ id: resources.id, code: resources.code, attributes: resources.attributes }).from(resources)
+    .where(inArray(resources.id, [...storeIds]));
+  const hit = rows.find((r) => ((r.attributes ?? {}) as Record<string, unknown>).domain === "stores");
+  if (hit !== undefined) {
+    throw new MaterialsError(
+      "moves_through_stores",
+      `${hit.code} is a Stores place; its stock moves through Stores, not the materials transfer route`,
+      { storeId: hit.id },
+    );
+  }
+}
+
 export async function receiveStock(
   tx: Tx,
   actor: Actor,

@@ -72,11 +72,11 @@ export async function createShelf(
 }
 
 export async function listStoresStores(db: Db | Tx): Promise<StoresStoreView[]> {
-  return (await listStores(db)).filter((r) => isStoresStore(r)).map(toStoresStore).filter((s) => s.kind !== "shelf");
+  return (await listStores(db, { includeStoresDomain: true })).filter((r) => isStoresStore(r)).map(toStoresStore).filter((s) => s.kind !== "shelf");
 }
 
 export async function listShelves(db: Db | Tx, filter: { departmentId?: string } = {}): Promise<ShelfSummary[]> {
-  const shelves = (await listStores(db)).filter((r) => isStoresStore(r)).map(toStoresStore)
+  const shelves = (await listStores(db, { includeStoresDomain: true })).filter((r) => isStoresStore(r)).map(toStoresStore)
     .filter((s) => s.kind === "shelf" && (filter.departmentId === undefined || s.departmentId === filter.departmentId));
   if (shelves.length === 0) return [];
   const depts = new Map((await db.select({ id: orgDepartments.id, code: orgDepartments.code, name: orgDepartments.name }).from(orgDepartments)).map((d) => [d.id, d]));
