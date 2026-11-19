@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useAuth } from "../lib/auth";
+import { heldAnywhere, useAuth } from "../lib/auth";
 import {
   addCategory, addItem, addShelf, addStore, importItems, listAllShelves, listCategories, listItems, listRequests, listStores, myShelves,
   overBookCards, pickers, resolveRequest, setPar, storesErrorCode,
 } from "../lib/stores-api";
-import type { WireImportResult } from "@hmis/contracts";
+import "./stores.css";
+import type { WireImportResult, WireItemRequest } from "@hmis/contracts";
 
 /**
  * STORES S1 (#1111) — `/stores`, the materials head's desk at 16:9 (fits 1366 × 768), spec "## Screens".
@@ -26,7 +27,7 @@ const MODES = ["expensed", "shelf", "durable"] as const;
 const cell: React.CSSProperties = { padding: "6px 8px", borderBottom: "1px solid var(--rule, #e3e3e3)", textAlign: "left", whiteSpace: "nowrap" };
 const btn: React.CSSProperties = { minHeight: 34, padding: "0 12px", borderRadius: 6, border: "1px solid var(--ink, #222)", background: "transparent" };
 const primary: React.CSSProperties = { ...btn, background: "var(--ink, #222)", color: "var(--paper, #fff)", fontWeight: 600 };
-const field: React.CSSProperties = { minHeight: 32, minWidth: 0 };
+const field: React.CSSProperties = { minHeight: 40, minWidth: 0 };
 
 export function StoresDesk(): React.ReactElement {
   const { t } = useTranslation();
@@ -34,7 +35,7 @@ export function StoresDesk(): React.ReactElement {
   const [tab, setTab] = useState<Tab>("categories");
   if (!can(MASTERS)) return <MyShelves />;
   return (
-    <div data-testid="stores-desk" style={{ padding: "16px clamp(16px, 3vw, 24px)", display: "flex", flexDirection: "column", gap: 12, maxWidth: "100%", overflowX: "hidden", boxSizing: "border-box" }}>
+    <div data-testid="stores-desk" className="stores-ui" style={{ padding: "16px clamp(16px, 3vw, 24px)", display: "flex", flexDirection: "column", gap: 12, maxWidth: "100%", overflowX: "hidden", boxSizing: "border-box" }}>
       <h1 style={{ margin: 0, fontSize: 20 }}>{t("stores.desk.title")}</h1>
       <TicketLinks />
       <div role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -54,19 +55,22 @@ export function StoresDesk(): React.ReactElement {
 
 function MyShelves(): React.ReactElement {
   const { t } = useTranslation();
+  const links = useRoleLinks();
   const mine = useQuery({ queryKey: ["stores", "my-shelves"], queryFn: myShelves });
   if (mine.data !== undefined && mine.data.shelves.length === 0) {
     return (
-      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="stores-ui" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, maxWidth: "100%", overflowX: "hidden", boxSizing: "border-box" }}>
+        <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.desk.title")}</h1>
         <TicketLinks />
-        <p data-testid="stores-desk-denied" style={{ margin: 0 }}>{t("stores.desk.noPermission")}</p>
+        {links.length === 0 && <p data-testid="stores-desk-denied" style={{ margin: 0 }}>{t("stores.desk.noPermission")}</p>}
       </div>
     );
   }
   return (
-    <div data-testid="stores-my-shelves" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, maxWidth: "100%", overflowX: "hidden" }}>
+    <div data-testid="stores-my-shelves" className="stores-ui" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, maxWidth: "100%", overflowX: "hidden", boxSizing: "border-box" }}>
+      <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.desk.title")}</h1>
       <TicketLinks />
-      <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.shelf.pickShelf")}</h1>
+      <h2 style={{ margin: 0, fontSize: 16 }}>{t("stores.shelf.pickShelf")}</h2>
       {(mine.data?.shelves ?? []).map((s) => (
         <Link key={s.id} to="/stores/shelf/$shelfId" params={{ shelfId: s.id }} style={{ minHeight: 44, display: "flex", alignItems: "center" }}>
           {`${s.departmentName ?? ""} · ${s.floorName ?? s.name}`}
@@ -76,16 +80,32 @@ function MyShelves(): React.ReactElement {
   );
 }
 
+type RoleLink = { to: "/stores/approve" | "/stores/pick" | "/stores/receive" | "/stores/porter" | "/stores/passes" | "/stores/gate"; label: string };
+
 /**
- * STORES S2a (#1112) — the two ticket lists, reached from here (web `can()` reads hospital scope only, so a
- * department-scoped HOD has no menu row): the server answers each with what this person may see.
+ * UX pass (walk finding 13) — each person's own Stores screens, by the grants they hold at ANY scope (an HOD's
+ * approval is department-scoped). Presentation only: every screen's server read answers with what this person may
+ * see, and refuses the rest.
  */
+function useRoleLinks(): RoleLink[] {
+  const { can, permissions } = useAuth();
+  const any = (p: string): boolean => heldAnywhere(permissions, p);
+  const out: RoleLink[] = [];
+  if (any("stores.indents.approve")) out.push({ to: "/stores/approve", label: "stores.now.toApprove" });
+  if (can(MASTERS) || can("materials.stock.issue") || can("stores.gatepass.raise") || any("stores.nightstore.issue")) out.push({ to: "/stores/pick", label: "stores.now.toPick" });
+  if (any("stores.shelf.work")) out.push({ to: "/stores/receive", label: "stores.now.toReceive" });
+  if (any("stores.carry")) out.push({ to: "/stores/porter", label: "stores.ux.porter" });
+  if (can("stores.gatepass.raise")) out.push({ to: "/stores/passes", label: "nav.storesPasses" });
+  if (any("stores.gatepass.scan")) out.push({ to: "/stores/gate", label: "nav.storesGate" });
+  return out;
+}
+
 function TicketLinks(): React.ReactElement {
   const { t } = useTranslation();
+  const links = useRoleLinks();
   return (
-    <nav data-testid="stores-ticket-links" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Link to="/stores/approve" style={{ minHeight: 44, display: "flex", alignItems: "center" }}>{t("stores.now.toApprove")}</Link>
-      <Link to="/stores/pick" style={{ minHeight: 44, display: "flex", alignItems: "center" }}>{t("stores.now.toPick")}</Link>
+    <nav data-testid="stores-ticket-links" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {links.map((l) => <Link key={l.to} to={l.to} className="stores-btn">{t(l.label)}</Link>)}
     </nav>
   );
 }
@@ -170,7 +190,7 @@ function ItemsTab(): React.ReactElement {
         <input style={field} aria-label={t("stores.desk.f.code")} placeholder={t("stores.desk.f.code")} value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} />
         <input style={field} aria-label={t("stores.desk.f.name")} placeholder={t("stores.desk.f.name")} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         <select style={field} aria-label={t("stores.desk.f.class")} value={f.class} onChange={(e) => setF({ ...f, class: e.target.value })}>
-          {CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {CLASSES.map((c) => <option key={c} value={c}>{t(`stores.ux.class.${c}`)}</option>)}
         </select>
         <input style={{ ...field, width: 80 }} aria-label={t("stores.desk.f.unit")} placeholder={t("stores.desk.f.unit")} value={f.baseUom} onChange={(e) => setF({ ...f, baseUom: e.target.value })} />
         <select style={field} aria-label={t("stores.desk.f.category")} value={f.categoryId} onChange={(e) => setF({ ...f, categoryId: e.target.value })}>
@@ -210,7 +230,7 @@ function ItemsTab(): React.ReactElement {
         <table style={{ borderCollapse: "collapse" }}>
           <thead><tr>{["code", "name", "class", "category", "trackMode"].map((k) => <th key={k} style={cell}>{t(`stores.desk.f.${k}`)}</th>)}</tr></thead>
           <tbody>{rows.map((i) => (
-            <tr key={i.id}><td style={cell}>{i.code}</td><td style={cell}>{i.name}</td><td style={cell}>{i.class}</td><td style={cell}>{i.categoryName ?? ""}</td><td style={cell}>{t(`stores.desk.track.${i.trackMode}`)}</td></tr>
+            <tr key={i.id}><td style={cell}>{i.code}</td><td style={cell}>{i.name}</td><td style={cell}>{t(`stores.ux.class.${i.class}`, { defaultValue: i.class })}</td><td style={cell}>{i.categoryName ?? ""}</td><td style={cell}>{t(`stores.desk.track.${i.trackMode}`)}</td></tr>
           ))}</tbody>
         </table>
       )}
@@ -285,7 +305,10 @@ function ShelvesTab(): React.ReactElement {
         <div data-testid="stores-over-book" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <h2 style={{ margin: 0, fontSize: 15 }}>{t("stores.desk.overBook")}</h2>
           {(cards.data?.cards ?? []).map((c) => (
-            <p key={c.cardId} style={{ margin: 0 }}>{`${c.shelfName}: ${c.lines.map((l) => `${l.name} ${String(l.book)} → ${String(l.counted)}`).join(", ")}`}</p>
+            <div key={c.cardId} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 0 }}>{`${c.shelfName}: ${c.lines.map((l) => `${l.name} ${String(l.book)} → ${String(l.counted)}`).join(", ")}`}</span>
+              <Link to="/stores/shelf/$shelfId" params={{ shelfId: c.shelfId }} search={{ check: 1 }} className="stores-btn">{t("stores.ux.openCheck")}</Link>
+            </div>
           ))}
         </div>
       )}
@@ -342,6 +365,7 @@ function RequestsTab(): React.ReactElement {
   const reqs = useQuery({ queryKey: ["stores", "requests"], queryFn: listRequests });
   const items = useQuery({ queryKey: ["stores", "items"], queryFn: listItems });
   const [chosen, setChosen] = useState<Record<string, string>>({});
+  const [creating, setCreating] = useState<string | null>(null);
   const [notice, fail, setNotice] = useNotice();
   const rows = reqs.data?.requests ?? [];
   return (
@@ -355,13 +379,54 @@ function RequestsTab(): React.ReactElement {
             <option value="">{t("stores.desk.f.item")}</option>
             {(items.data?.items ?? []).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </select>
-          {(["use_existing", "created"] as const).map((o) => (
-            <button key={o} type="button" style={o === "created" ? primary : btn} disabled={(chosen[r.id] ?? "") === ""} onClick={() => {
-              resolveRequest(r.id, o, chosen[r.id]!).then(() => { setNotice(t(`stores.desk.outcome.${o}`)); return qc.invalidateQueries({ queryKey: ["stores", "requests"] }); }).catch(fail);
-            }}>{`${t("stores.desk.resolve")}: ${t(`stores.desk.outcome.${o}`)}`}</button>
-          ))}
+          <button type="button" style={btn} disabled={(chosen[r.id] ?? "") === ""} onClick={() => {
+            resolveRequest(r.id, "use_existing", chosen[r.id]!).then(() => { setNotice(t("stores.desk.outcome.use_existing")); return qc.invalidateQueries({ queryKey: ["stores", "requests"] }); }).catch(fail);
+          }}>{`${t("stores.desk.resolve")}: ${t("stores.desk.outcome.use_existing")}`}</button>
+          {creating !== r.id && <button type="button" style={primary} onClick={() => setCreating(r.id)}>{t("stores.ux.createItem")}</button>}
+          {creating === r.id && (
+            <CreateFromRequest request={r} onDone={() => { setCreating(null); setNotice(t("stores.desk.outcome.created")); void qc.invalidateQueries({ queryKey: ["stores", "requests"] }); void qc.invalidateQueries({ queryKey: ["stores", "items"] }); }}
+              onCancel={() => setCreating(null)} fail={fail} />
+          )}
         </div>
       ))}
     </section>
+  );
+}
+
+/**
+ * UX pass (walk finding 16) — a new-item request is resolved where it is read: the item form, prefilled with the
+ * name the department typed, creates the item and resolves the request as "created" with it, in one submit.
+ */
+function CreateFromRequest({ request, onDone, onCancel, fail }: {
+  request: WireItemRequest; onDone: () => void; onCancel: () => void; fail: (e: unknown) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const cats = useQuery({ queryKey: ["stores", "categories"], queryFn: listCategories });
+  const [f, setF] = useState({ code: "", name: request.name, class: "consumable", baseUom: "piece", categoryId: "", trackMode: "shelf" });
+  const [busy, setBusy] = useState(false);
+  return (
+    <form data-testid={`request-create-${request.id}`} style={{ display: "flex", gap: 6, flexWrap: "wrap", width: "100%" }} onSubmit={(e) => {
+      e.preventDefault();
+      setBusy(true);
+      addItem({ code: f.code, name: f.name, class: f.class, baseUom: f.baseUom, categoryId: f.categoryId || null, trackMode: f.trackMode as (typeof MODES)[number] })
+        .then((r) => resolveRequest(request.id, "created", r.itemId))
+        .then(onDone).catch(fail).finally(() => setBusy(false));
+    }}>
+      <input style={field} aria-label={t("stores.desk.f.code")} placeholder={t("stores.desk.f.code")} value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} />
+      <input style={{ ...field, flex: 1, minWidth: 160 }} aria-label={t("stores.desk.f.name")} placeholder={t("stores.desk.f.name")} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+      <select style={field} aria-label={t("stores.desk.f.class")} value={f.class} onChange={(e) => setF({ ...f, class: e.target.value })}>
+        {CLASSES.map((c) => <option key={c} value={c}>{t(`stores.ux.class.${c}`)}</option>)}
+      </select>
+      <input style={{ ...field, width: 80 }} aria-label={t("stores.desk.f.unit")} placeholder={t("stores.desk.f.unit")} value={f.baseUom} onChange={(e) => setF({ ...f, baseUom: e.target.value })} />
+      <select style={field} aria-label={t("stores.desk.f.category")} value={f.categoryId} onChange={(e) => setF({ ...f, categoryId: e.target.value })}>
+        <option value="">{t("stores.desk.f.category")}</option>
+        {(cats.data?.categories ?? []).map((c) => <option key={c.id} value={c.id}>{c.parentId === null ? c.name : `↳ ${c.name}`}</option>)}
+      </select>
+      <select style={field} aria-label={t("stores.desk.f.trackMode")} value={f.trackMode} onChange={(e) => setF({ ...f, trackMode: e.target.value })}>
+        {MODES.map((m) => <option key={m} value={m}>{t(`stores.desk.track.${m}`)}</option>)}
+      </select>
+      <button type="submit" style={primary} disabled={busy || f.code.trim() === "" || f.name.trim() === ""}>{t("stores.desk.addItem")}</button>
+      <button type="button" style={btn} onClick={onCancel}>{t("stores.ticket.cancel")}</button>
+    </form>
   );
 }

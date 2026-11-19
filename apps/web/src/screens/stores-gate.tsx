@@ -7,6 +7,7 @@ import {
   closeGatePass, gatePassForm, gatePassLookup, gatePassPrint, listGatePasses, raiseGatePass, scanGatePass, searchItems, storesErrorCode,
 } from "../lib/stores-api";
 import { useOnline } from "./stores-tickets";
+import "./stores.css";
 import type { GatePassRaise } from "../lib/stores-api";
 import type { WireGatePass, WireGatePassLookup, WireGatePassSource } from "@hmis/contracts";
 
@@ -120,7 +121,7 @@ export function StoresGate(): React.ReactElement {
   const p = found?.pass ?? null;
 
   return (
-    <div data-testid="stores-gate" style={page}>
+    <div data-testid="stores-gate" className="stores-ui" style={page}>
       <Offline />
       <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.gate.title")}</h1>
       {notice !== null && (
@@ -206,7 +207,7 @@ export function StoresPasses(): React.ReactElement {
 
   if (making) return <NewPass onDone={(msg) => { setMaking(false); setNotice(msg); }} />;
   return (
-    <div data-testid="stores-passes" style={page}>
+    <div data-testid="stores-passes" className="stores-ui" style={page}>
       <Offline />
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <h1 style={{ margin: 0, fontSize: 18, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("stores.gate.passesTitle")}</h1>
@@ -317,7 +318,7 @@ function NewPass({ onDone }: { onDone: (notice: string | null) => void }): React
 
   if (made !== null) {
     return (
-      <div data-testid="stores-new-pass" style={page}>
+      <div data-testid="stores-new-pass" className="stores-ui" style={page}>
         <p role="status" style={{ margin: 0, fontWeight: 700 }}>{t("stores.gate.raised")}</p>
         <strong>{made.passNo}</strong>
         <span>{made.party}</span>
@@ -350,7 +351,7 @@ function NewPass({ onDone }: { onDone: (notice: string | null) => void }): React
   };
 
   return (
-    <div data-testid="stores-new-pass" style={page}>
+    <div data-testid="stores-new-pass" className="stores-ui" style={page}>
       <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.gate.newPass")}</h1>
       <div role="radiogroup" aria-label={t("stores.gate.newPass")} style={{ display: "flex", gap: 6 }}>
         {(["returnable", "non_returnable"] as const).map((k) => (

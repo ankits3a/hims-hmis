@@ -1,0 +1,41 @@
+/*
+ * STORES — the one field style every Stores screen wears (UX pass from the real-browser walk, finding 1 and 12).
+ *
+ * Tailwind's preflight strips the browser's input border, so every box on the shelf, the reorder sheet, Approve,
+ * Receive, the porter card and the desk read as plain text: nobody could see where to type. Each Stores screen's
+ * root carries `stores-ui`; every input, select and textarea under it gets a visible border, a focus ring and a
+ * 16 px font (a phone does not zoom into it). A screen's inline width or alignment still wins; nothing here sets
+ * a width. A disabled button is faded with a not-allowed cursor, so Used on an Out row, Send on an empty draft
+ * and Import before a dry run no longer look tappable.
+ */
+.stores-ui input:not([type="checkbox"]):not([type="radio"]),
+.stores-ui select,
+.stores-ui textarea {
+  border: 1px solid var(--ink, #222);
+  border-radius: 6px;
+  background: var(--card, #fff);
+  color: var(--ink, #222);
+  font-size: 16px;
+  min-height: 40px;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+.stores-ui textarea { padding: 8px; }
+.stores-ui input::placeholder, .stores-ui textarea::placeholder { color: var(--dim, #6b6b6b); }
+.stores-ui input:focus-visible,
+.stores-ui select:focus-visible,
+.stores-ui textarea:focus-visible,
+.stores-ui button:focus-visible,
+.stores-ui a:focus-visible {
+  outline: 3px solid var(--green, #1f6f4a);
+  outline-offset: 1px;
+}
+.stores-ui button:disabled { opacity: 0.4; cursor: not-allowed; }
+/* A ticket number is a link to its timeline: underlined, never coloured alone. */
+.stores-ui a.stores-no { color: inherit; text-decoration: underline; text-underline-offset: 2px; font-variant-numeric: tabular-nums; }
+/* A link that does a screen's job looks like a button (the role links on /stores, Receive on Arriving). */
+.stores-ui a.stores-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 12px; border-radius: 6px;
+  border: 1px solid var(--ink, #222); color: var(--ink, #222); text-decoration: none; flex-shrink: 0; white-space: nowrap;
+}
+.stores-ui [data-focused="true"] { outline: 2px solid var(--green, #1f6f4a); outline-offset: 2px; border-radius: 4px; }

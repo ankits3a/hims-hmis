@@ -98,6 +98,12 @@ export const receiveReturn = (transferId: string): Promise<WireReturnTicket> => 
 export const lateScans = (): Promise<{ scans: WireLateScan[] }> => api("GET", "/stores/custody/late-scans");
 export const confirmLateScan = (handoffId: string): Promise<{ ok: true }> => api("POST", `/stores/custody/late-scans/${enc(handoffId)}/confirm`, {});
 export const openTicketFor = (shelfId: string): Promise<{ ticket: WireTicket | null }> => api("GET", `/stores/shelves/${enc(shelfId)}/open-ticket`);
+/** UX pass (walk finding 5): the shelf's newest tickets, any stage — "My tickets". */
+export const shelfTickets = (shelfId: string): Promise<{ tickets: WireTicket[] }> => api("GET", `/stores/shelves/${enc(shelfId)}/tickets`);
+/** UX pass (walk finding 14): who a refused reader asks — the department's HOD — by shelf or by ticket. */
+export type WireWhoToAsk = { department: { id: string; name: string }; ask: { id: string; name: string }[] };
+export const whoToAsk = (at: { shelfId: string } | { indentId: string }): Promise<WireWhoToAsk> =>
+  api("GET", "shelfId" in at ? `/stores/who-to-ask?shelfId=${enc(at.shelfId)}` : `/stores/who-to-ask?indentId=${enc(at.indentId)}`);
 export const addToOpenTicket = (indentId: string, lines: { itemId: string; qtyBase: number }[]): Promise<{ ticket: WireTicket; added: string[]; alreadyOn: string[] }> =>
   api("POST", `/stores/tickets/${enc(indentId)}/add`, { lines });
 

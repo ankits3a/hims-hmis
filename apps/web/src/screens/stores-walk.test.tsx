@@ -374,7 +374,7 @@ describe("SHOULD", () => {
     const user = userEvent.setup();
     renderWithRouter(<StoresDesk />);
     await user.click(await screen.findByRole("tab", { name: "Items" }));
-    expect(await screen.findByText("Consumable, dated")).toBeInTheDocument();
+    expect(await screen.findByRole("cell", { name: "Consumable, dated" })).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "New items" }));
     await user.click(await screen.findByRole("button", { name: "Create item" }));
     const form = await screen.findByTestId("request-create-r1");
