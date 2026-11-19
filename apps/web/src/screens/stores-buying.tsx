@@ -302,11 +302,11 @@ function Rfqs({ rfqs }: { rfqs: WireRfq[] }): React.ReactElement {
 }
 
 function RfqCard({ r }: { r: WireRfq }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const act = useAct();
   const [channel, setChannel] = useState<"email" | "print" | "hand">("email");
   const [quoting, setQuoting] = useState<string | null>(null);
-  const day = new Date(r.replyBy).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+  const day = new Date(r.replyBy).toLocaleDateString(i18n.language === "hi" ? "hi-IN" : "en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
   return (
     <div style={{ borderTop: "2px solid var(--ink, #222)", padding: "6px 0" }} data-testid={`rfq-${r.id}`}>
       <div style={row}>
