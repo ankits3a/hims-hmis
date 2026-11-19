@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/stores/`
 
 - **Depends on modules:** `materials`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `modules`, `printing`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `inference`, `modules`, `printing`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -31,6 +31,13 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_PURCHASE_REQUEST`
   - `STORES_SHELF_READ`
   - `STORES_SHELF_WORK`
+- `advances.ts`
+  - `ADVANCE_MAX_BPS`
+  - `ADVANCE_WORDS`
+  - `advancesToDecide(db: Db, actor: Actor): Promise<WirePoAdvance[]>`
+  - `decidePoAdvance(db: Db, actor: Actor, advanceId: string, input: { approve: boolean; reason?: string | null }, now: Date = new Date()): Prom…`
+  - `payTermsOf(db: Db | Tx, poId: string): Promise<WirePayTerms>`
+  - `requestPoAdvance(db: Db, actor: Actor, poId: string, input: { pctBps: number; guaranteeNo: string; guaranteeBank: string; guaranteeValidTo:…`
 - `asset-label.ts`
   - `renderAssetLabel(db: Db, params: Record<string, unknown>): Promise<RenderedDocument | null>`
 - `asset-reads.ts`
@@ -86,7 +93,7 @@ Source: `apps/core/src/modules/stores/`
   - `getAward(db: Db | Tx, awardId: string, now: Date = new Date(), reader?: Actor): Promise<WireAward>`
   - `listAwards(db: Db, actor: Actor, now: Date = new Date()): Promise<WireAward[]>`
   - `makePoFromAward(db: Db, actor: Actor, awardId: string, opts: { source?: "manual" | "agent" } = {}, now: Date = new Date()): Promise<{ pos: …`
-  - `makePoFromGroup(db: Db, actor: Actor, groupId: string, input: { reason?: string | null } = {}, now: Date = new Date()): Promise<{ award: Wi…`
+  - `makePoFromGroup(db: Db, actor: Actor, groupId: string, input: { reason?: string | null; source?: "manual" | "agent" } = {}, now: Date = new…`
   - `objectAward(db: Db, actor: Actor, awardId: string, reason: string, now: Date = new Date()): Promise<WireAward>`
   - `poSheet(db: Db, actor: Actor, poId: string, now: Date = new Date())`
   - `proposeAward(db: Db, actor: Actor, input: { rfqId: string; vendorId?: string | null; lines?: { itemId: string; vendorId: string }[] | null;…`
@@ -100,10 +107,21 @@ Source: `apps/core/src/modules/stores/`
   - `bandFor(estimatePaise: number, opts: { equipment?: boolean } = {}): StoresBand`
 - `budgets.ts`
   - `BUDGET_WORDS`
+  - `OVER_BUDGET_WORDS`
   - `budgetView(db: Db, actor: Actor, departmentId: string, month: string): Promise<WireDepartmentBudget>`
   - `departmentBudget(db: Db | Tx, departmentId: string, month: string): Promise<WireDepartmentBudget>`
+  - `overBudgetList(db: Db, actor: Actor, month: string): Promise<WireOverBudgetMonth>`
+  - `sendOwnerOverBudgetList(db: Db, now: Date): Promise<number>`
   - `setDepartmentBudget(db: Db, actor: Actor, input: { departmentId: string; month: string; amountPaise: number; annual?: boolean; note?: strin…`
   - `sweepBudgetWarnings(db: Db, now: Date = new Date()): Promise<number>`
+- `buy-exceptions.ts`
+  - `EMERGENCY_CONFIRM_MS`
+  - `EXCEPTION_WORDS`
+  - `advanceBuyException(db: Db, actor: Actor, id: string, now: Date = new Date()): Promise<WireBuyException>`
+  - `getBuyException(db: Db | Tx, id: string, now: Date = new Date(), reader?: Actor): Promise<WireBuyException>`
+  - `listBuyExceptions(db: Db, actor: Actor, now: Date = new Date()): Promise<WireBuyException[]>`
+  - `refuseBuyException(db: Db, actor: Actor, id: string, reason: string, now: Date = new Date()): Promise<WireBuyException>`
+  - `requestBuyException(db: Db, actor: Actor, input: { kind: StoresBuyExceptionKind; groupId: string; vendorId: string; reason: string }, now: …`
 - `buy-groups.ts`
   - `buyGroups(db: Db, actor: Actor, now: Date = new Date()): Promise<WireBuyGroup[]>`
   - `buyNow(db: Db, actor: Actor, now: Date = new Date()): Promise<WireBuyRow[]>`
@@ -111,6 +129,21 @@ Source: `apps/core/src/modules/stores/`
   - `groupRequests(db: Db, actor: Actor, input: { lines: { prId: string; lineIdx: number }[]; label?: string | null }, now: Date = new Date()): …`
   - `groupableRequests(db: Db, actor: Actor, now: Date = new Date()): Promise<WireBuyRow[]>`
   - `moveGroupLine(db: Db, actor: Actor, input: { prId: string; lineIdx: number; toGroupId: string | null }, now: Date = new Date()): Promise<{ …`
+- `buyer-agent.ts`
+  - `AGENT_TOOLS`
+  - `BUYER_AGENT: Actor`
+  - `PROPOSAL_CAP_PER_DEPARTMENT`
+  - `agentProposals(db: Db, actor: Actor, filter: { kind?: StoresAgentProposalKind; status?: StoresAgentProposalStatus } = {}, now: Date = new D…`
+  - `confirmGroupingProposal(db: Db, actor: Actor, proposalId: string, now: Date = new Date()): Promise<{ group: WireBuyGroup; actId: string }>`
+  - `confirmPoDraft(db: Db, actor: Actor, proposalId: string, input: { reason?: string | null }, now: Date = new Date()): Promise<{ pos: PoView[…`
+  - `confirmRfqDraft(db: Db, actor: Actor, proposalId: string, input: { vendorIds: string[]; replyBy?: Date | null; deliveryDate?: string | null…`
+  - `dismissProposal(db: Db, actor: Actor, proposalId: string, reason: string | null, now: Date = new Date()): Promise<WireAgentProposal>`
+  - `draftPo(db: Db, actor: Actor, groupId: string, now: Date = new Date()): Promise<WireAgentProposal>`
+  - `draftRfq(db: Db, actor: Actor, groupId: string, now: Date = new Date()): Promise<WireAgentProposal>`
+  - `getProposal(db: Db | Tx, id: string, now: Date = new Date()): Promise<WireAgentProposal>`
+  - `raiseCentralShortfall(db: Db, now: Date): Promise<BuyerNightRun["shortfall"]>`
+  - `runBuyerNight(db: Db, now: Date = new Date()): Promise<BuyerNightRun>`
+  - types: `BuyerNightRun`
 - `buying-desk.ts`
   - `buyingDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<WireBuyingDesk>`
 - `chaser.ts`
@@ -168,7 +201,9 @@ Source: `apps/core/src/modules/stores/`
 - `desk.ts`
   - `STORES_DESK_PROVIDERS`
   - `storesApproveDesk: DeskProvider`
+  - `storesAwardSignDesk: DeskProvider`
   - `storesPickDesk: DeskProvider`
+  - `storesPurchaseApproveDesk: DeskProvider`
   - `storesReceiveDesk: DeskProvider`
   - `storesStuckDesk: DeskProvider`
   - `storesTakeBackDesk: DeskProvider`
@@ -218,6 +253,8 @@ Source: `apps/core/src/modules/stores/`
   - `updateStoresItem(db: Db, actor: Actor, itemId: string, patch: { categoryId?: string; trackMode?: TrackMode; searchAliases?: string[] }, rea…`
 - `manifest.ts`
   - `storesManifest: ModuleManifest`
+- `pdf-text.ts`
+  - `pdfPages(bytes: Buffer): PdfPage[]`
 - `purchase-delivery.ts`
   - `purchaseDeliveries(db: Db | Tx, prId: string): Promise<{ lineIdx: number; qtyBase: number; indentId: string; grnId: string; at: string }[]>`
 - `purchase-requests.ts`
@@ -229,9 +266,15 @@ Source: `apps/core/src/modules/stores/`
   - `getPurchaseRequest(db: Db | Tx, prId: string, now: Date = new Date()): Promise<WirePurchaseRequest>`
   - `myPurchaseRequests(db: Db, actor: Actor, now: Date = new Date()): Promise<WirePurchaseRequest[]>`
   - `purchaseRequestsToApprove(db: Db, actor: Actor, now: Date = new Date()): Promise<WirePurchaseRequest[]>`
-  - `raisePurchaseRequest(db: Db, actor: Actor, input: RaisePurchaseRequestInput, now: Date = new Date()): Promise<WirePurchaseRequest>`
+  - `raisePurchaseRequest(db: Db, actor: Actor, input: RaisePurchaseRequestInput, now: Date = new Date(), opts: { agent?: boolean } = {}): Promi…`
   - `setPurchaseRequestBand(db: Db, actor: Actor, prId: string, band: StoresBand, reason: string, now: Date = new Date()): Promise<WirePurchaseR…`
   - types: `PurchaseRequestLineInput`, `RaisePurchaseRequestInput`
+- `quote-reader.ts`
+  - `QUOTE_READ_INTENT`
+  - `confirmQuoteLine(db: Db, actor: Actor, proposalId: string, input: { lineIdx: number; drop?: boolean; ratePaise?: number | null; discountBps…`
+  - `readByRules(pages: readonly PdfPage[], asked: readonly Asked[]): QuoteReadLine[]`
+  - `readQuotePdf(db: Db, deps: QuoteReadDeps, actor: Actor, input: { rfqId?: string | null; groupId?: string | null; vendorId: string; pdf: Buf…`
+  - types: `QuoteReadDeps`
 - `quotes.ts`
   - `admitLateQuote(db: Db, actor: Actor, quoteId: string, reason: string, now: Date = new Date()): Promise<WireQuote>`
   - `enterQuote(db: Db, actor: Actor, input: EnterQuoteInput, now: Date = new Date()): Promise<WireQuote>`
@@ -256,6 +299,10 @@ Source: `apps/core/src/modules/stores/`
   - `listRfqs(db: Db, actor: Actor, now: Date = new Date()): Promise<WireRfq[]>`
   - `moveReplyBy(db: Db, actor: Actor, rfqId: string, replyBy: Date, reason: string, now: Date = new Date()): Promise<WireRfq>`
   - `sendRfq(db: Db, actor: Actor, rfqId: string, input: { channel: StoresRfqChannel }, now: Date = new Date()): Promise<WireRfq>`
+- `scorecard.ts`
+  - `quarterBounds(quarter: string): { from: string; to: string }`
+  - `quarterOf(now: Date): string`
+  - `supplierScorecard(db: Db, actor: Actor, vendorId: string, quarter: string, now: Date = new Date()): Promise<WireSupplierScorecard>`
 - `shelves.ts`
   - `createShelf(db: Db, actor: Actor, input: { code: string; name: string; floorId: string; departmentId: string; suppliedBy: string }, now: Da…`
   - `createStoresStore(db: Db, actor: Actor, input: { code: string; name: string; kind: "central" | "sub" | "night"; parentId?: string | null; t…`
@@ -333,13 +380,14 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_award_lines`, `stores_award_signatures`, `stores_awards`, `stores_buy_group_moves`, `stores_buy_groups`, `stores_client_keys`, `stores_committee_seats`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_over_budget_marks`, `stores_picking_claims`, `stores_pr_band_settings`, `stores_pr_deliveries`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_quote_admissions`, `stores_quote_lines`, `stores_quote_technical`, `stores_quotes`, `stores_rfq_invitees`, `stores_rfq_lines`, `stores_rfq_steps`, `stores_rfqs`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
+`stores_agent_proposal_steps`, `stores_agent_proposals`, `stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_award_lines`, `stores_award_signatures`, `stores_awards`, `stores_buy_exception_steps`, `stores_buy_exceptions`, `stores_buy_group_moves`, `stores_buy_groups`, `stores_client_keys`, `stores_committee_seats`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_over_budget_marks`, `stores_picking_claims`, `stores_po_advance_steps`, `stores_po_advances`, `stores_pr_band_settings`, `stores_pr_deliveries`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_quote_admissions`, `stores_quote_lines`, `stores_quote_technical`, `stores_quotes`, `stores_rfq_invitees`, `stores_rfq_lines`, `stores_rfq_steps`, `stores_rfqs`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
 
 Foreign keys into: `materials`, `org`, `resources`
 
 ## HTTP routes
 
 - `assets.controller.ts` — `/stores/assets`
+- `buyer-agent.controller.ts` — `/stores/agent`, `/stores/budgets`, `/stores/buying`, `/stores/quotes`, `/stores/suppliers`
 - `buying-desk.controller.ts` — `/stores/awards`, `/stores/buying`, `/stores/committee`, `/stores/quotes`, `/stores/rfqs`
 - `buying.controller.ts` — `/stores/budgets`, `/stores/buy`, `/stores/delegations`, `/stores/grns`, `/stores/purchase-requests`, `/stores/suppliers`
 - `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/tower`, `/stores/transit-losses`, `/stores/who-to-ask`

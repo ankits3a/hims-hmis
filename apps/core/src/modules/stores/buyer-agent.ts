@@ -418,7 +418,8 @@ export async function runBuyerNight(db: Db, now: Date = new Date()): Promise<Buy
     const vendorName = b.vendorId === null ? null : (vnames.get(b.vendorId)?.name ?? null);
     written.push({
       id: newId(), departmentIds: kept,
-      payload: { label: `${b.categoryName ?? "Uncategorised"} · ${vendorName ?? "Any supplier"}`, categoryId: b.categoryId, categoryName: b.categoryName, vendorId: b.vendorId, vendorName, lines: refs },
+      // Names only (data): the screen says "Any supplier" in the reader's language when no supplier is likely.
+      payload: { label: [b.categoryName ?? "—", vendorName].filter((x): x is string => x !== null).join(" · "), categoryId: b.categoryId, categoryName: b.categoryName, vendorId: b.vendorId, vendorName, lines: refs },
     });
   }
   {
