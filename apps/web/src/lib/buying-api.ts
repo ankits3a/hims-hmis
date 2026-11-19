@@ -53,3 +53,26 @@ export const setSupplierFields = (vendorId: string, body: { msmeActivity?: "make
   api("POST", `/stores/suppliers/${enc(vendorId)}/fields`, body);
 export const approveSupplierCategory = (vendorId: string, categoryId: string): Promise<{ ok: true }> =>
   api("POST", `/stores/suppliers/${enc(vendorId)}/categories`, { categoryId });
+
+/* ─────────────── STORES S5b (#1115): the buying desk by hand (`buying-desk.controller.ts`) ─────────────── */
+export const buyingDesk = (): Promise<import("@hmis/contracts").WireBuyingDesk> => api("GET", "/stores/buying/desk");
+export const groupLines = (lines: { prId: string; lineIdx: number }[]): Promise<import("@hmis/contracts").WireBuyGroup> =>
+  api("POST", "/stores/buying/groups", { lines });
+export const moveLine = (body: { prId: string; lineIdx: number; toGroupId: string | null }): Promise<unknown> => api("POST", "/stores/buying/groups/move", body);
+export const poFromGroup = (groupId: string, reason: string | null): Promise<unknown> => api("POST", `/stores/buying/groups/${enc(groupId)}/po`, { reason });
+export const makeRfq = (body: { groupId: string; replyBy: string; deliveryDate?: string | null; vendorIds: string[] }): Promise<import("@hmis/contracts").WireRfq> =>
+  api("POST", "/stores/rfqs", body);
+export const sendRfq = (rfqId: string, channel: "email" | "print" | "hand"): Promise<import("@hmis/contracts").WireRfq> =>
+  api("POST", `/stores/rfqs/${enc(rfqId)}/send`, { channel });
+export const comparative = (rfqId: string): Promise<import("@hmis/contracts").WireComparative> => api("GET", `/stores/rfqs/${enc(rfqId)}/comparative`);
+export const enterQuote = (body: { rfqId?: string; groupId?: string; vendorId: string; supplierRef?: string | null; lines: { itemId: string; ratePaise: number; discountBps?: number; gstRateBps?: number }[]; freightPaise?: number; otherPaise?: number }): Promise<unknown> =>
+  api("POST", "/stores/quotes", body);
+export const proposeAward = (body: { rfqId: string; vendorId: string; reason?: string | null }): Promise<import("@hmis/contracts").WireAward> => api("POST", "/stores/awards", body);
+export const getAward = (id: string): Promise<import("@hmis/contracts").WireAward> => api("GET", `/stores/awards/${enc(id)}`);
+export const approveAward = (id: string): Promise<import("@hmis/contracts").WireAward> => api("POST", `/stores/awards/${enc(id)}/approve`);
+export const objectAward = (id: string, reason: string): Promise<import("@hmis/contracts").WireAward> => api("POST", `/stores/awards/${enc(id)}/object`, { reason });
+export const poFromAward = (id: string): Promise<unknown> => api("POST", `/stores/awards/${enc(id)}/po`);
+export const submitPo = (id: string): Promise<unknown> => api("POST", `/stores/buying/pos/${enc(id)}/submit`);
+export const sendPo = (id: string): Promise<unknown> => api("POST", `/stores/buying/pos/${enc(id)}/send`);
+export const poSheet = (id: string): Promise<import("@hmis/contracts").WireStoresPoSheet> => api("GET", `/stores/buying/pos/${enc(id)}`);
+export const approvePoSheet = (id: string): Promise<import("@hmis/contracts").WireStoresPoSheet> => api("POST", `/stores/buying/pos/${enc(id)}/approve`);

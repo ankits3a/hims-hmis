@@ -99,7 +99,10 @@ export async function computeComparative(db: Db | Tx, rfq: RfqRow, now: Date): P
   const order = (s: { wholeRank: number | null; totals: { landedPaise: number } }): number => (s.wholeRank ?? 1_000) * 1e13 + s.totals.landedPaise;
   return {
     ...base, reinvite: rfq.band !== "A" && ranked.length < 3, codes: new Map([...codes].map(([k, v]) => [k, v.code])),
-    suppliers: suppliers.sort((a, b) => order(a) - order(b)).map(({ inRanks: _i, quotedAll: _q, ...s }) => s), lines,
+    suppliers: suppliers.sort((a, b) => order(a) - order(b)).map((s): WireCmpSupplier => ({
+      vendorId: s.vendorId, name: s.name, quoteId: s.quoteId, version: s.version, kind: s.kind, late: s.late, admitted: s.admitted, technical: s.technical,
+      wholeRank: s.wholeRank, paymentTermsDays: s.paymentTermsDays, deliveryDays: s.deliveryDays, warrantyMonths: s.warrantyMonths, totals: s.totals,
+    })), lines,
   };
 }
 
@@ -118,6 +121,7 @@ export async function requireBuyingReader(db: Db | Tx, actor: Actor, groupId: st
 export async function comparativeStatement(db: Db, actor: Actor, rfqId: string, now: Date = new Date()): Promise<WireComparative> {
   const rfq = await requireRfq(db, rfqId);
   await requireBuyingReader(db, actor, rfq.groupId);
-  const { codes: _c, ...wire } = await computeComparative(db, rfq, now);
-  return wire;
+  const full: Partial<CmpFull> = await computeComparative(db, rfq, now);
+  delete full.codes;
+  return full as WireComparative;
 }
