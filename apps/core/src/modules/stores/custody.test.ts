@@ -20,6 +20,7 @@ import {
   StoresError, addToOpenTicket, confirmLateScan, myCustody, openTicketFor, postTransitLoss, registerStoresPrinting, acceptReturn, approveTicket, claimPicking, createShelf, declineTicket, deliverTicket, departmentChargeOn, getTicket, handOver,
   issueTicket, lateScansToConfirm, listCategories, openStore, raiseReturn, raiseTicket, reAskShort, receiveReturn, registerStoresItem,
   resolveShort, returnUndelivered, seedStoresMasters, takeCustody, takeOverCustody, ticketTimeline, ticketsToPick, ticketsToReceive,
+  custodyLookup, storesTakeBackDesk, ticketsComingBack,
 } from "./index";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -215,5 +216,36 @@ describe("Stores S2b: the paths beside the done-means", () => {
     expect(await refusal(takeCustody(db, porterB.actor, { code: "9999" }, at(6)))).toBe("unknown_ticket");
     expect(await refusal(resolveShort(db, head.actor, t.id, { lineIdx: 0, resolution: "found" }, at(7)))).toBe("nothing_short");
     expect(await refusal(acceptReturn(db, keeperA.actor, t.id, at(7)))).toBe("nothing_to_return");
+  });
+  it("the porter's lookup names whose hands the label is in, so nobody types an id: the store's keeper, then the porter", async () => {
+    const t = await issued();
+    const atStore = await custodyLookup(db, porterA.actor, t.indentNo.slice(-4), at(4));
+    expect(atStore).toMatchObject({ act: "take", holder: { id: keeperA.id }, ticket: { id: t.id } });
+    await takeCustody(db, porterA.actor, { code: t.indentNo }, at(5));
+    const onTheWay = await custodyLookup(db, porterB.actor, t.indentNo, at(6));
+    expect(onTheWay).toMatchObject({ act: "hand_over", holder: { id: porterA.id } });
+    expect(onTheWay.holder.name).not.toBe(porterA.id);
+    await handOver(db, porterB.actor, { code: t.indentNo, fromUserId: onTheWay.holder.id }, at(7));
+    expect((await myCustody(db, porterB.actor, at(8))).map((r) => r.ticket.id)).toEqual([t.id]);
+    expect(await refusal(custodyLookup(db, porterB.actor, t.indentNo, at(8)))).toBe("already_yours");
+    expect(await refusal(custodyLookup(db, inA.actor, t.indentNo, at(8)))).toBe("not_permitted");
+    expect(await refusal(custodyLookup(db, porterC.actor, "9999", at(8)))).toBe("unknown_ticket");
+  });
+
+  it("the keeper's take-back list: a ticket coming back undelivered, one tap to accept; the Now card counts it with the late scans", async () => {
+    const t = await issued();
+    await takeCustody(db, porterA.actor, { code: t.indentNo, scannedAt: at(5).toISOString() }, at(5 + 13 * 60));
+    await returnUndelivered(db, porterA.actor, t.id, {}, at(5 + 13 * 60 + 1));
+    const later = at(5 + 13 * 60 + 2);
+    expect((await ticketsComingBack(db, keeperB.actor, later)).map((x) => x.id)).toEqual([t.id]);
+    expect(await ticketsComingBack(db, inA.actor, later)).toEqual([]);
+    const ctx = { db, actor: keeperB.actor, reader: keeperB.actor, date: DAY, now: later } as unknown as Parameters<typeof storesTakeBackDesk.load>[0];
+    const [card] = await storesTakeBackDesk.load(ctx);
+    expect(card).toMatchObject({ key: "stores.back", titleKey: "stores.now.toTakeBack", stats: [{ key: "count", value: "2", href: "/stores/pick" }] });
+    await acceptReturn(db, keeperB.actor, t.id, later);
+    expect(await ticketsComingBack(db, keeperB.actor, later)).toEqual([]);
+    const [late] = await lateScansToConfirm(db, keeperB.actor);
+    await confirmLateScan(db, keeperB.actor, late!.handoffId, later);
+    expect(await storesTakeBackDesk.load(ctx)).toEqual([]);
   });
 });
