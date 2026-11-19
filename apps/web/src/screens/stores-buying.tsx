@@ -39,7 +39,7 @@ const row: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8
 const cut: React.CSSProperties = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const th: React.CSSProperties = { textAlign: "left", padding: "4px 6px", borderBottom: "2px solid var(--ink, #222)", fontSize: 13, ...cut };
 const td: React.CSSProperties = { padding: "4px 6px", borderBottom: "1px solid var(--rule, #e3e3e3)", fontSize: 13, ...cut };
-const input: React.CSSProperties = { minHeight: 36, minWidth: 0 };
+const input: React.CSSProperties = { minHeight: 40, minWidth: 0, boxSizing: "border-box" };
 
 const money = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const rupeesToPaise = (s: string): number => Math.round(Number(s) * 100);
@@ -163,8 +163,9 @@ function Grouping({ desk }: { desk: WireBuyingDesk }): React.ReactElement {
   const key = (prId: string, lineIdx: number): string => `${prId}:${String(lineIdx)}`;
   const lines = desk.groupable.flatMap((r) => r.lines.map((l) => ({ r, l })));
   const open = desk.groups.filter((g) => g.awardId === null);
+  const narrow = typeof window !== "undefined" && window.innerWidth < 900;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)", gap: 16 }}>
+    <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 2fr)", gap: 16 }}>
       <section style={{ minWidth: 0 }}>
         <h2 style={{ fontSize: 16, margin: "4px 0" }}>{t("stores.buying.toGroup")}</h2>
         {lines.length === 0 && <p>{t("stores.buying.empty")}</p>}
@@ -172,7 +173,7 @@ function Grouping({ desk }: { desk: WireBuyingDesk }): React.ReactElement {
           <label key={key(l.prId, l.lineIdx)} style={row}>
             <input type="checkbox" checked={ticked.includes(key(l.prId, l.lineIdx))}
               onChange={(e) => setTicked(e.target.checked ? [...ticked, key(l.prId, l.lineIdx)] : ticked.filter((x) => x !== key(l.prId, l.lineIdx)))} />
-            <span style={{ ...cut, flex: 1 }}>{l.itemName} × {l.qtyBase}</span>
+            <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{l.itemName} × {l.qtyBase}</span>
             <span>{r.prNo}</span>
             <Band band={r.band} />
           </label>
@@ -216,7 +217,7 @@ function GroupCard({ g }: { g: WireBuyGroup }): React.ReactElement {
       </div>
       {g.lines.map((l) => (
         <div key={`${l.prId}:${String(l.lineIdx)}`} style={row}>
-          <span style={{ ...cut, flex: 1 }}>{l.itemName} × {l.qtyBase} {l.baseUom}</span>
+          <span style={{ flex: "1 1 12em", minWidth: 0, overflowWrap: "anywhere" }}>{l.itemName} × {l.qtyBase} {l.baseUom}</span>
           <span>{money(l.estimatePaise)}</span>
           {g.rfqId === null && (
             <button type="button" style={btn} disabled={act.busy}
@@ -525,7 +526,12 @@ const kv: React.CSSProperties = { display: "flex", justifyContent: "space-betwee
 const big: React.CSSProperties = { ...primary, minHeight: 52, width: "100%", fontSize: 18 };
 
 function Kv({ k, v }: { k: string; v: React.ReactNode }): React.ReactElement {
-  return <div style={kv}><span style={{ color: "var(--muted, #555)", flexShrink: 0 }}>{k}</span><span style={{ ...cut, fontWeight: 600, textAlign: "right" }}>{v}</span></div>;
+  return (
+    <div style={kv}>
+      <span style={{ flexShrink: 0, opacity: 0.72 }}>{k}</span>
+      <span style={{ minWidth: 0, fontWeight: 600, textAlign: "right", overflowWrap: "anywhere" }}>{v}</span>
+    </div>
+  );
 }
 
 function AwardSheet({ id }: { id: string }): React.ReactElement {
