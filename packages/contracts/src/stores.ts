@@ -505,6 +505,8 @@ export type WirePurchaseRequest = {
 };
 export type WireDepartmentBudget = {
   departmentId: string; month: string; budgetPaise: number | null; spentPaise: number; pct: number | null;
+  /** S5c (decision 15): the part of `spentPaise` that is Stores POs ordered for the department's requests and not yet delivered. */
+  committedPaise: number;
   /** Equipment is budgeted apart (decision 15): band C equipment requests approved in the month. */
   equipment: { requests: { prId: string; prNo: string; estimatePaise: number }[] };
 };
@@ -621,10 +623,14 @@ export type WireStoresPoSheet = {
   reason: string | null; awardId: string | null; awardStatus: StoresAwardStatus | null;
   /** The reader holds this PO's tier; `canApproveBoth`: also the award's approval, so one tap writes both stamps. */
   canApprove: boolean; canApproveBoth: boolean;
+  /** S5c (decision 11): "Pay after GRN", or the owner-approved advance on an equipment PO; the advance row when there is one. */
+  payTerms: WirePayTerms; advance: WirePoAdvance | null;
 };
 export type WireBuyingDesk = {
   can: { buy: boolean; approveAward: boolean; owner: boolean };
   buyNow: WireBuyRow[]; groupable: WireBuyRow[]; groups: WireBuyGroup[]; rfqs: WireRfq[]; awards: WireAward[]; pos: WireStoresPoRow[];
+  /** S5c: the agent's open drafts (night grouping, RFQ and PO drafts, quotes read from PDFs) and the single-source / emergency purchases. */
+  proposals: WireAgentProposal[]; exceptions: WireBuyException[];
 };
 const lineRef = z.object({ prId: id, lineIdx: z.number().int().min(0).max(100) });
 export const storesGroupBody = z.object({ lines: z.array(lineRef).min(1).max(100), label: z.string().trim().max(80).nullish() });
@@ -656,3 +662,83 @@ export const storesSeatBody = z.object({
   seat: z.enum(["materials_head", "accounts_head", "medical_superintendent", "biomedical"]), userId: id, from: z.string().datetime(), to: z.string().datetime().nullish(),
 });
 export const storesBulkBody = z.object({ kind: z.enum(["po", "pr", "award"]), ids: z.array(id).min(1).max(50) });
+
+/* ═══════════════════════════ STORES S5c (#1115): the buyer agent, the scorecard, exceptions, advances ═══════════════════════════ */
+
+export type StoresAgentProposalKind = "grouping" | "rfq_draft" | "quote_read" | "po_draft";
+export type StoresAgentProposalStatus = "open" | "confirmed" | "dismissed" | "superseded";
+/**
+ * One line of an agent's draft. A grouping or PO draft names request lines (`prId`, `lineIdx`); a quote read names the
+ * RFQ's items, each number with the page and the line of the PDF it was read from (`source`; null = not found, typed by
+ * the buyer). `state`: still a draft, or what the person did with it.
+ */
+export type WireAgentLine = {
+  lineIdx: number; prId: string | null; itemId: string; itemName: string; qtyBase: number; baseUom: string; estimatePaise: number | null;
+  vendorId: string | null; ratePaise: number | null; discountBps: number | null; gstRateBps: number | null;
+  source: { page: number; text: string } | null; state: "draft" | "confirmed" | "dropped";
+};
+export type WireAgentSupplier = {
+  vendorId: string; name: string; kyc: StoresKycLevel; missing: string[]; approvedForCategory: boolean; score: number | null; suppliedBefore: boolean; suggested: boolean;
+};
+export type WireAgentProposal = {
+  id: string; kind: StoresAgentProposalKind; status: StoresAgentProposalStatus; madeAt: string; byAgent: boolean;
+  label: string | null; band: StoresBand | null; estimatePaise: number | null;
+  departments: { id: string | null; name: string }[];
+  groupId: string | null; rfqId: string | null; vendorId: string | null; vendorName: string | null;
+  lines: WireAgentLine[];
+  /** RFQ draft: the suppliers it suggests, best first; reply-by and delivery date it proposes. */
+  suppliers: WireAgentSupplier[]; replyBy: string | null; deliveryDate: string | null;
+  /** Quote read: whether the PDF had readable text, and which reader read it (`model` or the rules when the model is off). */
+  readable: boolean | null; reader: "model" | "rules" | null; hasDocument: boolean;
+  closed: { kind: StoresAgentProposalStatus; by: StoresPerson; at: string; resultRowId: string | null } | null;
+};
+export type WireShare = { num: number; den: number };
+export type WireSupplierScorecard = {
+  vendorId: string; name: string; quarter: string; from: string; to: string;
+  onTime: WireShare; fill: WireShare; rejected: WireShare; priceDriftBps: number | null; rfqResponse: WireShare;
+  /** For ordering only (suggestions, ties); never a grade on screen. */
+  score: number | null;
+};
+export type StoresBuyExceptionKind = "single_source" | "emergency";
+export type StoresBuyExceptionStatus = "waiting_certificate" | "waiting_approval" | "approved" | "confirmed" | "overdue" | "refused";
+export type WireBuyException = {
+  id: string; kind: StoresBuyExceptionKind; groupId: string; vendorId: string; vendorName: string; reason: string; valuePaise: number;
+  needsOwner: boolean; status: StoresBuyExceptionStatus; raisedBy: StoresPerson; raisedAt: string;
+  steps: { kind: "certified" | "approved" | "confirmed" | "refused"; asRole: string; by: StoresPerson; at: string; reason: string | null }[];
+  /** Emergency: the owner confirms by this instant (approval + 72 h). */
+  confirmBy: string | null;
+  /** What the reader may do now. */
+  mine: "certify" | "approve" | "confirm" | null;
+};
+export type StoresAdvanceStatus = "requested" | "approved" | "refused";
+export type WirePoAdvance = {
+  id: string; poId: string; pctBps: number; amountPaise: number; guaranteeNo: string; guaranteeBank: string; guaranteeValidTo: string; guaranteePaise: number;
+  status: StoresAdvanceStatus; requestedBy: StoresPerson; requestedAt: string; decidedBy: StoresPerson | null; decidedAt: string | null; reason: string | null;
+};
+/** Decision 11: derived, never stored. */
+export type WirePayTerms = { kind: "after_grn" } | { kind: "advance"; pctBps: number; amountPaise: number; advanceId: string };
+export type WireOverBudgetMonth = {
+  month: string;
+  departments: {
+    departmentId: string; code: string; name: string; budgetPaise: number; spentPaise: number; committedPaise: number; pct: number;
+    marks: { refType: "ticket" | "pr"; refId: string; no: string; at: string }[];
+  }[];
+};
+export const storesRfqDraftConfirmBody = z.object({
+  vendorIds: z.array(id).min(1).max(20), replyBy: z.string().datetime().nullish(), deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+});
+export const storesQuoteReadBody = z.object({
+  rfqId: id.nullish(), groupId: id.nullish(), vendorId: id, pdfBase64: z.string().min(8).max(990_000),
+});
+export const storesQuoteLineConfirmBody = z.object({
+  lineIdx: z.number().int().min(0).max(100), drop: z.boolean().optional(), ratePaise: z.number().int().min(0).max(1_000_000_000).nullish(),
+  discountBps: z.number().int().min(0).max(10_000).nullish(), gstRateBps: z.number().int().min(0).max(2_800).nullish(),
+});
+export const storesBuyExceptionBody = z.object({
+  kind: z.enum(["single_source", "emergency"]), groupId: id, vendorId: id, reason: z.string().trim().min(1).max(300),
+});
+export const storesAdvanceBody = z.object({
+  pctBps: z.number().int().min(1).max(3000), guaranteeNo: z.string().trim().min(1).max(60), guaranteeBank: z.string().trim().min(1).max(120),
+  guaranteeValidTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), guaranteePaise: z.number().int().min(1).max(100_000_000_000),
+});
+export const storesDecideBody = z.object({ approve: z.boolean(), reason: z.string().trim().max(300).nullish() });

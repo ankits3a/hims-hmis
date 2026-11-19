@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { StoresAssetsController } from "./assets.controller";
+import { StoresBuyerAgentController } from "./buyer-agent.controller";
 import { StoresBuyingController } from "./buying.controller";
 import { StoresBuyingDeskController } from "./buying-desk.controller";
 import { StoresController } from "./stores.controller";
@@ -15,7 +16,8 @@ import type { OnModuleInit } from "@nestjs/common";
   // S4a (#1114): `/stores/assets/*` is its own controller (the passport), declared before nothing else under /stores.
   // S5a (#1115): the buying desk's front (`buying.controller.ts`); its paths do not overlap the other two.
   // S5b (#1115): the buying desk by hand (`buying-desk.controller.ts`): groups, RFQs, quotes, awards, committee, POs from awards.
-  controllers: [StoresController, StoresAssetsController, StoresBuyingController, StoresBuyingDeskController],
+  // S5c (#1115): the buyer agent's drafts, the quote PDF reader, the scorecard, exceptions, advances (`buyer-agent.controller.ts`).
+  controllers: [StoresController, StoresAssetsController, StoresBuyingController, StoresBuyingDeskController, StoresBuyerAgentController],
 })
 export class StoresModule implements OnModuleInit {
   onModuleInit(): void {

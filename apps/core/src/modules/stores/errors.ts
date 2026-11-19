@@ -154,6 +154,22 @@ export const STORES_ERROR_CODES = [
   "already_ordered",
   "bulk_not_allowed",
   "unknown_po",
+  // S5c (#1115): the buyer agent's drafts, the PDF reader, single-source and emergency purchases, equipment advances.
+  "unknown_proposal",
+  "proposal_closed",
+  "state_changed",
+  "agent_paused",
+  "not_a_pdf",
+  "unknown_exception",
+  "exception_closed",
+  "exception_not_needed",
+  "already_requested",
+  "advance_not_allowed",
+  "advance_over_limit",
+  "guarantee_short",
+  "guarantee_expired",
+  "unknown_advance",
+  "not_stores_po",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -310,6 +326,21 @@ const STATUS: Record<StoresErrorCode, number> = {
   already_ordered: 409,
   bulk_not_allowed: 422,
   unknown_po: 404,
+  unknown_proposal: 404,
+  proposal_closed: 409,
+  state_changed: 409,
+  agent_paused: 409,
+  not_a_pdf: 422,
+  unknown_exception: 404,
+  exception_closed: 409,
+  exception_not_needed: 422,
+  already_requested: 409,
+  advance_not_allowed: 422,
+  advance_over_limit: 422,
+  guarantee_short: 422,
+  guarantee_expired: 422,
+  unknown_advance: 404,
+  not_stores_po: 422,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

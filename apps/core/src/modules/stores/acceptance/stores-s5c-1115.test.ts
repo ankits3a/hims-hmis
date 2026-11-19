@@ -209,7 +209,7 @@ describe("Stores S5c: the buyer agent's drafts and the supplier scorecard (spec 
     const rChair = await deptPr([{ itemId: chair, qtyBase: 2, estimatePaise: 400_000 }], 0);
     const rPrinter = await deptPr([{ itemId: printer, qtyBase: 1, estimatePaise: 1_000_000 }], 10);
     const rGloves = await deptPr([{ itemId: gloves, qtyBase: 50, estimatePaise: 4_000 }], 20);
-    const rMonitor = await deptPr([{ itemId: monitor, qtyBase: 1, estimatePaise: 900_000, answers: ANSWERS }], 30);
+    const rMonitor = await deptPr([{ itemId: monitor, qtyBase: 1, estimatePaise: 900_000, equipment: ANSWERS }], 30);
     // An urgent table (same category as the chair) and an emergency printer: never grouped, never held.
     const urgent = await deptPr([{ itemId: table, qtyBase: 1, estimatePaise: 300_000 }], 40, "urgent");
     const emergency = await deptPr([{ itemId: printer, qtyBase: 1, estimatePaise: 1_000_000 }], 50, "emergency");
@@ -224,7 +224,7 @@ describe("Stores S5c: the buyer agent's drafts and the supplier scorecard (spec 
     const held = open.flatMap((p) => p.lines.map((l) => l.prId));
     expect(held).not.toContain(urgent.id);
     expect(held).not.toContain(emergency.id);
-    expect(held.every((id) => [rChair.id, rPrinter.id, rGloves.id, rMonitor.id].includes(id))).toBe(true);
+    expect(held.every((id) => id !== null && [rChair.id, rPrinter.id, rGloves.id, rMonitor.id].includes(id))).toBe(true);
     expect(run.capped.map((c) => c.departmentId)).toContain(deptA.id);
     // Nothing is sent, ordered, awarded or even grouped by the run: the preview is a draft.
     expect(await buyingRows()).toEqual(before);

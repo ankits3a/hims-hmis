@@ -8,6 +8,7 @@ import { notifyOverdueGatePasses } from "./gate-pass";
 import { runLossProposals, settleCondemnations } from "./condemnation";
 import { approversToTell, notify } from "./tickets";
 import { sweepBudgetWarnings } from "./budgets";
+import { runBuyerNightIfDue } from "./buyer-agent";
 import { CLOCKS, boardCards } from "./tower";
 import type { BoardCard } from "./tower";
 import type { Db } from "../../kernel/db/client";
@@ -42,7 +43,8 @@ export const CHASER_WORDS = {
   leg: ["Leg over 30 min", "30 मिनट से ज़्यादा"],
 } as const;
 
-export type ChaserRun = { approval: number; pick: number; leg: number; passes: number; failed: number; /** S4 (#1114): asset reminders sent. */ assets?: number; /** S4b (#1114): condemnations settled, loss proposals made. */ condemnations?: number; losses?: number; /** S5a (#1115): budget warnings raised. */ budgets?: number };
+export type ChaserRun = { approval: number; pick: number; leg: number; passes: number; failed: number; /** S4 (#1114): asset reminders sent. */ assets?: number; /** S4b (#1114): condemnations settled, loss proposals made. */ condemnations?: number; losses?: number; /** S5a (#1115): budget warnings raised. */ budgets?: number;
+  /** S5c (#1115): the buyer agent's night, on the minute it ran. */ night?: { proposals: number; shortfallPr: string | null; halted: boolean } };
 
 const log = new Logger("stores-chaser");
 
@@ -122,6 +124,15 @@ export async function runStoresChaser(db: Db, now: Date = new Date()): Promise<C
   } catch (err) {
     run.failed += 1;
     log.error("stores chaser: the budget warnings failed", err instanceof Error ? err.stack : String(err));
+  }
+  try {
+    // S5c (#1115, decision 5): the buyer agent's night (22:00 IST: the owner's monthly over-budget list, the central
+    // shortfall request, the grouping preview), once per night; nothing on any other minute.
+    const night = await runBuyerNightIfDue(db, now);
+    if (night !== null) run.night = { proposals: night.proposals.length, shortfallPr: night.shortfall.prId, halted: night.halted };
+  } catch (err) {
+    run.failed += 1;
+    log.error("stores chaser: the buyer agent's night failed", err instanceof Error ? err.stack : String(err));
   }
   return run;
 }

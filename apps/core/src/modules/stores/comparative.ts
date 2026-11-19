@@ -4,6 +4,7 @@ import { STORES_AWARD_SIGN, STORES_BUYING_MANAGE, STORES_INDENTS_APPROVE, STORES
 import { apportion, ex, holdsRole, latestByVendor, lineMoney, rfqClock, vendorNames } from "./buying-common";
 import { StoresError } from "./errors";
 import { requireRfq } from "./rfq";
+import { quarterOf, scorecardFigures } from "./scorecard";
 import type { StoresBand, WireCmpLine, WireCmpSupplier, WireComparative } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -20,7 +21,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  * Ranks: L1/L2/L3 per line among the suppliers that quoted it, and on the whole among those that quoted every line. Out
  * of the ranks: a late quote not admitted by the materials head, and for equipment any supplier whose technical
  * compliance is not Yes from BOTH the user HOD and biomedical (a No needs a reason). Ties: fewer delivery days, then
- * the supplier code (edge case 3; the scorecard joins in S5c). Payment terms, delivery and warranty are shown, never
+ * the better scorecard (S5c), then the supplier code (edge case 3). Payment terms, delivery and warranty are shown, never
  * scored (DECIDED: humans judge).
  */
 type RfqRow = Awaited<ReturnType<typeof requireRfq>>;
@@ -86,8 +87,13 @@ export async function computeComparative(db: Db | Tx, rfq: RfqRow, now: Date): P
     });
   }
   const codes = await vendorNames(db, suppliers.map((s) => s.vendorId));
+  // Edge case 3: a tie goes to earlier delivery, then the better scorecard (S5c, read from rows; none sorts last), then the code.
+  const quarter = quarterOf(now);
+  const score = new Map<string, number>();
+  for (const s of suppliers) score.set(s.vendorId, (await scorecardFigures(db, s.vendorId, quarter)).score ?? -1);
   const tie = (a: { vendorId: string; deliveryDays: number | null }, b: { vendorId: string; deliveryDays: number | null }): number =>
-    (a.deliveryDays ?? 9_999) - (b.deliveryDays ?? 9_999) || (codes.get(a.vendorId)?.code ?? a.vendorId).localeCompare(codes.get(b.vendorId)?.code ?? b.vendorId);
+    (a.deliveryDays ?? 9_999) - (b.deliveryDays ?? 9_999) || (score.get(b.vendorId) ?? -1) - (score.get(a.vendorId) ?? -1)
+    || (codes.get(a.vendorId)?.code ?? a.vendorId).localeCompare(codes.get(b.vendorId)?.code ?? b.vendorId);
   const ranked = suppliers.filter((s) => s.inRanks);
   ranked.filter((s) => s.quotedAll).sort((a, b) => a.totals.landedPaise - b.totals.landedPaise || tie(a, b)).forEach((s, i) => { s.wholeRank = i + 1; });
   const lines: WireCmpLine[] = rfqLines.map((r) => {

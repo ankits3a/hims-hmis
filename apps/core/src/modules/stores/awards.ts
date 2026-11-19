@@ -3,7 +3,8 @@ import { newId } from "@hmis/contracts";
 import { raiseNotice } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import {
-  items, purchaseOrders, storesAwardLines, storesAwardSignatures, storesAwards, storesCommitteeSeats, storesPurchaseRequests, storesQuoteLines, storesRfqs,
+  items, purchaseOrders, storesAwardLines, storesAwardSignatures, storesAwards, storesCommitteeSeats, storesPurchaseRequests, storesQuoteLines, storesQuotes,
+  storesRfqs,
 } from "../../kernel/db/schema";
 import {
   contractRatesFor, createPurchaseOrder, decidePurchaseOrder, getPurchaseOrder, judgePrice, purchaseHistoryByItem, registerAwardPoGuard, sendPurchaseOrder,
@@ -11,10 +12,12 @@ import {
 } from "../materials";
 import { STORES_AWARD_SIGN, STORES_BUYING_MANAGE, STORES_INDENTS_APPROVE, STORES_MASTERS, holds, recordAct } from "./access";
 import { bulkApprovePurchaseRequests } from "./purchase-requests";
-import { bandFor, higherBand } from "./bands";
+import { BAND_B_MAX_PAISE, bandFor, higherBand } from "./bands";
+import { advanceOfPo, payTermsOf } from "./advances";
+import { approvedExceptionFor } from "./buy-exceptions";
 import { bandOfLines, requireGroup } from "./buy-groups";
 import {
-  byItem, centralStoreId, clean, ex, groupLines, holdsRole, lineMoney, peopleNamed, requireKycComplete, rfqClock, usersWithRole, vendorNames,
+  byItem, centralStoreId, clean, ex, groupLines, holdsRole, latestByVendor, lineMoney, peopleNamed, requireKycComplete, rfqClock, usersWithRole, vendorNames,
 } from "./buying-common";
 import { computeComparative } from "./comparative";
 import { seatDelegationFor, seatHolderAt } from "./delegations";
@@ -76,7 +79,8 @@ export async function requireAward(db: Db | Tx, awardId: string): Promise<AwardR
 function statusOf(a: AwardRow, sigs: readonly SigRow[]): StoresAwardStatus {
   const mine = sigs.filter((s) => s.awardId === a.id);
   if (mine.some((s) => s.kind === "object")) return "sent_back";
-  if (a.band === "A") return mine.some((s) => s.seat === "buyer") ? "approved" : "proposed";
+  // Band A, and (S5c) a single-source or emergency purchase approved beforehand: the award's only seat is the buyer's.
+  if (a.band === "A" || (a.seats.length === 1 && a.seats[0]!.seat === "buyer")) return mine.some((s) => s.seat === "buyer") ? "approved" : "proposed";
   if (a.band === "B") return mine.some((s) => s.seat === "materials_head" && s.kind === "approve") ? "approved" : "proposed";
   return a.seats.every((s) => mine.some((g) => g.seat === s.seat)) && mine.some((s) => s.seat === "owner") ? "approved" : "proposed";
 }
@@ -392,21 +396,30 @@ export async function listAwards(db: Db, actor: Actor, now: Date = new Date()): 
 
 // ═══════════════════════════════ band A: Make PO from a group ═══════════════════════════════
 
-export async function makePoFromGroup(db: Db, actor: Actor, groupId: string, input: { reason?: string | null } = {}, now: Date = new Date()): Promise<{ award: WireAward; pos: PoView[] }> {
+/**
+ * Band A's Make PO. S5c (#1115, ruling 0100 Q4): also a group of any band bought under an APPROVED single-source or
+ * emergency exception (`buy-exceptions.ts`) — the named supplier's one quote (typed or through its RFQ), the buyer's award,
+ * and a single-source total above ₹5 lakh that only the materials head approved refused (`band_changed`). `source:
+ * "agent"` when the buyer confirms the agent's PO draft.
+ */
+export async function makePoFromGroup(
+  db: Db, actor: Actor, groupId: string, input: { reason?: string | null; source?: "manual" | "agent" } = {}, now: Date = new Date(),
+): Promise<{ award: WireAward; pos: PoView[] }> {
   await requireBuyer(db, actor);
   await requireGroup(db, groupId);
+  const exc = await approvedExceptionFor(db, groupId, now);
   const [rfq] = await db.select({ id: storesRfqs.id }).from(storesRfqs).where(eq(storesRfqs.groupId, groupId));
-  if (rfq !== undefined) throw new StoresError("rfq_needed", "this group is quoted through its RFQ", { rfqId: rfq.id });
+  if (rfq !== undefined && exc === null) throw new StoresError("rfq_needed", "this group is quoted through its RFQ", { rfqId: rfq.id });
   const prior = await db.select().from(storesAwards).where(eq(storesAwards.groupId, groupId));
   const priorSigs = await sigsOf(db, prior.map((p) => p.id));
   if (prior.some((p) => statusOf(p, priorSigs) !== "sent_back")) throw new StoresError("already_ordered", "this group is already awarded");
   const glines = await groupLines(db, groupId);
   if (glines.length === 0) throw new StoresError("item_required", "the group has no lines");
   const { band } = await bandOfLines(db, glines, now);
-  if (band !== "A") throw new StoresError("rfq_needed", "three quotes are needed: make an RFQ", { band });
+  if (band !== "A" && exc === null) throw new StoresError("rfq_needed", "three quotes are needed: make an RFQ", { band });
   const asked = byItem(glines);
   const contracts = await contractRatesFor(db, asked.map((l) => l.itemId), now);
-  const quotes = await groupQuotes(db, groupId);
+  const quotes = exc === null ? await groupQuotes(db, groupId) : await exceptionQuote(db, groupId, exc.vendorId);
   const history = await purchaseHistoryByItem(db, asked.map((l) => l.itemId), 3);
   const reason = clean(input.reason);
   const drafts: AwardLineDraft[] = [];
@@ -429,14 +442,31 @@ export async function makePoFromGroup(db: Db, actor: Actor, groupId: string, inp
   if (needsReason && reason === null) throw new StoresError("reason_required", "the quote is more than 2 % above the last price: say why");
   for (const v of new Set(drafts.map((d) => d.vendorId))) await requireKycComplete(db, v, drafts.filter((d) => d.vendorId === v).map((d) => d.categoryId), now);
   const total = drafts.reduce((a, d) => a + d.landedPaise, 0);
-  if (bandFor(total, { equipment: asked.some((l) => l.equipment) }) !== "A") throw new StoresError("band_changed", "the quote lands above band A: make an RFQ", { totalPaise: total });
+  const equipment = asked.some((l) => l.equipment);
+  if (exc === null && bandFor(total, { equipment }) !== "A") throw new StoresError("band_changed", "the quote lands above band A: make an RFQ", { totalPaise: total });
+  if (exc !== null && exc.kind === "single_source" && !exc.needsOwner && total > BAND_B_MAX_PAISE) {
+    throw new StoresError("band_changed", "the quote lands above ₹5 lakh: the owner approves this single source", { totalPaise: total });
+  }
+  const awardBand: StoresBand = exc === null ? "A" : higherBand(band, bandFor(total, { equipment }));
+  const awardReason = exc === null ? reason : [`${exc.kind === "emergency" ? "Emergency" : "Single source"}: ${exc.reason}`, reason].filter((x) => x !== null).join(" · ");
   const id = newId();
   await withTx(db, async (tx) => {
-    await writeAward(tx, actor, { id, groupId, rfqId: null, band: "A", equipment: false, reason, total, seats: [{ seat: "buyer", userIds: [actor.id] }], replaces: null, drafts }, now);
+    await writeAward(tx, actor, {
+      id, groupId, rfqId: null, band: awardBand, equipment: exc === null ? false : equipment, reason: awardReason, total, seats: [{ seat: "buyer", userIds: [actor.id] }],
+      replaces: null, drafts,
+    }, now);
     await tx.insert(storesAwardSignatures).values({ id: newId(), awardId: id, seat: "buyer", kind: "approve", by: actor.id, at: now });
   });
-  const { pos } = await makePoFromAward(db, actor, id, {}, now);
+  const { pos } = await makePoFromAward(db, actor, id, { source: input.source ?? "manual" }, now);
   return { award: await getAward(db, id, now, actor), pos };
+}
+
+/** The exception's supplier's newest quote on the group (typed, or through the group's RFQ). */
+async function exceptionQuote(db: Db | Tx, groupId: string, vendorId: string): Promise<Awaited<ReturnType<typeof groupQuotes>>> {
+  const rows = await ex(db).select().from(storesQuotes).where(and(eq(storesQuotes.groupId, groupId), eq(storesQuotes.vendorId, vendorId)));
+  const q = latestByVendor(rows).get(vendorId);
+  if (q === undefined) return [];
+  return [{ quote: q, lines: await quoteLinesOf(db, [q.id]) }];
 }
 
 // ═══════════════════════════════ PO from award ═══════════════════════════════
@@ -586,6 +616,8 @@ export async function poSheet(db: Db, actor: Actor, poId: string, now: Date = ne
   return {
     poId: po.id, poNo: po.poNo, status: po.status, tier: po.approvalTier, totalPaise: po.totalPaise, vendorName: po.vendorName, band, rank, reason, awardId,
     awardStatus: awardSt, canApprove: can, canApproveBoth: can && both,
+    // S5c (decision 11): "Pay after GRN", or the owner-approved equipment advance; the advance row when there is one.
+    payTerms: await payTermsOf(db, po.id), advance: await advanceOfPo(db, po.id),
   };
 }
 
