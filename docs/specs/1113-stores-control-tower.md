@@ -1,6 +1,6 @@
 ---
 issue: 1113
-status: approved
+status: built
 approved: 2026-11-18
 ---
 # SPEC: Stores S3, the control tower, Now cards, concierge and chaser (#1113) — APPROVED by owner 2026-11-18

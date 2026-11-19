@@ -130,3 +130,4 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/stores/receive` | `apps/web/src/screens/stores-tickets` |
 | `/stores/shelf/$shelfId` | `apps/web/src/screens/stores-shelf` |
 | `/stores/tickets/$indentId` | `apps/web/src/screens/stores-tickets` |
+| `/stores/tower` | `apps/web/src/screens/stores-tower` |
