@@ -146,3 +146,11 @@ export {
   runRefillReminders, supplyDays,
 } from "./messages";
 export type { BillMessageState, MessagesOffice, PatientMessagesView, RefillLine, RefillRunResult } from "./messages";
+
+// ── #1063 — the weekly expiry action list: return, move, at risk, write off; the Monday 07:00 IST run ──
+export { EXPIRY_ACTIONS_IST } from "./config";
+export {
+  EXPIRY_RUN_ACTOR, expiryActionList, fefoLeftovers, lastScheduledExpiryRunAt, moveExpiryBatch, nextExpiryRunAt, runExpiryActionsNow,
+  runWeeklyExpiryActions,
+} from "./expiry-actions";
+export type { ExpiryActionGroup, ExpiryActionKind, ExpiryActionList, ExpiryActionRow, ExpiryRunResult, ExpiryRunState } from "./expiry-actions";

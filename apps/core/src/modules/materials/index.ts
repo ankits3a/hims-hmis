@@ -152,7 +152,10 @@ export {
   cancelSupplierReturn, cancelVendorCredit, closeSupplierReturn, createSupplierReturn, dispatchSupplierReturn, draftReturnFromRecall,
   draftSupplierReturns, expiryRange, expiryReport, getSupplierReturn, listStandaloneCredits, listSupplierReturns, planSupplierReturns,
   recordStandaloneCredit, recordVendorCredit, returnVerdict, returnWindowDays, returnableUntil, supplierKindOf, updateSupplierReturn,
+  // #1063 — the pharmacy's weekly expiry action list: its read and the run's one-draft-per-supplier writer.
+  expiryCandidates, topUpAgentReturns,
 } from "./supplier-returns";
+export type { AgentReturnLine, AgentReturnsResult, ExpiryCandidate } from "./supplier-returns";
 export type {
   CreditInput, DestroyCandidate, ExpiryPreset, ExpiryReport, ExpiryReportRow, ExpirySupplierRow, ReturnFilter, ReturnInput,
   ReturnLineInput, ReturnLineReason, ReturnLineView, ReturnPlan, ReturnPlanGroup, ReturnPlanLine, ReturnSource, ReturnStatus,

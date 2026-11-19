@@ -378,6 +378,19 @@ export const dispenseTakenOver = defineEvent("dispense.taken_over", MODULE, z.ob
 }));
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
+/**
+ * #1063 — the weekly expiry action list RAN (Monday 07:00 IST, or a person's Run now): what it checked, how the batches
+ * fell, and the supplier returns it drafted or added to. It IS the run's log — the page's "last run" and "batches
+ * checked" read the newest one — so nothing else records a run.
+ */
+const count = z.number().int().nonnegative();
+export const expiryActionsRan = defineEvent("expiry_actions.ran", MODULE, z.object({
+  trigger: z.enum(["schedule", "run_now"]), asOf: z.string(), batchesChecked: count,
+  groups: z.object({ return: count, move: count, at_risk: count, write_off: count, ndps: count }),
+  returnsCreated: count, returnsExtended: count, linesAdded: count, returnIds: z.array(id),
+  skipped: z.array(z.object({ vendorId: id, code: z.string() })),
+}));
+
 export const PHARMACY_EVENTS = [
   dispenseQueued, paperRxEntered, paperRxVisitOpened, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, lineAdded, shelfLocationSet,
   authorisationRequested, authorisationDecided,
@@ -392,4 +405,5 @@ export const PHARMACY_EVENTS = [
   pharmacySettingsChanged,
   saleItemDiscountSet,
   dispenseTakenOver,
+  expiryActionsRan,
 ] as const;

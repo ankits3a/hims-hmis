@@ -325,6 +325,7 @@ Source: `apps/core/src/modules/materials/`
   - `dispatchSupplierReturn(db: Db, actor: Actor, returnId: string, now: Date = new Date(), opts: { custody?: Custody } = {}): Promise<ReturnVie…`
   - `draftReturnFromRecall(db: Db, actor: Actor, recallId: string, now: Date = new Date(), opts: { hospitalStateCode?: string | null } = {}): Pr…`
   - `draftSupplierReturns(db: Db, actor: Actor, now: Date = new Date(), opts: { hospitalStateCode?: string | null; storeResourceId?: string | nu…`
+  - `expiryCandidates(db: Db | Tx, now: Date, opts: { storeResourceIds: readonly string[]; expiryTo: string }): Promise<ExpiryCandidate[]>`
   - `expiryRange(preset: ExpiryPreset, today: string, custom: { from?: string | null; to?: string | null } = {}): { from: string | null; to: str…`
   - `expiryReport(db: Db, actor: Actor, input: { preset: ExpiryPreset; from?: string | null; to?: string | null; storeResourceId?: string | null…`
   - `getSupplierReturn(db: Db, actor: Actor, returnId: string): Promise<ReturnView>`
@@ -337,8 +338,9 @@ Source: `apps/core/src/modules/materials/`
   - `returnWindowDays(vendor: { expiryReturnDays: number | null } | null): number`
   - `returnableUntil(expiryDate: string, windowDays: number): string`
   - `supplierKindOf(vendor: { code: string } | null): SupplierKind`
+  - `topUpAgentReturns(db: Db, actor: Actor, now: Date, input: { lines: readonly AgentReturnLine[]; hospitalStateCode?: string | null }): Promis…`
   - `updateSupplierReturn(db: Db, actor: Actor, returnId: string, patch: { lines?: ReturnLineInput[]; note?: string | null; interState?: boolean…`
-  - types: `CreditInput`, `DestroyCandidate`, `ExpiryPreset`, `ExpiryReport`, `ExpiryReportRow`, `ExpirySupplierRow`, `ReturnFilter`, `ReturnInput`, `ReturnLineInput`, `ReturnLineReason`, `ReturnLineView`, `ReturnPlan`, `ReturnPlanGroup`, `ReturnPlanLine`, `ReturnSource`, `ReturnStatus`, `ReturnSummary`, `ReturnVerdict`, `ReturnView`, `StandaloneCreditInput`, `StandaloneCreditKind`, `StandaloneCreditView`, `SupplierKind`
+  - types: `AgentReturnLine`, `AgentReturnsResult`, `CreditInput`, `DestroyCandidate`, `ExpiryCandidate`, `ExpiryPreset`, `ExpiryReport`, `ExpiryReportRow`, `ExpirySupplierRow`, `ReturnFilter`, `ReturnInput`, `ReturnLineInput`, `ReturnLineReason`, `ReturnLineView`, `ReturnPlan`, `ReturnPlanGroup`, `ReturnPlanLine`, `ReturnSource`, `ReturnStatus`, `ReturnSummary`, `ReturnVerdict`, `ReturnView`, `StandaloneCreditInput`, `StandaloneCreditKind`, `StandaloneCreditView`, `SupplierKind`
 - `transfers.ts`
   - `getTransfer(db: Db | Tx, transferId: string): Promise<TransferWithLines | undefined>`
   - `issueStock(tx: Tx, actor: Actor, input: { fromResourceId: string; toResourceId: string; lines: IssueLine[]; note?: string | null; occurredA…`
