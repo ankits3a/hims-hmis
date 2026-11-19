@@ -158,7 +158,8 @@ export const storesClientKeys = pgTable(
 export const storesScanConfirmations = pgTable(
   "stores_scan_confirmations",
   {
-    handoffId: text("handoff_id").primaryKey().references(() => storesCustodyHandoffs.id),
+    /** The confirmed scan: a hand-off's id, or a transfer's id for its delivery's scan (pre-merge review M1). No foreign key: either table. */
+    handoffId: text("handoff_id").primaryKey(),
     confirmedBy: text("confirmed_by").notNull(),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull(),
   },
@@ -184,9 +185,14 @@ export const storesDeliveryLines = pgTable(
     receivedBy: text("received_by").notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     atCounter: boolean("at_counter").notNull(),
+    /** The phone's time of the receipt scan, kept as evidence; `received_at` is the time the receipt counts at. */
+    phoneAt: timestamp("phone_at", { withTimezone: true }),
+    /** `late` or `future` when the phone's time was not used (decision 14): the source keeper confirms it. */
+    flag: text("flag"),
   },
   (t) => [
     index("stores_delivery_lines_indent_idx").on(t.indentId),
+    check("stores_delivery_lines_flag_ck", sql`${t.flag} is null or ${t.flag} in ('late', 'future')`),
     check("stores_delivery_lines_qty_ck", sql`${t.accepted} >= 0 and ${t.short} >= 0 and ${t.wrong} >= 0 and ${t.damaged} >= 0`),
   ],
 );

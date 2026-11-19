@@ -44,7 +44,7 @@ Source: `apps/core/src/modules/stores/`
   - `resolveShort(db: Db, actor: Actor, indentId: string, input: { lineIdx: number; resolution: ShortResolution; note?: string | null }, now: Da…`
   - `returnUndelivered(db: Db, actor: Actor, indentId: string, input: { clientKey?: string | null; scannedAt?: string | null } = {}, now: Date =…`
   - `returnsToReceive(db: Db, actor: Actor): Promise<ReturnTicketView[]>`
-  - `scanClock(scannedAt: string | Date | null | undefined, now: Date): { phoneAt: Date | null; occurredAt: Date; flag: ScanFlag | null }`
+  - `scanClock(scannedAt: string | Date | null | undefined, now: Date, floor: Date | null = null): { phoneAt: Date | null; occurredAt: Date; fla…`
   - `takeCustody(db: Db, actor: Actor, scan: ScanInput, now: Date = new Date()): Promise<CustodyResult>`
   - `takeOverCustody(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<CustodyResult>`
   - `ticketsComingBack(db: Db, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`

@@ -5,6 +5,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { MaterialsError } from "./errors";
 import { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";
 import { toHttp } from "./materials.controller";
+import { refuseStoresPlacesOnMaterialsRoute } from "./transfers";
 import type { IndentView } from "./indents";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -34,6 +35,16 @@ const issueBody = z.object({ lines: z.array(z.object({ lineIdx: z.number().int()
 export class MaterialsIndentsController {
   constructor(@Inject(DB) private readonly db: Db) {}
 
+  /**
+   * Pre-merge review S5 — a Stores ticket is a `store_indents` row too, but it is raised, approved, issued and
+   * cancelled through `/stores/tickets` (department grant, HOD stamp, picking claim, night store). These routes act
+   * on pharmacy indents only and refuse one whose stores are Stores places.
+   */
+  private async refuseStoresTicket(indentId: string): Promise<void> {
+    const indent = await getIndent(this.db, indentId);
+    if (indent !== undefined) await refuseStoresPlacesOnMaterialsRoute(this.db, [indent.from.id, indent.to.id]);
+  }
+
   @RequirePermission("materials.stock.read", "hospital")
   @Get()
   async list(@Query() query: unknown): Promise<{ indents: IndentView[] }> {
@@ -54,6 +65,7 @@ export class MaterialsIndentsController {
   async raise(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ indent: IndentView }> {
     const b = parsed(raiseBody, body);
     try {
+      await refuseStoresPlacesOnMaterialsRoute(this.db, [b.fromResourceId, b.toResourceId]);
       return { indent: await raiseIndent(this.db, actor, b) };
     } catch (e) { toHttp(e); }
   }
@@ -63,6 +75,7 @@ export class MaterialsIndentsController {
   async issue(@CurrentActor() actor: Actor, @Param("id") indentId: string, @Body() body: unknown): Promise<{ indent: IndentView }> {
     const b = parsed(issueBody, body ?? {});
     try {
+      await this.refuseStoresTicket(indentId);
       return { indent: await issueIndent(this.db, actor, indentId, b) };
     } catch (e) { toHttp(e); }
   }
@@ -72,6 +85,7 @@ export class MaterialsIndentsController {
   async reject(@CurrentActor() actor: Actor, @Param("id") indentId: string, @Body() body: unknown): Promise<{ indent: IndentView }> {
     const b = parsed(reasonBody, body);
     try {
+      await this.refuseStoresTicket(indentId);
       return { indent: await rejectIndent(this.db, actor, indentId, b.reason) };
     } catch (e) { toHttp(e); }
   }
@@ -81,6 +95,7 @@ export class MaterialsIndentsController {
   async cancel(@CurrentActor() actor: Actor, @Param("id") indentId: string, @Body() body: unknown): Promise<{ indent: IndentView }> {
     const b = parsed(reasonBody, body);
     try {
+      await this.refuseStoresTicket(indentId);
       return { indent: await cancelIndent(this.db, actor, indentId, b.reason) };
     } catch (e) { toHttp(e); }
   }

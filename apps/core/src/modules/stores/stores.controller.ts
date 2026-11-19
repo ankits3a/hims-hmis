@@ -440,6 +440,7 @@ export class StoresController {
         ...(q.ticketId === undefined ? {} : { ticketId: q.ticketId }), ...(q.itemId === undefined ? {} : { itemId: q.itemId }),
         ...(q.personId === undefined ? {} : { personId: q.personId }), ...(q.storeId === undefined ? {} : { storeId: q.storeId }),
         from: new Date(q.from), to: new Date(q.to),
+        ...(q.afterSeq === undefined ? {} : { afterSeq: q.afterSeq }), ...(q.limit === undefined ? {} : { limit: q.limit }),
       }, new Date());
       if (q.format !== "csv") return pack;
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
