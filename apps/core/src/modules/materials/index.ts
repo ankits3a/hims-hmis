@@ -73,6 +73,9 @@ export {
 export { inTransitByLine, receiveLate, returnInTransit } from "./transfers";
 export { ensureQuarantineStore } from "./stores";
 export { QUARANTINE_STORE_CODE } from "./config";
+// STORES S2c (#1119) — goods out on a returnable gate pass: a real store, created on first use (additive).
+export { OUT_ON_PASS_STORE_CODE } from "./config";
+export { ensureOutOnPassStore } from "./stores";
 export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
 // ── PHARMACY GAP A6b — indents: a sub-store asks, the supplying store answers with a transfer ──
 export { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";

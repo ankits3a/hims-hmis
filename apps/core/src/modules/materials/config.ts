@@ -155,6 +155,12 @@ export const TRANSIT_STORE_CODE = "IN-TRANSIT";
  * balances, created on first use (`ensureQuarantineStore`), like the transit store.
  */
 export const QUARANTINE_STORE_CODE = "QUARANTINE";
+/**
+ * STORES S2c (#1119, decision 1) — goods out of the hospital on a returnable gate pass (repair, calibration, refill,
+ * loan): a real place with real balances, created on first use (`ensureOutOnPassStore`), like the transit store.
+ * The guard's exit scan moves stock here; the entry scan moves it back to the source.
+ */
+export const OUT_ON_PASS_STORE_CODE = "OUT-ON-PASS";
 
 // ═══ PLAN 14c, FIRST SLICE — COUNTS (phase doc `docs/superpowers/plans/2026-09-17-phase-materials-counts.md`) ═══
 

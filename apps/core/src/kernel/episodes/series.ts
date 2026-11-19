@@ -106,6 +106,11 @@ export const EPISODE_SERIES = {
    * answered by a transfer. Three letters for the GRN's reason; not a prefix of any `M…` above.
    */
   store_indent: "MIN",
+  /**
+   * STORES S2c (#1119) — the gate pass (`MGP`): what leaves the hospital gate, returnable or not. The printed QR
+   * carries this number and nothing else; the guard's typed fallback is its last four digits.
+   */
+  gate_pass: "MGP",
 } as const;
 
 export type EpisodeSeriesKey = keyof typeof EPISODE_SERIES;

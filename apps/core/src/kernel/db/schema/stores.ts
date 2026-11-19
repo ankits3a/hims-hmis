@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { items, storeIndents, transferLines, transfers } from "./materials";
 import { resources } from "./resources";
 
@@ -228,5 +228,107 @@ export const storesTransitResolutions = pgTable(
     check("stores_transit_resolutions_qty_ck", sql`${t.qty} > 0`),
     check("stores_transit_resolutions_lost_ck", sql`(${t.kind} = 'lost') = (${t.approvalId} is not null)`),
     check("stores_transit_resolutions_posted_ck", sql`(${t.status} = 'posted') = (${t.postedAt} is not null) and (${t.postedAt} is null) = (${t.postedBy} is null)`),
+  ],
+);
+
+/**
+ * STORES S2c (#1119, decisions 1–5) — THE GATE PASS. One row per pass, written once at raise and never changed:
+ * what leaves, where it goes and why. Its life (out, back, closed) is the append-only scan log below, never a
+ * status column here, so nothing on a pass is ever edited.
+ *
+ *   · `returnable` (repair, calibration, refill, loan) names the source store, the party, the due-back day and its
+ *     lines; the guard's exit scan moves the stock to the per-site `OUT-ON-PASS` store and an entry scan brings it
+ *     back to the source (ledger `ref_type = 'gate_pass'`, `ref_id` = this id).
+ *   · `non_returnable` stands on a dispatched supplier return or a posted write-off (`ref_type`, `ref_id`); its lines
+ *     are copied from that record at raise. It moves no stock: the return or the write-off already did.
+ *
+ * `pass_no` is `MGP` + yymmdd + 4 digits (`kernel/episodes/series.ts`); the printed QR carries it and nothing else.
+ */
+export const STORES_GATE_PASS_KINDS = ["returnable", "non_returnable"] as const;
+export const STORES_GATE_PASS_PURPOSES = ["repair", "calibration", "refill", "loan"] as const;
+
+export const storesGatePasses = pgTable(
+  "stores_gate_passes",
+  {
+    id: text("id").primaryKey(),
+    passNo: text("pass_no").notNull(),
+    kind: text("kind").notNull(),
+    purpose: text("purpose"),
+    sourceStoreId: text("source_store_id").notNull().references(() => resources.id),
+    party: text("party").notNull(),
+    /** The IST calendar day it is due back (returnable only). */
+    dueBack: date("due_back", { mode: "string" }),
+    refType: text("ref_type"),
+    refId: text("ref_id"),
+    note: text("note"),
+    raisedBy: text("raised_by").notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_gate_passes_pass_no_ux").on(t.passNo),
+    index("stores_gate_passes_ref_idx").on(t.refType, t.refId),
+    check("stores_gate_passes_kind_ck", sql`${t.kind} in ('returnable', 'non_returnable')`),
+    check("stores_gate_passes_purpose_ck", sql`${t.purpose} is null or ${t.purpose} in ('repair', 'calibration', 'refill', 'loan')`),
+    check("stores_gate_passes_ref_type_ck", sql`${t.refType} is null or ${t.refType} in ('supplier_return', 'write_off')`),
+    check(
+      "stores_gate_passes_shape_ck",
+      sql`(${t.kind} = 'returnable' and ${t.purpose} is not null and ${t.dueBack} is not null and ${t.refType} is null and ${t.refId} is null)
+        or (${t.kind} = 'non_returnable' and ${t.purpose} is null and ${t.dueBack} is null and ${t.refType} is not null and ${t.refId} is not null)`,
+    ),
+  ],
+);
+
+/** The items and quantities a pass names, in the order raised. Written with the pass, never changed. */
+export const storesGatePassLines = pgTable(
+  "stores_gate_pass_lines",
+  {
+    passId: text("pass_id").notNull().references(() => storesGatePasses.id),
+    lineIdx: integer("line_idx").notNull(),
+    itemId: text("item_id").notNull().references(() => items.id),
+    qty: integer("qty").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.passId, t.lineIdx] }),
+    uniqueIndex("stores_gate_pass_lines_item_ux").on(t.passId, t.itemId),
+    check("stores_gate_pass_lines_qty_ck", sql`${t.qty} > 0`),
+  ],
+);
+
+/**
+ * STORES S2c (#1119, decisions 4, 5) — THE GATE LOG: the guard's exit and entry scans and the keeper's close of a
+ * pass that never left. APPEND-ONLY IN THE DATABASE (migration 0240 trigger `stores_gate_pass_scans_append_only`).
+ *
+ * A scan carries the phone's time (`phone_at`) and the person's idempotency key (`client_key`, unique per actor):
+ * a second post of the same key records nothing. `occurred_at` is the phone's time unless it is in the future
+ * (then the server's); `recorded_at` is the server's; `flag` marks a scan more than 12 h old (`late`) or from
+ * the future (`future`). `lines` is what crossed the gate: `[{ itemId, batchId, qty }]` (an exit of a
+ * non-returnable pass carries its lines with no batch: no stock moved).
+ */
+export const storesGatePassScans = pgTable(
+  "stores_gate_pass_scans",
+  {
+    id: text("id").primaryKey(),
+    passId: text("pass_id").notNull().references(() => storesGatePasses.id),
+    kind: text("kind").notNull(),
+    actorId: text("actor_id").notNull(),
+    /** `scan` (the QR), `typed` (its last four digits) or null (a close). */
+    method: text("method"),
+    clientKey: text("client_key"),
+    lines: jsonb("lines").$type<{ itemId: string; batchId: string | null; qty: number }[]>().notNull(),
+    reason: text("reason"),
+    phoneAt: timestamp("phone_at", { withTimezone: true }),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    flag: text("flag"),
+  },
+  (t) => [
+    index("stores_gate_pass_scans_pass_idx").on(t.passId, t.recordedAt),
+    uniqueIndex("stores_gate_pass_scans_key_ux").on(t.actorId, t.clientKey).where(sql`${t.clientKey} is not null`),
+    uniqueIndex("stores_gate_pass_scans_exit_ux").on(t.passId).where(sql`${t.kind} = 'exit'`),
+    uniqueIndex("stores_gate_pass_scans_close_ux").on(t.passId).where(sql`${t.kind} = 'close'`),
+    check("stores_gate_pass_scans_kind_ck", sql`${t.kind} in ('exit', 'entry', 'close')`),
+    check("stores_gate_pass_scans_method_ck", sql`${t.method} is null or ${t.method} in ('scan', 'typed')`),
+    check("stores_gate_pass_scans_flag_ck", sql`${t.flag} is null or ${t.flag} in ('late', 'future')`),
+    check("stores_gate_pass_scans_close_ck", sql`${t.kind} <> 'close' or ${t.reason} is not null`),
   ],
 );

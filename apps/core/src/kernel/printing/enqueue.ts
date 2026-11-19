@@ -102,7 +102,12 @@ export type PrintDocument =
    * the porter scans (the ticket number only). Producer `issueTicket` and renderer both in `modules/stores`
    * (`voucher.ts`, registered by the Stores module). Params: the indent id.
    */
-  | "stores_issue_voucher";
+  | "stores_issue_voucher"
+  /**
+   * STORES S2c (#1119, decision 6) — the gate pass with its QR (the pass number only), returnable or not. Producer
+   * `raiseGatePass` and renderer both in `modules/stores` (`gate-pass-print.ts`). Params: the pass id.
+   */
+  | "stores_gate_pass";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -164,6 +169,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   billing_refund_voucher: "front_desk_a4",
   // STORES S2b — the store's counter, where the keeper issues and the porter collects. Not a patient's paper.
   stores_issue_voucher: "stores_a4",
+  // STORES S2c — the same store counter: the keeper raises the pass and hands it to whoever carries the goods out.
+  stores_gate_pass: "stores_a4",
 };
 
 /**
