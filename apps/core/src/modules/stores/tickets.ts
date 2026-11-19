@@ -7,8 +7,12 @@ import {
   items, orgDepartments, resources, roleAssignments, rolePermissions, storeIndentLines, storeIndents, storesPickingClaims, storesTicketDetails,
   transfers, users,
 } from "../../kernel/db/schema";
+import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
-import { issueIndent, issueIndentScoped, raiseIndentScoped, stampIndentApproval, stampIndentReview } from "../materials";
+import {
+  addIndentLinesScoped, availableQtyByItem, issueIndent, issueIndentScoped, raiseIndentScoped, stampIndentApproval, stampIndentReview,
+} from "../materials";
+import { chainsOf, holderOf, lastCustodianOf, legsOf, returningUndelivered } from "./chain";
 import {
   STORES_INDENTS_APPROVE, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_WORK, holds, isStoresStore, recordAct, requireShelf, requireShelfAct,
   toStoresStore,
@@ -45,14 +49,25 @@ const cleanText = (s: string | null | undefined): string | null => (s == null ||
 // ═══════════════════════════════ notices (decision 12) ═══════════════════════════════
 
 /** One line, a few words, English and Hindi. Never the decline's reason (decision 0069 precedent). */
-const WORDS = {
+export const WORDS = {
   toApprove: ["Indent to approve", "मंज़ूरी के लिए इंडेंट"],
   approved: ["Approved", "मंज़ूर"],
   declined: ["Not approved", "मंज़ूर नहीं"],
   onTheWay: ["On the way", "रास्ते में"],
+  // S2b (#1112): the third notice of a delivered ticket, one of four, and the keeper's late-scan word.
+  delivered: ["Delivered", "पहुँच गया"],
+  returnedUndelivered: ["Returned undelivered", "बिना दिए वापस"],
+  lateScan: ["Late scan to confirm", "देर वाला स्कैन जाँचें"],
 } as const;
 
-async function notify(tx: Tx, userId: string, words: readonly [string, string], indent: { id: string; indentNo: string }, key: string, now: Date): Promise<void> {
+/** "Delivered, 3 short" / "Delivered, 2 sent back" — the number is the only thing that varies. */
+export const deliveredShort = (n: number): readonly [string, string] => [`Delivered, ${String(n)} short`, `पहुँचा, ${String(n)} कम`];
+export const deliveredSentBack = (n: number): readonly [string, string] => [`Delivered, ${String(n)} sent back`, `पहुँचा, ${String(n)} वापस`];
+
+/** The issue voucher with the label QR (spec "To pick": Issue prints the voucher and label). Rendered by `voucher.ts`. */
+export const ISSUE_VOUCHER_DOCUMENT = "stores_issue_voucher";
+
+export async function notify(tx: Tx, userId: string, words: readonly [string, string], indent: { id: string; indentNo: string }, key: string, now: Date): Promise<void> {
   await raiseNotice(tx as unknown as Db, {
     userId, kind: NOTICE_KIND, title: words[0], body: `${words[1]} · ${indent.indentNo}`,
     refType: "store_indent", refId: indent.id, sourceKey: `stores-ticket:${indent.id}:${key}`, at: now,
@@ -60,7 +75,7 @@ async function notify(tx: Tx, userId: string, words: readonly [string, string], 
 }
 
 /** Holders of `permission` for a department: assigned AT it (`department`), or hospital-wide when `hospital`. */
-async function holdersOf(exec: Db | Tx, permission: string, scope: { departmentId: string } | "hospital"): Promise<string[]> {
+export async function holdersOf(exec: Db | Tx, permission: string, scope: { departmentId: string } | "hospital"): Promise<string[]> {
   const rows = await (exec as Db).selectDistinct({ userId: roleAssignments.userId }).from(roleAssignments)
     .innerJoin(rolePermissions, eq(rolePermissions.roleKey, roleAssignments.roleKey))
     .innerJoin(users, eq(users.id, roleAssignments.userId))
@@ -92,7 +107,7 @@ async function holdsAnywhere(db: Db | Tx, userId: string, permission: string): P
 
 type SourceStore = StoresStore & { serviceHours: string | null };
 
-async function storesStoreRow(db: Db | Tx, storeId: string): Promise<SourceStore> {
+export async function storesStoreRow(db: Db | Tx, storeId: string): Promise<SourceStore> {
   const [row] = await db.select().from(resources).where(eq(resources.id, storeId));
   if (row === undefined || !isStoresStore(row)) throw new StoresError("unknown_store", `store ${storeId} is not a Stores store`, { storeId });
   const hours = (row.attributes as Record<string, unknown> | null)?.serviceHours;
@@ -131,7 +146,11 @@ export async function raiseTicket(db: Db, actor: Actor, input: RaiseTicketInput,
   return (await getTicket(db, id, now))!;
 }
 
-async function raise(db: Db, actor: Actor, input: RaiseTicketInput, now: Date, origin: Origin | null): Promise<string> {
+/**
+ * `approval: false` only for a re-ask (S2b, decision 6): the short part of a ticket the HOD already approved
+ * rides on that approval, so it is raised with no stamp to wait for and no approver is told.
+ */
+async function raise(db: Db, actor: Actor, input: RaiseTicketInput, now: Date, origin: Origin | null, approval = true): Promise<string> {
   const shelf = await requireShelf(db, input.shelfId);
   await requireShelfAct(db, actor, shelf, "work");
   if (!TICKET_PRIORITIES.includes(input.priority)) throw new StoresError("bad_quantity", "priority is routine, urgent or emergency");
@@ -149,9 +168,8 @@ async function raise(db: Db, actor: Actor, input: RaiseTicketInput, now: Date, o
   const { source, night } = await sourceFor(db, shelf.suppliedBy, input.priority, now);
 
   const indent = await withTx(db, async (tx) => {
-    const made = await raiseIndentScoped(tx, actor, { fromResourceId: shelf.id, toResourceId: source.id, lines, note: input.note ?? null }, now, {
-      issueBeforeApproval: input.priority === "emergency",
-    });
+    const made = await raiseIndentScoped(tx, actor, { fromResourceId: shelf.id, toResourceId: source.id, lines, note: input.note ?? null }, now,
+      approval ? { issueBeforeApproval: input.priority === "emergency" } : null);
     await tx.insert(storesTicketDetails).values({
       indentId: made.indentId, departmentId: shelf.departmentId, shelfId: shelf.id, priority: input.priority,
       channel: input.channel ?? "web", neededBy: input.neededBy == null ? null : new Date(input.neededBy),
@@ -159,12 +177,12 @@ async function raise(db: Db, actor: Actor, input: RaiseTicketInput, now: Date, o
       originIndentId: origin?.indentId ?? null, originKind: origin?.kind ?? null, clockFrom: origin?.clockFrom ?? now,
     });
     await recordAct(tx, actor, now, {
-      act: origin?.kind === "re_raise" ? "reraise_ticket" : "raise_ticket", storeId: shelf.id, refId: made.indentId,
+      act: origin?.kind === "re_raise" ? "reraise_ticket" : origin?.kind === "re_ask" ? "reask_ticket" : "raise_ticket", storeId: shelf.id, refId: made.indentId,
       after: { indentNo: made.indentNo, priority: input.priority, sourceId: source.id, night, origin: origin?.indentId ?? null },
       reason: input.priority === "emergency" ? reason : null, lines: lines.map((l) => ({ itemId: l.itemId, qtyBase: l.qtyBase })),
     });
     const ref = { id: made.indentId, indentNo: made.indentNo };
-    for (const u of await approversToTell(tx, shelf.departmentId, actor.id)) await notify(tx, u, WORDS.toApprove, ref, "to-approve", now);
+    if (approval) for (const u of await approversToTell(tx, shelf.departmentId, actor.id)) await notify(tx, u, WORDS.toApprove, ref, "to-approve", now);
     return ref;
   });
   return indent.id;
@@ -187,11 +205,75 @@ export async function reRaiseTicket(db: Db, actor: Actor, indentId: string, now:
   return (await getTicket(db, id, now))!;
 }
 
+/**
+ * S2b (#1112, decision 6) — THE BACK-ORDER: the short part of an issued ticket (asked or approved, less issued),
+ * re-asked in one call as a linked ticket on the first one's clock. It rides on the first ticket's approval, so
+ * it waits only for stock: it is on "To pick" once the store holds enough of every line (`ticketsToPick`).
+ */
+export async function reAskShort(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView> {
+  const first = await requireTicketRow(db, indentId);
+  if (first.indent.status !== "issued") throw new StoresError("nothing_to_reask", `${first.indent.indentNo} is not issued`);
+  const [child] = await db.select({ id: storesTicketDetails.indentId }).from(storesTicketDetails)
+    .where(and(eq(storesTicketDetails.originIndentId, indentId), eq(storesTicketDetails.originKind, "re_ask")));
+  if (child !== undefined) throw new StoresError("already_reasked", `${first.indent.indentNo}'s short part was already asked again`, { indentId: child.id });
+  const lines = (await db.select().from(storeIndentLines).where(eq(storeIndentLines.indentId, indentId)).orderBy(asc(storeIndentLines.lineIdx)))
+    .map((l) => ({ itemId: l.itemId, qtyBase: (l.qtyApproved ?? l.qtyBase) - (l.qtyIssued ?? 0) })).filter((l) => l.qtyBase > 0);
+  if (lines.length === 0) throw new StoresError("nothing_to_reask", `${first.indent.indentNo} went in full`);
+  const d = first.details;
+  const id = await raise(db, actor, {
+    shelfId: d.shelfId, lines, priority: d.priority as TicketPriority, channel: d.channel as TicketChannel,
+    neededBy: d.neededBy?.toISOString() ?? null, deliverTo: d.deliverTo, emergencyReason: d.emergencyReason, note: first.indent.note,
+  }, now, { indentId, kind: "re_ask", clockFrom: d.clockFrom }, false);
+  return (await getTicket(db, id, now))!;
+}
+
+/**
+ * The raise sheet's "Add to open ticket?" (spec "Raise"): the shelf's newest ticket still waiting for its HOD, when
+ * one exists. An item already on it is left off (an item is asked once per ticket); the rest join it as new lines.
+ */
+export async function openTicketFor(db: Db, actor: Actor, shelfId: string, now: Date = new Date()): Promise<TicketView | null> {
+  const shelf = await requireShelf(db, shelfId);
+  await requireShelfAct(db, actor, shelf, "work");
+  const rows = (await ticketRows(db, and(eq(storesTicketDetails.shelfId, shelfId), eq(storeIndents.status, "requested"),
+    eq(storeIndents.approvalRequired, true), isNull(storeIndents.approvalDecision))));
+  const newest = rows.at(-1);
+  return newest === undefined ? null : ((await ticketViews(db, [newest], now))[0] ?? null);
+}
+
+export async function addToOpenTicket(
+  db: Db, actor: Actor, indentId: string, input: { lines: { itemId?: string | null; qtyBase: number }[] }, now: Date = new Date(),
+): Promise<{ ticket: TicketView; added: string[]; alreadyOn: string[] }> {
+  const t = await requireTicketRow(db, indentId);
+  const shelf = await requireShelf(db, t.details.shelfId);
+  await requireShelfAct(db, actor, shelf, "work");
+  const result = await withTx(db, async (tx) => {
+    const locked = await requireTicketRow(tx, indentId, true);
+    if (locked.indent.status !== "requested" || locked.indent.approvalDecision !== null || !locked.indent.approvalRequired) {
+      throw new StoresError("already_decided", `${locked.indent.indentNo} is no longer waiting for its HOD`);
+    }
+    const on = new Set((await tx.select({ itemId: storeIndentLines.itemId }).from(storeIndentLines).where(eq(storeIndentLines.indentId, indentId))).map((l) => l.itemId));
+    const add: { itemId: string; qtyBase: number }[] = [];
+    const alreadyOn: string[] = [];
+    for (const l of input.lines) {
+      if (typeof l.itemId !== "string" || l.itemId.trim() === "") throw new StoresError("item_id_required", "choose each item from the list");
+      if (!Number.isSafeInteger(l.qtyBase) || l.qtyBase <= 0) throw new StoresError("bad_quantity", "each quantity is a whole number above zero", { itemId: l.itemId });
+      await requireStoresItem(tx, l.itemId);
+      if (on.has(l.itemId) || add.some((a) => a.itemId === l.itemId)) alreadyOn.push(l.itemId);
+      else add.push({ itemId: l.itemId, qtyBase: l.qtyBase });
+    }
+    if (add.length === 0) throw new StoresError("already_on_ticket", `everything asked is already on ${locked.indent.indentNo}`, { itemIds: alreadyOn });
+    await addIndentLinesScoped(tx, locked.indent.id, add);
+    await recordAct(tx, actor, now, { act: "add_to_ticket", storeId: shelf.id, refId: indentId, lines: add.map((a) => ({ itemId: a.itemId, qtyBase: a.qtyBase })) });
+    return { added: add.map((a) => a.itemId), alreadyOn };
+  });
+  return { ticket: (await getTicket(db, indentId, now))!, ...result };
+}
+
 // ═══════════════════════════════ approve, decline, review ═══════════════════════════════
 
-type TicketRow = { indent: typeof storeIndents.$inferSelect; details: typeof storesTicketDetails.$inferSelect };
+export type TicketRow = { indent: typeof storeIndents.$inferSelect; details: typeof storesTicketDetails.$inferSelect };
 
-async function requireTicketRow(db: Db | Tx, indentId: string, lock = false): Promise<TicketRow> {
+export async function requireTicketRow(db: Db | Tx, indentId: string, lock = false): Promise<TicketRow> {
   const q = db.select({ indent: storeIndents, details: storesTicketDetails }).from(storeIndents)
     .innerJoin(storesTicketDetails, eq(storesTicketDetails.indentId, storeIndents.id)).where(eq(storeIndents.id, indentId));
   const [row] = lock ? await q.for("update", { of: storeIndents }) : await q;
@@ -282,7 +364,7 @@ export async function reviewEmergency(
 // ═══════════════════════════════ pick and issue ═══════════════════════════════
 
 /** May this person keep (pick and issue from) the supplying store? Its keepers; the night store's hold `stores.nightstore.issue`. */
-async function keepsStore(db: Db | Tx, actor: Actor, store: StoresStore): Promise<boolean> {
+export async function keepsStore(db: Db | Tx, actor: Actor, store: StoresStore): Promise<boolean> {
   if (actor.type !== "user") return false;
   const perm = store.kind === "night" ? STORES_NIGHTSTORE_ISSUE : "materials.stock.issue";
   if (!(await holds(db, actor, perm))) return false;
@@ -291,8 +373,9 @@ async function keepsStore(db: Db | Tx, actor: Actor, store: StoresStore): Promis
   return false;
 }
 
+/** Approved, an emergency issued first, or (S2b) a re-ask riding on its first ticket's approval (`approval_required = false`). */
 function pickable(i: typeof storeIndents.$inferSelect): boolean {
-  return i.status === "requested" && (i.approvalDecision === "approved" || (i.issueBeforeApproval && i.approvalDecision === null));
+  return i.status === "requested" && (i.approvalDecision === "approved" || (i.issueBeforeApproval && i.approvalDecision === null) || !i.approvalRequired);
 }
 
 async function liveClaim(db: Db | Tx, indentId: string, now: Date): Promise<typeof storesPickingClaims.$inferSelect | null> {
@@ -339,6 +422,9 @@ export async function issueTicket(db: Db, actor: Actor, indentId: string, input:
       lines: view.lines.map((l) => ({ itemId: l.itemId, asked: l.qtyBase, issued: l.qtyIssued })),
     });
     await notify(tx, t.indent.requestedBy, WORDS.onTheWay, t.indent, "issued", now);
+    // The issue voucher with the label QR: the porter scans the label (decision 7). Queued in the issue's own
+    // transaction; the relay or the counter's browser prints it (decision 0045). Params are the indent id only.
+    await enqueuePrintJob(tx, { document: ISSUE_VOUCHER_DOCUMENT, params: { indentId }, dedupeKey: `stores-voucher:${indentId}`, requestedBy: actor.id });
   });
   return (await getTicket(db, indentId, now))!;
 }
@@ -374,7 +460,15 @@ export async function ticketsToPick(db: Db | Tx, actor: Actor, now: Date = new D
     if (!kept.has(r.indent.toResourceId)) kept.set(r.indent.toResourceId, await keepsStore(db, actor, await storesStoreRow(db, r.indent.toResourceId)));
     if (kept.get(r.indent.toResourceId) === true) out.push(r);
   }
-  const views = await ticketViews(db, out, now);
+  // S2b (decision 6): a back-order (a re-ask) is on "To pick" once the store holds enough of every line.
+  const ready: TicketRow[] = [];
+  for (const r of out) {
+    if (r.details.originKind !== "re_ask") { ready.push(r); continue; }
+    const lines = await db.select().from(storeIndentLines).where(eq(storeIndentLines.indentId, r.indent.id));
+    const available = await availableQtyByItem(db as Tx, r.indent.toResourceId, lines.map((l) => l.itemId), now);
+    if (lines.every((l) => (available.get(l.itemId) ?? 0) >= l.qtyBase)) ready.push(r);
+  }
+  const views = await ticketViews(db, ready, now);
   const floorOf = new Map((await db.select({ id: resources.id, parentId: resources.parentId }).from(resources)
     .where(inArray(resources.id, views.length === 0 ? [""] : views.map((v) => v.shelf.id)))).map((s) => [s.id, s.parentId ?? ""] as const));
   return views.sort((a, b) => (floorOf.get(a.shelf.id) ?? "").localeCompare(floorOf.get(b.shelf.id) ?? "") || a.clockFrom.localeCompare(b.clockFrom));
@@ -388,7 +482,12 @@ export async function ticketsToReceive(db: Db | Tx, actor: Actor, now: Date = ne
     .innerJoin(transfers, eq(transfers.id, storeIndents.transferId))
     .where(and(eq(storeIndents.status, "issued"), eq(transfers.status, "in_transit")))
     .orderBy(asc(storesTicketDetails.clockFrom)).limit(LIST_LIMIT);
-  return ticketViews(db, await filterByDepartment(db, actor, rows, STORES_SHELF_WORK), now);
+  const chains = await chainsOf(db, rows.map((r) => r.indent.id));
+  const waiting = rows.filter((r) => {
+    const c = chains.get(r.indent.id)!;
+    return c.delivery.length === 0 && !returningUndelivered(c);
+  });
+  return ticketViews(db, await filterByDepartment(db, actor, waiting, STORES_SHELF_WORK), now);
 }
 
 /** Decision 4: emergencies issued before approval with no answer from the HOD 24 h after the issue. */
@@ -411,10 +510,14 @@ async function filterByDepartment(db: Db | Tx, actor: Actor, rows: TicketRow[], 
   return out;
 }
 
-function stageOf(i: typeof storeIndents.$inferSelect, transferStatus: string | null): TicketStage {
+function stageOf(i: typeof storeIndents.$inferSelect, transferStatus: string | null, returning = false): TicketStage {
   if (i.status === "cancelled") return "cancelled";
   if (i.status === "rejected") return i.approvalDecision === "declined" ? "declined" : "rejected";
-  if (i.status === "issued") return transferStatus === "in_transit" ? "to_receive" : "delivered";
+  if (i.status === "issued") {
+    if (transferStatus === "returned") return "returned";
+    if (returning) return "returning";
+    return transferStatus === "in_transit" ? "to_receive" : "delivered";
+  }
   return pickable(i) && i.approvalDecision === "approved" ? "to_pick" : "to_approve";
 }
 
@@ -430,13 +533,18 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
     .where(inArray(orgDepartments.id, [...new Set(rows.map((r) => r.details.departmentId))]))).map((d) => [d.id, d] as const));
   const claims = await db.select().from(storesPickingClaims).where(inArray(storesPickingClaims.indentId, ids))
     .orderBy(desc(storesPickingClaims.claimedAt), desc(storesPickingClaims.id));
+  const transferIds = rows.map((r) => r.indent.transferId).filter((x): x is string => x !== null);
+  const transferRows = new Map(transferIds.length === 0 ? [] : (await db.select({ id: transfers.id, status: transfers.status, issuedBy: transfers.issuedBy })
+    .from(transfers).where(inArray(transfers.id, transferIds))).map((t) => [t.id, t] as const));
+  const chains = await chainsOf(db, ids);
+  const chainPeople = [...chains.values()].flatMap((c) => [...c.handoffs.flatMap((h) => [h.fromUserId, h.toUserId]), ...c.delivery.map((d) => d.receivedBy),
+    ...c.resolutions.flatMap((r) => [r.requestedBy, r.postedBy])]);
   const people = [...new Set(rows.flatMap((r) => [r.indent.requestedBy, r.indent.approvalBy, r.indent.reviewedBy]).concat(claims.map((c) => c.claimedBy))
+    .concat([...transferRows.values()].map((t) => t.issuedBy)).concat(chainPeople)
     .filter((x): x is string => x !== null))];
   const nameOf = new Map((await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, people)))
     .map((u) => [u.id, u.fullName] as const));
-  const transferIds = rows.map((r) => r.indent.transferId).filter((x): x is string => x !== null);
-  const transferStatus = new Map(transferIds.length === 0 ? [] : (await db.select({ id: transfers.id, status: transfers.status })
-    .from(transfers).where(inArray(transfers.id, transferIds))).map((t) => [t.id, t.status] as const));
+  const transferStatus = new Map([...transferRows.values()].map((t) => [t.id, t.status] as const));
   const originIds = rows.map((r) => r.details.originIndentId).filter((x): x is string => x !== null);
   const originNo = new Map(originIds.length === 0 ? [] : (await db.select({ id: storeIndents.id, no: storeIndents.indentNo })
     .from(storeIndents).where(inArray(storeIndents.id, originIds))).map((o) => [o.id, o.no] as const));
@@ -452,8 +560,15 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
     const dept = depts.get(d.departmentId);
     const tStatus = i.transferId === null ? null : (transferStatus.get(i.transferId) ?? "");
     const shelf = place(d.shelfId);
+    const chain = chains.get(i.id)!;
+    const issuedBy = i.transferId === null ? null : (transferRows.get(i.transferId)?.issuedBy ?? null);
+    const closed = chain.delivery.length > 0 || tStatus === "returned";
+    const lastCustodian = issuedBy === null ? null : person(lastCustodianOf(issuedBy, chain));
+    const delivered = chain.delivery[0];
+    const sentBackRows = chain.resolutions.filter((r) => r.kind === "sent_back");
+    const shortLines = [...new Set(chain.delivery.filter((x) => x.short > 0).map((x) => x.lineIdx))];
     return {
-      id: i.id, indentNo: i.indentNo, status: i.status, stage: stageOf(i, tStatus),
+      id: i.id, indentNo: i.indentNo, status: i.status, stage: stageOf(i, tStatus, returningUndelivered(chain)),
       priority: d.priority as TicketPriority, channel: d.channel as TicketChannel,
       neededBy: d.neededBy?.toISOString() ?? null, deliverTo: d.deliverTo, emergencyReason: d.emergencyReason, night: d.night,
       department: { id: d.departmentId, code: dept?.code ?? "", name: dept?.name ?? d.departmentId },
@@ -474,7 +589,33 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
         lineIdx: l.line.lineIdx, itemId: l.line.itemId, itemCode: l.itemCode, itemName: l.itemName, baseUom: l.baseUom,
         qtyBase: l.line.qtyBase, qtyApproved: l.line.qtyApproved, qtyIssued: l.line.qtyIssued,
       })),
-      custody: null, delivery: null, shorts: [],
+      custody: issuedBy === null || lastCustodian === null ? null : {
+        holder: closed ? null : person(holderOf(issuedBy, chain)), legs: legsOf(chain), lastCustodian,
+      },
+      delivery: delivered === undefined ? null : {
+        by: person(delivered.receivedBy), at: delivered.receivedAt.toISOString(), atCounter: delivered.atCounter,
+        lines: [...new Set(chain.delivery.map((x) => x.lineIdx))].map((lineIdx) => {
+          const of = chain.delivery.filter((x) => x.lineIdx === lineIdx);
+          return {
+            lineIdx, itemId: of[0]!.itemId, accepted: of.reduce((a, x) => a + x.accepted, 0), short: of.reduce((a, x) => a + x.short, 0),
+            wrong: of.reduce((a, x) => a + x.wrong, 0), damaged: of.reduce((a, x) => a + x.damaged, 0),
+          };
+        }),
+        sentBack: chain.delivery.reduce((a, x) => a + x.wrong + x.damaged, 0),
+        sentBackAccepted: sentBackRows.length > 0 && sentBackRows.every((r) => r.status === "posted"),
+      },
+      shorts: lastCustodian === null ? [] : shortLines.map((lineIdx) => {
+        const of = chain.delivery.filter((x) => x.lineIdx === lineIdx && x.short > 0);
+        const tl = new Set(of.map((x) => x.transferLineId));
+        const res = chain.resolutions.find((r) => tl.has(r.transferLineId) && (r.kind === "found" || r.kind === "returned" || r.kind === "lost") && r.status !== "refused");
+        return {
+          lineIdx, itemId: of[0]!.itemId, qty: of.reduce((a, x) => a + x.short, 0), with: lastCustodian,
+          resolution: res === undefined ? null : {
+            kind: res.kind as "found" | "returned" | "lost", by: person(res.postedBy ?? res.requestedBy), at: (res.postedAt ?? res.requestedAt).toISOString(),
+            approvalId: res.approvalId, posted: res.status === "posted",
+          },
+        };
+      }),
     };
   });
 }

@@ -30,6 +30,8 @@ export { ticketTimeline } from "./timeline";
 export { storesAuditPack } from "./audit-pack";
 export { STORES_DESK_PROVIDERS, storesApproveDesk, storesPickDesk, storesReceiveDesk } from "./desk";
 export {
-  acceptReturn, deliverTicket, handOver, lateScansToConfirm, myCustody, raiseReturn, reAskShort, receiveReturn, resolveShort, returnUndelivered,
-  takeCustody, takeOverCustody,
+  LATE_SCAN_MS, STORES_CARRY, acceptReturn, confirmLateScan, deliverTicket, handOver, lateScansToConfirm, myCustody, postTransitLoss, raiseReturn,
+  receiveReturn, resolveShort, returnUndelivered, returnsToReceive, scanClock, takeCustody, takeOverCustody,
 } from "./custody";
+export { ISSUE_VOUCHER_DOCUMENT, addToOpenTicket, openTicketFor, reAskShort } from "./tickets";
+export { registerStoresPrinting, renderIssueVoucher } from "./voucher";

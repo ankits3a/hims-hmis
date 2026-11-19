@@ -57,7 +57,7 @@ export const storesPickDesk: DeskProvider = {
 
 export const storesReceiveDesk: DeskProvider = {
   key: "stores.receive", permission: STORES_SHELF_WORK,
-  load: async (ctx) => card("stores.receive", "stores.now.toReceive", await receive(ctx), (t) => `/stores/shelf/${t.shelf.id}`, "Open"),
+  load: async (ctx) => card("stores.receive", "stores.now.toReceive", await receive(ctx), (t) => `/stores/receive?ticket=${t.id}`, "Open"),
   waiting: async (ctx) => line("stores.toReceive", await receive(ctx)),
   waitingSelfGated: true,
 };

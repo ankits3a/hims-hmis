@@ -127,13 +127,15 @@ export async function floorShelfUseByMonth(db: Db, actor: Actor, shelfId: string
  * shelves that carry its cost centre. Money: the materials head's read, never a department screen's.
  */
 export async function departmentChargeOn(db: Db, departmentCode: string, day: string): Promise<{ chargePaise: number; rows: number }> {
+  // S2b (#1112, decision 10): a department's RETURN received by a store carries the department's cost centre on the
+  // store's receipt leg, and credits it: the receipt into a shelf counts +, the receipt into any other store −,
+  // both at the batch's cost. A pharmacy row carries no cost centre and is never read here.
   const [r] = await db.select({
-    paise: sql<string>`coalesce(sum(${stockLedger.qtyDelta}::bigint * ${stockBatches.landedCostPaise}), 0)`,
+    paise: sql<string>`coalesce(sum(case when ${resources.attributes}->>'kind' = 'shelf' then 1 else -1 end * ${stockLedger.qtyDelta}::bigint * ${stockBatches.landedCostPaise}), 0)`,
     n: sql<number>`count(*)::int`,
   }).from(stockLedger).innerJoin(stockBatches, eq(stockBatches.id, stockLedger.batchId)).innerJoin(resources, eq(resources.id, stockLedger.resourceId))
     .where(and(
       eq(stockLedger.costCenter, departmentCode), eq(stockLedger.reason, "receive"), sql`${stockLedger.qtyDelta} > 0`,
-      sql`${resources.attributes}->>'kind' = 'shelf'`,
       sql`(${stockLedger.occurredAt} at time zone ${IST})::date = ${day}::date`,
     ));
   return { chargePaise: Number(r?.paise ?? 0), rows: r?.n ?? 0 };

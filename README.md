@@ -1712,6 +1712,14 @@ new role `stores_auditor`, and the two new roles hold nothing else. The head app
 the superintendent holds it hospital-wide as the stand-in ("for HOD"). Nobody is assigned to either new
 role by any seed.
 
+**Stores custody (decision 0099, S2b #1112, 2026-11-19).** Once a ticket is issued, every pair of hands it
+passes through is a row nobody can change: the porter takes it by scanning the label on the issue voucher (or
+typing its last four digits), the next porter by their own scan, and the department signs per line, accepted,
+short, wrong or damaged. Wrong and damaged goods go back to the store and are never charged; a short waits in
+transit against the last person who held it until the materials head marks it found, returned or lost (a loss
+goes to the medical superintendent's approval). `stores.carry` is held by the new role `support_staff` (the
+porter), which holds nothing else here and is assigned by no seed.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the
