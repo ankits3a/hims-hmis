@@ -1703,6 +1703,15 @@ the same item table and ledger as the pharmacy. `stores.masters.manage` is held 
 (`stores.shelf.read`) hold nothing else. Both are assigned AT a department, never hospital-wide, and
 every shelf act is asked at the shelf's department; nobody is assigned to either by any seed.
 
+**Stores tickets (decision 0099, S2a #1112, 2026-11-18).** A department asks its supplying store on a
+ticket (the materials indent), the head of department approves or declines it, the store's keeper
+claims and issues it, and every step is an event the audit pack lists. `stores.indents.approve` is held
+by `department_head` and `medical_superintendent`; `stores.nightstore.issue` by `duty_manager` and the new
+role `nursing_supervisor`; `stores.audit.read` by `materials_head`, `medical_superintendent`, `owner` and the
+new role `stores_auditor`, and the two new roles hold nothing else. The head approves AT its department;
+the superintendent holds it hospital-wide as the stand-in ("for HOD"). Nobody is assigned to either new
+role by any seed.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

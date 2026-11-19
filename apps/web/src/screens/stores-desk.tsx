@@ -36,6 +36,7 @@ export function StoresDesk(): React.ReactElement {
   return (
     <div data-testid="stores-desk" style={{ padding: "16px clamp(16px, 3vw, 24px)", display: "flex", flexDirection: "column", gap: 12, maxWidth: "100%", overflowX: "hidden", boxSizing: "border-box" }}>
       <h1 style={{ margin: 0, fontSize: 20 }}>{t("stores.desk.title")}</h1>
+      <TicketLinks />
       <div role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {TABS.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} style={tab === k ? primary : btn} onClick={() => setTab(k)}>{t(`stores.desk.tab.${k}`)}</button>
@@ -54,9 +55,17 @@ export function StoresDesk(): React.ReactElement {
 function MyShelves(): React.ReactElement {
   const { t } = useTranslation();
   const mine = useQuery({ queryKey: ["stores", "my-shelves"], queryFn: myShelves });
-  if (mine.data !== undefined && mine.data.shelves.length === 0) return <p data-testid="stores-desk-denied" style={{ padding: 16 }}>{t("stores.desk.noPermission")}</p>;
+  if (mine.data !== undefined && mine.data.shelves.length === 0) {
+    return (
+      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+        <TicketLinks />
+        <p data-testid="stores-desk-denied" style={{ margin: 0 }}>{t("stores.desk.noPermission")}</p>
+      </div>
+    );
+  }
   return (
     <div data-testid="stores-my-shelves" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, maxWidth: "100%", overflowX: "hidden" }}>
+      <TicketLinks />
       <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.shelf.pickShelf")}</h1>
       {(mine.data?.shelves ?? []).map((s) => (
         <Link key={s.id} to="/stores/shelf/$shelfId" params={{ shelfId: s.id }} style={{ minHeight: 44, display: "flex", alignItems: "center" }}>
@@ -64,6 +73,20 @@ function MyShelves(): React.ReactElement {
         </Link>
       ))}
     </div>
+  );
+}
+
+/**
+ * STORES S2a (#1112) — the two ticket lists, reached from here (web `can()` reads hospital scope only, so a
+ * department-scoped HOD has no menu row): the server answers each with what this person may see.
+ */
+function TicketLinks(): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <nav data-testid="stores-ticket-links" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <Link to="/stores/approve" style={{ minHeight: 44, display: "flex", alignItems: "center" }}>{t("stores.now.toApprove")}</Link>
+      <Link to="/stores/pick" style={{ minHeight: 44, display: "flex", alignItems: "center" }}>{t("stores.now.toPick")}</Link>
+    </nav>
   );
 }
 

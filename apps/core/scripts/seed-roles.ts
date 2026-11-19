@@ -814,6 +814,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "owner",
     permissions: [
+      // STORES S2a (#1112, decision 16) — the owner reads the Stores audit pack (every movement and signature).
+      "stores.audit.read",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -962,6 +964,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // STORES S2a (#1112, decision 3) — the HOD's STAND-IN for a ticket: held at hospital scope, so it approves for an
+      // HOD on leave or a requester who is the department's only approver; the timeline reads "for HOD". And the audit pack.
+      "stores.indents.approve", "stores.audit.read",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1106,7 +1111,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // the owner, the MS and the copilot steward.
   {
     roleKey: "duty_manager",
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read"],
+    // STORES S2a (#1112, decision 5) — a keeper of the night store (`GEN-NIGHT` custodianRoles): issues an emergency
+    // ticket outside the central store's hours, through `issueIndentScoped`; no `materials.*` string.
+    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "stores.nightstore.issue"],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1321,6 +1328,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // STORES S1 (#1111, decision 0099) — the non-drug Stores masters: categories, items, stores, shelves,
       // par and the new-item queue. The spec's own words: "The materials head holds stores.masters.manage."
       "stores.masters.manage",
+      // STORES S2a (#1112, decision 16) — the audit pack.
+      "stores.audit.read",
     ],
   },
   {
@@ -2005,7 +2014,16 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * The materials head keeps the Stores masters (`stores.masters.manage`, in its own row above).
    */
   { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work"] },
-  { roleKey: "department_head", permissions: ["stores.shelf.read"] },
+  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve"] },
+  /**
+   * STORES S2a (#1112, decisions 3, 5, 16). `department_head` above approves its department's tickets
+   * (`stores.indents.approve`, asked AT the department). Two more roles, assigned by nobody:
+   *   · `nursing_supervisor` — the duty nursing supervisor, a keeper of the night store (`stores.nightstore.issue`).
+   *     The IPD train (#967) carries the same key and title; whichever lands second drops its copy at rebase.
+   *   · `stores_auditor` — the internal auditor's seat: reads the Stores audit pack and nothing else.
+   */
+  { roleKey: "nursing_supervisor", permissions: ["stores.nightstore.issue"] },
+  { roleKey: "stores_auditor", permissions: ["stores.audit.read"] },
 ];
 
 /**
@@ -2271,6 +2289,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // STORES S1 (#1111) — both assigned AT a department, never hospital-wide.
   department_store_incharge: "Department Store In-charge (receives, uses and counts the department's own Stores shelf)",
   department_head: "Head of Department (reads the department's Stores shelf; approves its requests from S2)",
+  nursing_supervisor: "Nursing Supervisor (shift in-charge: the ward's nurses, early-warning escalations, family callbacks)",
+  stores_auditor: "Stores Auditor (internal audit: reads the Stores audit pack, changes nothing)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

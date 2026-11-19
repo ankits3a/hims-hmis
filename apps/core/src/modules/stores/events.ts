@@ -24,6 +24,8 @@ const MODULE = "stores";
 export const STORES_ACTS = [
   "register_item", "create_category", "create_store", "create_shelf", "open", "receive", "use", "reverse", "check",
   "import", "new_item_request", "resolve_request", "par", "category", "track_mode", "aliases", "reorder_draft",
+  // S2a (#1112): a ticket's acts (refId = the indent) and each audit-pack export (decision 16).
+  "raise_ticket", "approve_ticket", "decline_ticket", "reraise_ticket", "review_emergency", "claim_picking", "issue_ticket", "audit_export",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

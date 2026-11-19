@@ -122,4 +122,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/roster/on-now` | `apps/web/src/screens/roster-on-now` |
 | `/staff` | `apps/web/src/screens/staff-reports` |
 | `/stores` | `apps/web/src/screens/stores-desk` |
+| `/stores/approve` | `apps/web/src/screens/stores-tickets` |
+| `/stores/pick` | `apps/web/src/screens/stores-tickets` |
 | `/stores/shelf/$shelfId` | `apps/web/src/screens/stores-shelf` |
+| `/stores/tickets/$indentId` | `apps/web/src/screens/stores-tickets` |

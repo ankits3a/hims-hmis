@@ -1,3 +1,4 @@
+import { STORES_DESK_PROVIDERS } from "./desk";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -20,6 +21,10 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * precedent, `roster/access.ts`), so the shelf routes carry no route-level guard: the department is a
  * fact of the shelf, not of the URL. Department roles hold no `materials.*` grant.
  *
+ * S2a (#1112) adds three: `stores.indents.approve` (department; the HOD, and the medical superintendent at
+ * hospital scope as stand-in), `stores.nightstore.issue` (hospital; the night store's keepers) and
+ * `stores.audit.read` (hospital; the audit pack).
+ *
  * One menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -34,6 +39,11 @@ export const storesManifest: ModuleManifest = {
     "stores.masters.manage",
     "stores.shelf.read",
     "stores.shelf.work",
+    "stores.indents.approve",
+    "stores.nightstore.issue",
+    "stores.audit.read",
   ],
   subscriptions: [],
+  /** S2a (#1112, decision 12) — the three Now cards: "Indents to approve", "To pick", "To receive" (`desk.ts`). */
+  desk: [...STORES_DESK_PROVIDERS],
 };

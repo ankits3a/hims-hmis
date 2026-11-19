@@ -28,6 +28,10 @@ export const WAITING_KINDS = [
   "alerts.unanswered",
   "roster.leaveToDecide",
   "roster.leaveRefused",
+  // STORES S2a (#1112) — the three Now cards' lines: the HOD's, the keeper's, the department's.
+  "stores.indentsToApprove",
+  "stores.toPick",
+  "stores.toReceive",
   "reminders.today",
   "roster.dutiesToday",
 ] as const;
@@ -60,6 +64,9 @@ export const WAITING_WEB_HREF: Record<WaitingKind, string | null> = {
   "alerts.unanswered": null,
   "roster.leaveToDecide": "/roster/leave",
   "roster.leaveRefused": "/roster/leave",
+  "stores.indentsToApprove": "/stores/approve",
+  "stores.toPick": "/stores/pick",
+  "stores.toReceive": "/stores",
   "reminders.today": null,
   "roster.dutiesToday": "/roster/my-duties",
 };
@@ -75,6 +82,9 @@ export const WAITING_TONE: Record<WaitingKind, WaitingTone> = {
   "alerts.unanswered": "warn",
   "roster.leaveToDecide": "warn",
   "roster.leaveRefused": "warn",
+  "stores.indentsToApprove": "warn",
+  "stores.toPick": "warn",
+  "stores.toReceive": "calm",
   "reminders.today": "calm",
   "roster.dutiesToday": "calm",
 };

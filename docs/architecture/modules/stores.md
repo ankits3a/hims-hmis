@@ -13,14 +13,24 @@ Source: `apps/core/src/modules/stores/`
 
 - **Depends on modules:** `materials`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `events`, `modules`, `resources`, `tokens`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
 - `access.ts`
+  - `STORES_AUDIT_READ`
+  - `STORES_INDENTS_APPROVE`
   - `STORES_MASTERS`
+  - `STORES_NIGHTSTORE_ISSUE`
   - `STORES_SHELF_READ`
   - `STORES_SHELF_WORK`
+- `audit-pack.ts`
+  - `storesAuditPack(db: Db, actor: Actor, filter: AuditPackFilter, now: Date = new Date()): Promise<AuditPack>`
+- `desk.ts`
+  - `STORES_DESK_PROVIDERS`
+  - `storesApproveDesk: DeskProvider`
+  - `storesPickDesk: DeskProvider`
+  - `storesReceiveDesk: DeskProvider`
 - `errors.ts`
   - `STORES_ERROR_CODES`
   - `class StoresError`
@@ -66,8 +76,28 @@ Source: `apps/core/src/modules/stores/`
   - `setShelfPar(db: Db, actor: Actor, input: { shelfId: string; itemId: string; minBase: number; reorderBase: number; maxBase: number }, now: D…`
 - `stores.module.ts`
   - `class StoresModule`
+- `tickets.ts`
+  - `CLAIM_IDLE_MS`
+  - `EMERGENCY_REVIEW_MS`
+  - `approveTicket(db: Db, actor: Actor, indentId: string, input: ApproveTicketInput = {}, now: Date = new Date()): Promise<TicketView>`
+  - `claimPicking(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
+  - `declineTicket(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<TicketView>`
+  - `getTicket(db: Db | Tx, indentId: string, now: Date = new Date()): Promise<TicketView | undefined>`
+  - `issueTicket(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<TicketView>`
+  - `overdueEmergencyReviews(db: Db | Tx, now: Date = new Date()): Promise<TicketView[]>`
+  - `raiseTicket(db: Db, actor: Actor, input: RaiseTicketInput, now: Date = new Date()): Promise<TicketView>`
+  - `reRaiseTicket(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
+  - `reviewEmergency(db: Db, actor: Actor, indentId: string, input: { decision: "agree" | "query"; note?: string | null }, now: Date = new Date(…`
+  - `ticketsToApprove(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
+  - `ticketsToPick(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
+  - `ticketsToReceive(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
+  - `withinServiceHours(hours: string | null, now: Date): boolean`
+- `timeline.ts`
+  - `ticketTimeline(db: Db, actor: Actor, indentId: string): Promise<TicketTimeline>`
 - `types.ts`
   - `STORES_ITEM_CLASSES`
+  - `TICKET_CHANNELS: readonly TicketChannel[]`
+  - `TICKET_PRIORITIES: readonly TicketPriority[]`
   - `TRACK_MODES: readonly TrackMode[]`
 - `use.ts`
   - `EXPENSED_REF`
@@ -83,12 +113,12 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_item_requests`
+`stores_item_requests`, `stores_picking_claims`, `stores_ticket_details`
 
 Foreign keys into: `materials`, `resources`
 
 ## HTTP routes
 
-- `stores.controller.ts` — `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/search`, `/stores/shelves`, `/stores/stores`
+- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`

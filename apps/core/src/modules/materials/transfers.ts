@@ -203,7 +203,9 @@ export async function issueStock(
       transferId, fromResourceId: input.fromResourceId, toResourceId: input.toResourceId,
       lines: resolved.map((r) => ({ batchId: r.batchId, itemId: r.itemId, qtyBase: r.qty })),
     },
-    actor, correlationId: transferId,
+    // STORES S2a (#1112) — the event is dated by the movement it records (the ledger rows' own `occurredAt`), so
+    // the audit pack's window and a downtime entry read the same instant the ledger does.
+    actor, correlationId: transferId, occurredAt: input.occurredAt,
   }));
   return { transferId, lines };
 }
@@ -405,7 +407,7 @@ export async function receiveStock(
       transferId, fromResourceId: transfer.fromResourceId, toResourceId: transfer.toResourceId,
       lines: confirmed,
     },
-    actor, correlationId: transferId,
+    actor, correlationId: transferId, occurredAt,
   }));
 
   if (shortfalls.length > 0) {
@@ -419,7 +421,7 @@ export async function receiveStock(
           qtyIssued: s.qtyIssued, qtyReceived: s.qtyReceived, qtyShort: s.qtyShort,
         })),
       },
-      actor, correlationId: transferId,
+      actor, correlationId: transferId, occurredAt,
     }));
   }
 

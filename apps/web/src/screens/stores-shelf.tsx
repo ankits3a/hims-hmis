@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  getShelf, receiveTransfer, recordUse, reorderDraft, requestItem, saveCheck, saveReorder, searchItems, storesErrorCode, undoUse,
+  getShelf, raiseTicket, receiveTransfer, recordUse, reorderDraft, requestItem, saveCheck, saveReorder, searchItems, storesErrorCode, undoUse,
 } from "../lib/stores-api";
+import type { TicketPriority } from "../lib/stores-api";
 import type { WireReorderLine, WireShelfItem, WireShelfView } from "@hmis/contracts";
 
 /**
@@ -191,6 +192,9 @@ function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (
   const [qty, setQty] = useState<Record<string, string>>({});
   const [q, setQ] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  // STORES S2a (#1112) — the draft becomes a ticket: a priority chip, a reason for an emergency, Send.
+  const [priority, setPriority] = useState<TicketPriority>("routine");
+  const [reason, setReason] = useState("");
   const found = useQuery({ queryKey: ["stores", "search", q.trim()], queryFn: () => searchItems(q), enabled: q.trim().length >= 2 });
   const lines = [...(draft.data?.lines ?? []), ...extra];
   const fail = (e: unknown): void => setNotice(storesErrorCode(e) === "not_permitted" ? t("stores.shelf.notYours") : t("stores.shelf.failed"));
@@ -223,9 +227,33 @@ function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (
           setQ("");
         }}>{it.name}</button>
       )))}
+      <div role="radiogroup" aria-label={t("stores.ticket.priorityLabel")} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {(["routine", "urgent", "emergency"] as const).map((p) => (
+          <button key={p} type="button" role="radio" aria-checked={priority === p} style={priority === p ? primary : btn} onClick={() => setPriority(p)}>
+            {t(`stores.ticket.priority.${p}`)}
+          </button>
+        ))}
+      </div>
+      {priority === "emergency" && (
+        <input aria-label={t("stores.ticket.reason")} placeholder={t("stores.ticket.reason")} value={reason} onChange={(e) => setReason(e.target.value)}
+          style={{ minHeight: 40, width: "100%", boxSizing: "border-box" }} />
+      )}
       {notice !== null && <p role="status" style={{ margin: 0 }}>{notice}</p>}
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" style={primary} disabled={lines.length === 0} onClick={() => {
+          const out = lines.map((l) => ({ itemId: l.itemId, qtyBase: Number(qty[l.itemId] ?? String(l.proposed)) })).filter((l) => l.qtyBase > 0);
+          if (out.length === 0) return;
+          if (priority === "emergency" && reason.trim() === "") { setNotice(t("stores.ticket.reasonNeeded")); return; }
+          raiseTicket(shelfId, { lines: out, priority, emergencyReason: priority === "emergency" ? reason : null })
+            .then(() => onDone(t("stores.ticket.sent")))
+            .catch((e: unknown) => {
+              const code = storesErrorCode(e);
+              if (code === "reason_required") setNotice(t("stores.ticket.reasonNeeded"));
+              else if (code === "item_id_required" || code === "not_stores_item" || code === "unknown_item") setNotice(t("stores.ticket.chooseFromList"));
+              else fail(e);
+            });
+        }}>{t("stores.ticket.send")}</button>
+        <button type="button" style={btn} disabled={lines.length === 0} onClick={() => {
           const out = lines.map((l) => ({ itemId: l.itemId, qty: Number(qty[l.itemId] ?? String(l.proposed)) })).filter((l) => l.qty > 0);
           saveReorder(shelfId, out).then(() => onDone(t("stores.shelf.draftSaved"))).catch(fail);
         }}>{t("stores.shelf.saveDraft")}</button>

@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Header, Inject, Param, Post, Query, Res } from "@nestjs/common";
 import { z } from "zod";
 import {
   storesCategoryBody, storesCheckBody, storesImportBody, storesItemBody, storesItemPatchBody, storesOpenBody, storesParBody, storesReceiveBody,
   storesReorderBody, storesRequestBody, storesResolveBody, storesShelfBody, storesStoreBody, storesUndoBody, storesUseBody,
+  storesApproveBody, storesAuditQuery, storesDeclineBody, storesIssueBody, storesReviewBody, storesTicketBody,
 } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -15,8 +16,17 @@ import { createShelf, createStoresStore, listShelves, listStoresStores, openShel
 import { receiveAtShelf, recordShelfCheck, recordShelfUse, reverseShelfUse, saveReorderDraft, shelfReorderDraft } from "./use";
 import { departmentChargeOn, floorShelfUseByMonth, myShelves, overBookCards, shelfView, storesPickers } from "./reads";
 import { parsed, toHttp } from "./stores-http";
+import {
+  approveTicket, claimPicking, declineTicket, getTicket, issueTicket, reRaiseTicket, reviewEmergency, raiseTicket, ticketsToApprove, ticketsToPick,
+  ticketsToReceive,
+} from "./tickets";
+import { ticketTimeline } from "./timeline";
+import { storesAuditPack } from "./audit-pack";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+
+/** The CSV half of the audit pack goes out as a file; the rest of the routes answer JSON. */
+type CsvReply = { setHeader(name: string, value: string): unknown };
 
 const id = z.string().min(1).max(64);
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "expected YYYY-MM");
@@ -222,5 +232,89 @@ export class StoresController {
   async request(@CurrentActor() actor: Actor, @Param("shelfId") shelfId: string, @Body() body: unknown): Promise<unknown> {
     const input = parsed(storesRequestBody, body);
     try { return await requestNewItem(this.db, actor, { ...input, shelfId: parsed(id, shelfId) }); } catch (e) { toHttp(e); }
+  }
+  /* ─────────────── S2a (#1112): tickets — no route guard; each intent asks its own grant at the department ─────────────── */
+
+  @Post("shelves/:shelfId/tickets")
+  async raise(@CurrentActor() actor: Actor, @Param("shelfId") shelfId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesTicketBody, body);
+    try { return await raiseTicket(this.db, actor, { ...input, shelfId: parsed(id, shelfId) }, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Get("tickets/to-approve")
+  async toApprove(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { tickets: await ticketsToApprove(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  @Get("tickets/to-pick")
+  async toPick(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { tickets: await ticketsToPick(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  @Get("tickets/to-receive")
+  async toReceive(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { tickets: await ticketsToReceive(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  /** The ticket itself is read through its timeline's grant (shelf readers, approvers, keepers, auditors). */
+  @Get("tickets/:indentId")
+  async ticket(@CurrentActor() actor: Actor, @Param("indentId") indentId: string): Promise<unknown> {
+    try {
+      const timeline = await ticketTimeline(this.db, actor, parsed(id, indentId));
+      return { ticket: await getTicket(this.db, timeline.indentId, new Date()), timeline };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/approve")
+  async approve(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesApproveBody, body ?? {});
+    try { return await approveTicket(this.db, actor, parsed(id, indentId), input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/decline")
+  async decline(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesDeclineBody, body);
+    try { return await declineTicket(this.db, actor, parsed(id, indentId), input.reason, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/reraise")
+  async reraise(@CurrentActor() actor: Actor, @Param("indentId") indentId: string): Promise<unknown> {
+    try { return await reRaiseTicket(this.db, actor, parsed(id, indentId), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/review")
+  async review(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesReviewBody, body);
+    try { return await reviewEmergency(this.db, actor, parsed(id, indentId), input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/claim")
+  async claim(@CurrentActor() actor: Actor, @Param("indentId") indentId: string): Promise<unknown> {
+    try { return await claimPicking(this.db, actor, parsed(id, indentId), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/issue")
+  async issue(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesIssueBody, body ?? {});
+    try { return await issueTicket(this.db, actor, parsed(id, indentId), input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Decision 16: the audit pack, JSON or CSV; the intent asks `stores.audit.read` and writes one event per export. */
+  @Get("audit-pack")
+  @Header("Cache-Control", "no-store")
+  async auditPack(@CurrentActor() actor: Actor, @Query() query: unknown, @Res({ passthrough: true }) res: CsvReply): Promise<unknown> {
+    const q = parsed(storesAuditQuery, query);
+    try {
+      const pack = await storesAuditPack(this.db, actor, {
+        ...(q.ticketId === undefined ? {} : { ticketId: q.ticketId }), ...(q.itemId === undefined ? {} : { itemId: q.itemId }),
+        ...(q.personId === undefined ? {} : { personId: q.personId }), ...(q.storeId === undefined ? {} : { storeId: q.storeId }),
+        from: new Date(q.from), to: new Date(q.to),
+        ...(q.afterSeq === undefined ? {} : { afterSeq: q.afterSeq }), ...(q.limit === undefined ? {} : { limit: q.limit }),
+      }, new Date());
+      if (q.format !== "csv") return pack;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="stores-audit-pack.csv"');
+      return pack.csv;
+    } catch (e) { toHttp(e); }
   }
 }

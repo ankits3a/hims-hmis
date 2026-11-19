@@ -120,3 +120,56 @@ export type WireStoresPickers = {
   floors: { id: string; code: string; name: string }[];
   departments: { id: string; code: string; name: string }[];
 };
+
+// ═══════════════════════════ S2a (#1112) — tickets, approval, picking, timeline, audit pack ═══════════════════════════
+
+export const STORES_TICKET_PRIORITIES = ["routine", "urgent", "emergency"] as const;
+export const STORES_TICKET_CHANNELS = ["phone", "web", "copilot", "agent"] as const;
+const instant = z.string().datetime({ offset: true });
+
+/** A line with no item id is the server's refusal (`item_id_required`), so the body lets it through. */
+export const storesTicketBody = z.object({
+  lines: z.array(z.object({ itemId: z.string().max(64).nullish(), qtyBase: z.number().int() })).min(1).max(100),
+  priority: z.enum(STORES_TICKET_PRIORITIES),
+  neededBy: instant.nullish(),
+  deliverTo: z.string().max(200).nullish(),
+  channel: z.enum(STORES_TICKET_CHANNELS).optional(),
+  emergencyReason: z.string().max(500).nullish(),
+  note: z.string().max(500).nullish(),
+});
+export const storesApproveBody = z.object({ lines: z.array(z.object({ lineIdx: z.number().int().min(0), qtyBase: z.number().int().min(0) })).max(100).optional() });
+export const storesDeclineBody = z.object({ reason: z.string().max(500) });
+export const storesReviewBody = z.object({ decision: z.enum(["agree", "query"]), note: z.string().max(500).nullish() });
+export const storesIssueBody = z.object({ lines: z.array(z.object({ lineIdx: z.number().int().min(0), qtyBase: z.number().int().min(0) })).max(100).optional() });
+export const storesAuditQuery = z.object({
+  ticketId: id.optional(), itemId: id.optional(), personId: id.optional(), storeId: id.optional(),
+  from: instant, to: instant, format: z.enum(["json", "csv"]).optional(),
+  afterSeq: z.coerce.number().int().nonnegative().optional(), limit: z.coerce.number().int().positive().max(5000).optional(),
+});
+
+export type WireTicketPerson = { id: string; name: string };
+export type WireTicket = {
+  id: string; indentNo: string; status: string;
+  stage: "to_approve" | "to_pick" | "to_receive" | "delivered" | "declined" | "rejected" | "cancelled";
+  priority: (typeof STORES_TICKET_PRIORITIES)[number]; channel: (typeof STORES_TICKET_CHANNELS)[number];
+  neededBy: string | null; deliverTo: string | null; emergencyReason: string | null; night: boolean;
+  department: { id: string; code: string; name: string };
+  shelf: { id: string; code: string; name: string };
+  source: { id: string; code: string; name: string; kind: string };
+  requestedBy: WireTicketPerson; requestedAt: string; clockFrom: string;
+  origin: { indentId: string; indentNo: string; kind: "re_raise" | "re_ask" } | null;
+  approval: { state: "pending" | "approved" | "declined" | "not_needed"; by: WireTicketPerson | null; at: string | null; forHod: boolean; reason: string | null };
+  review: { decision: "agree" | "query"; by: WireTicketPerson; at: string; note: string | null } | null;
+  claim: { by: WireTicketPerson; at: string; lapsesAt: string } | null;
+  transfer: { id: string; status: string } | null;
+  lines: { lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null }[];
+};
+export type WireTimelineStep = {
+  step: "raise" | "re_raise" | "re_ask" | "approve" | "decline" | "review" | "claim" | "issue" | "receive" | "reject" | "cancel";
+  who: { id: string; name: string; roles: string[] } | null;
+  from: { id: string; code: string; name: string } | null;
+  to: { id: string; code: string; name: string } | null;
+  at: string; minutes: number | null; forHod: boolean; note: string | null;
+  lines: { itemId: string; itemName: string; asked: number; approved: number | null; issued: number | null }[];
+};
+export type WireTicketTimeline = { indentId: string; indentNo: string; steps: WireTimelineStep[] };

@@ -118,10 +118,14 @@ Source: `apps/core/src/modules/materials/`
   - `cancelIndent(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<IndentView>`
   - `getIndent(db: Db | Tx, indentId: string, now: Date = new Date()): Promise<IndentView | undefined>`
   - `issueIndent(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<IndentView>`
+  - `issueIndentScoped(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<IndentView>`
   - `listIndents(db: Db | Tx, filter: { storeId?: string; status?: IndentStatus } = {}, now: Date = new Date()): Promise<IndentView[]>`
   - `raiseIndent(db: Db, actor: Actor, input: RaiseIndentInput, now: Date = new Date()): Promise<IndentView>`
+  - `raiseIndentScoped(tx: Tx, actor: Actor, input: RaiseIndentInput, now: Date, approval: IndentApprovalInput | null = null): Promise<{ indentI…`
   - `rejectIndent(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<IndentView>`
-  - types: `IndentLineInput`, `IndentStatus`, `IndentView`, `IssueIndentInput`, `RaiseIndentInput`
+  - `stampIndentApproval(tx: Tx, indentId: string, stamp: { decision: "approved" | "declined"; by: string; at: Date; reason: string | null; forH…`
+  - `stampIndentReview(tx: Tx, indentId: string, stamp: { decision: "agree" | "query"; by: string; at: Date; note: string | null }): Promise<voi…`
+  - types: `IndentApprovalInput`, `IndentLineInput`, `IndentStatus`, `IndentView`, `IssueIndentInput`, `RaiseIndentInput`
 - `item-merge.ts`
   - `executeItemMerge(db: Db, actor: Actor, mergeId: string, hooks: ItemMergeHooks = {}, now: Date = new Date()): Promise<ItemMergeView>`
   - `findDuplicateItems(db: Db, actor: Actor, opts: { limit?: number } = {}): Promise<{ suggestions: DuplicateSuggestion[]; scanned: number }>`

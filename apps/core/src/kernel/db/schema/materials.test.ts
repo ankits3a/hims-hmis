@@ -116,11 +116,13 @@ const CENSUS: Record<string, string[]> = {
     "batch_id", "discrepancy_reason", "id", "qty_issued", "qty_received", "transfer_id",
   ],
   /** PHARMACY GAP A6b — a sub-store's indent, answered by a transfer (`modules/materials/indents.ts`). */
+  // STORES S2a (#1112) — the write-once approval and review stamps (nullable or defaulted false: a pharmacy indent carries none).
   store_indents: [
-    "cancel_reason", "decided_at", "decided_by", "from_resource_id", "id", "indent_no", "note", "reject_reason",
-    "requested_at", "requested_by", "status", "to_resource_id", "transfer_id",
+    "approval_at", "approval_by", "approval_decision", "approval_for_hod", "approval_reason", "approval_required",
+    "cancel_reason", "decided_at", "decided_by", "from_resource_id", "id", "indent_no", "issue_before_approval", "note", "reject_reason",
+    "requested_at", "requested_by", "review_decision", "review_note", "reviewed_at", "reviewed_by", "status", "to_resource_id", "transfer_id",
   ],
-  store_indent_lines: ["id", "indent_id", "item_id", "line_idx", "qty_base", "qty_issued"],
+  store_indent_lines: ["id", "indent_id", "item_id", "line_idx", "qty_approved", "qty_base", "qty_issued"], // STORES S2a: + qty_approved
   /** OWNER RULING 2026-09-30 — the stores' settings, one row; the two-person GRN rule is its first (`modules/materials/settings.ts`). */
   materials_settings: ["grn_qc_needs_second_person", "id", "updated_at", "updated_by"],
   grns: [
