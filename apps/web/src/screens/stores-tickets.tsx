@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  approveTicket, claimTicket, declineTicket, getTicket, issueTicket, storesErrorCode, ticketsToApprove, ticketsToPick,
+  approveTicket, claimTicket, declineTicket, deliverTicket, getTicket, handOverCustody, issueTicket, myCustody, returnUndelivered, storesErrorCode,
+  takeCustody, ticketsToApprove, ticketsToPick, ticketsToReceive,
 } from "../lib/stores-api";
+import type { DeliverLine } from "../lib/stores-api";
 import type { WireTicket } from "@hmis/contracts";
 
 /**
@@ -62,10 +64,14 @@ function useRefusal(): (e: unknown) => string {
       own_ticket: "stores.ticket.ownTicket", not_permitted: "stores.ticket.notYourDept", claimed_by_another: "stores.ticket.takenByAnother",
       not_approved: "stores.ticket.notApprovedYet", indent_not_approved: "stores.ticket.notApprovedYet", reason_required: "stores.ticket.reasonNeeded",
       more_than_asked: "stores.ticket.onlyDown", not_store_keeper: "stores.ticket.notYourDept",
+      you_issued_it: "stores.ticket.youIssued", you_carried_it: "stores.ticket.youCarried", not_in_your_hands: "stores.ticket.notInHands",
+      transfer_self_receipt: "stores.ticket.youIssued", unknown_ticket: "stores.ticket.notInHands", ambiguous_code: "stores.ticket.scan",
     };
     return t(code !== null && known[code] !== undefined ? known[code] : "stores.shelf.failed");
   };
 }
+
+const hhmm = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 const ageOf = (iso: string, now: number): string => {
   const min = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
@@ -203,7 +209,7 @@ export function StoresTicketTimeline({ indentId }: { indentId: string }): React.
         <div key={`${s.step}-${String(i)}`} data-testid={`step-${s.step}`} style={{ display: "flex", flexDirection: "column", gap: 2, borderBottom: "1px solid var(--rule, #e3e3e3)", padding: "4px 0" }}>
           <div style={{ ...rowStyle, borderBottom: "none", minHeight: 24 }}>
             <strong style={cell}>{t(`stores.ticket.step.${s.step}`)}{s.forHod ? ` · ${t("stores.ticket.forHod")}` : ""}</strong>
-            <span style={num}>{new Date(s.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            <span style={num}>{hhmm(s.at)}</span>
             <span style={{ ...num, minWidth: 40 }}>{s.minutes === null ? "" : `${String(s.minutes)} m`}</span>
           </div>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 }}>
@@ -211,14 +217,147 @@ export function StoresTicketTimeline({ indentId }: { indentId: string }): React.
               s.from === null ? null : `${s.from.name}${s.to === null ? "" : ` → ${s.to.name}`}`].filter((x) => x !== null).join(" · ")}
           </span>
           {s.note !== null && <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.note}</span>}
+          {s.phoneAt != null && s.recordedAt != null && (
+            <span data-testid="step-synced-late" style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {`${t("stores.ticket.syncedLate")} · ${hhmm(s.phoneAt)} → ${hhmm(s.recordedAt)}`}
+            </span>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-// ═══════════════════════════════ Receive (S2b, not built yet) ═══════════════════════════════
+// ═══════════════════════════════ Receive (S2b) ═══════════════════════════════
 
+type Remainder = "short" | "wrong" | "damaged";
+const REMAINDERS: readonly Remainder[] = ["short", "wrong", "damaged"];
+
+/**
+ * STORES S2b (#1112, D24) — RECEIVE, on the phone: one row per line, the issued quantity prefilled. Fewer than
+ * issued makes the rest "Short"; one tap on the word makes it "Wrong", then "Damaged". Confirm is the one primary.
+ */
 export function StoresReceive(): React.ReactElement {
-  return <div data-testid="stores-receive" />;
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["stores", "to-receive"], queryFn: ticketsToReceive, retry: false });
+  if (q.data === undefined && !q.isError) return <Loading testId="stores-receive" />;
+  const tickets = q.data?.tickets ?? [];
+  return (
+    <div data-testid="stores-receive" style={page}>
+      <Offline />
+      <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.ticket.receiveTitle")}</h1>
+      {tickets.length === 0 ? <p style={{ margin: 0 }}>{t("stores.ticket.nothingToReceive")}</p> : tickets.map((tk) => <ReceiveCard key={tk.id} ticket={tk} />)}
+    </div>
+  );
+}
+
+function ReceiveCard({ ticket }: { ticket: WireTicket }): React.ReactElement {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const refuse = useRefusal();
+  const issuedLines = ticket.lines.filter((l) => (l.qtyIssued ?? 0) > 0);
+  const [got, setGot] = useState<Record<number, number>>({});
+  const [kind, setKind] = useState<Record<number, Remainder>>({});
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const confirm = (): void => {
+    const lines: DeliverLine[] = issuedLines.map((l) => {
+      const issued = l.qtyIssued ?? 0;
+      const accepted = got[l.lineIdx] ?? issued;
+      const rest = issued - accepted;
+      return rest > 0 ? { lineIdx: l.lineIdx, accepted, [kind[l.lineIdx] ?? "short"]: rest } : { lineIdx: l.lineIdx, accepted };
+    });
+    setBusy(true);
+    deliverTicket(ticket.id, lines)
+      .then(() => { setNotice(t("stores.ticket.stage.delivered")); return qc.invalidateQueries({ queryKey: ["stores", "to-receive"] }); })
+      .catch((e: unknown) => setNotice(refuse(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <section data-testid={`receive-${ticket.id}`} style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "2px solid var(--ink, #222)", paddingTop: 6 }}>
+      <div style={rowStyle}>
+        <strong style={cell}>{`${ticket.indentNo} · ${ticket.source.name}`}</strong>
+        <span style={{ flexShrink: 0, fontWeight: 700 }}>{t(`stores.ticket.stage.${ticket.stage}`)}</span>
+      </div>
+      {issuedLines.map((l) => {
+        const issued = l.qtyIssued ?? 0;
+        const accepted = got[l.lineIdx] ?? issued;
+        const rest = issued - accepted;
+        const word = rest > 0 ? (kind[l.lineIdx] ?? "short") : "accept";
+        return (
+          <label key={l.lineIdx} data-testid={`receive-line-${String(l.lineIdx)}`} style={rowStyle}>
+            <span style={cell}>{l.itemName}</span>
+            <input
+              type="number" inputMode="numeric" min={0} max={issued} aria-label={`${t("stores.ticket.issued")} · ${l.itemName}`}
+              value={accepted}
+              onChange={(e) => setGot((c) => ({ ...c, [l.lineIdx]: Math.min(issued, Math.max(0, Number(e.target.value.replace(/\D/g, "") || "0"))) }))}
+              style={{ width: 56, minHeight: 36, flexShrink: 0, textAlign: "right", boxSizing: "border-box" }}
+            />
+            {rest > 0
+              ? (
+                <button type="button" style={{ ...btn, minWidth: 84 }} onClick={() => setKind((c) => ({ ...c, [l.lineIdx]: REMAINDERS[(REMAINDERS.indexOf(word as Remainder) + 1) % REMAINDERS.length]! }))}>
+                  <span>{String(rest)}</span> <span>{t(`stores.ticket.status.${word}`)}</span>
+                </button>
+              )
+              : <span style={{ flexShrink: 0, minWidth: 84, textAlign: "center" }}>{t("stores.ticket.status.accept")}</span>}
+          </label>
+        );
+      })}
+      {notice !== null && <p role="status" style={{ margin: 0 }}>{notice}</p>}
+      <button type="button" style={primary} disabled={busy} onClick={confirm}>{t("stores.ticket.confirm")}</button>
+    </section>
+  );
+}
+
+// ═══════════════════════════════ Porter card (S2b) ═══════════════════════════════
+
+/**
+ * STORES S2b (#1112, decision 7) — THE PORTER'S CARD: what is in my hands (from → to · minutes), and a take by the
+ * label's number or its last four digits. A hand-on is the next porter's own take on their phone, naming me.
+ */
+export function StoresPorter(): React.ReactElement {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const refuse = useRefusal();
+  const q = useQuery({ queryKey: ["stores", "custody-mine"], queryFn: myCustody, retry: false });
+  const [code, setCode] = useState("");
+  const [from, setFrom] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const refresh = (): Promise<void> => qc.invalidateQueries({ queryKey: ["stores", "custody-mine"] });
+  if (q.data === undefined && !q.isError) return <Loading testId="stores-porter" />;
+  const rows = q.data?.rows ?? [];
+  const take = (): void => {
+    const c = code.trim();
+    if (c === "") return;
+    (from.trim() === "" ? takeCustody(c) : handOverCustody(c, from.trim()))
+      .then(() => { setNotice(t("stores.ticket.taken")); setCode(""); setFrom(""); return refresh(); })
+      .catch((e: unknown) => setNotice(refuse(e)));
+  };
+  return (
+    <div data-testid="stores-porter" style={page}>
+      <Offline />
+      <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.ticket.porterTitle")}</h1>
+      {rows.length > 0 && <p style={{ margin: 0, fontWeight: 700 }}>{t("stores.ticket.handBack")}</p>}
+      {rows.length === 0 ? <p style={{ margin: 0 }}>{t("stores.ticket.nothingInHands")}</p> : rows.map((r) => (
+        <div key={r.ticket.id} data-testid={`porter-${r.ticket.id}`} style={rowStyle}>
+          <span style={cell}>{`${r.ticket.indentNo.slice(-4)} · ${r.from.name} → ${r.to.name}`}</span>
+          <span style={{ ...num, minWidth: 40 }}>{`${String(r.minutes)} m`}</span>
+          <button type="button" style={btn} onClick={() => { returnUndelivered(r.ticket.id).then(refresh).catch((e: unknown) => setNotice(refuse(e))); }}>
+            {t("stores.ticket.returnBack")}
+          </button>
+        </div>
+      ))}
+      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span>{t("stores.ticket.typeLast4")}</span>
+        <input inputMode="numeric" aria-label={t("stores.ticket.typeLast4")} value={code} onChange={(e) => setCode(e.target.value.replace(/[^0-9A-Za-z]/g, "").slice(0, 20))}
+          style={{ minHeight: 40, boxSizing: "border-box", width: "100%" }} />
+      </label>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span>{t("stores.ticket.fromPorter")}</span>
+        <input aria-label={t("stores.ticket.fromPorter")} value={from} onChange={(e) => setFrom(e.target.value.trim().slice(0, 64))} style={{ minHeight: 40, boxSizing: "border-box", width: "100%" }} />
+      </label>
+      {notice !== null && <p role="status" style={{ margin: 0 }}>{notice}</p>}
+      <button type="button" style={primary} onClick={take}>{t("stores.ticket.scan")}</button>
+    </div>
+  );
 }

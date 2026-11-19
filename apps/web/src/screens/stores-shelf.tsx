@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  getShelf, raiseTicket, receiveTransfer, recordUse, reorderDraft, requestItem, saveCheck, saveReorder, searchItems, storesErrorCode, undoUse,
+  addToOpenTicket, getShelf, openTicketFor, raiseTicket, receiveTransfer, recordUse, reorderDraft, requestItem, saveCheck, saveReorder, searchItems, storesErrorCode, undoUse,
 } from "../lib/stores-api";
 import type { TicketPriority } from "../lib/stores-api";
 import type { WireReorderLine, WireShelfItem, WireShelfView } from "@hmis/contracts";
@@ -196,6 +196,9 @@ function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (
   const [priority, setPriority] = useState<TicketPriority>("routine");
   const [reason, setReason] = useState("");
   const found = useQuery({ queryKey: ["stores", "search", q.trim()], queryFn: () => searchItems(q), enabled: q.trim().length >= 2 });
+  // STORES S2b (#1112, spec "Raise") — a ticket of this shelf still waiting for its HOD: offer to add to it.
+  const open = useQuery({ queryKey: ["stores", "open-ticket", shelfId], queryFn: () => openTicketFor(shelfId), retry: false });
+  const openTicket = open.data?.ticket ?? null;
   const lines = [...(draft.data?.lines ?? []), ...extra];
   const fail = (e: unknown): void => setNotice(storesErrorCode(e) === "not_permitted" ? t("stores.shelf.notYours") : t("stores.shelf.failed"));
   return (
@@ -253,6 +256,15 @@ function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (
               else fail(e);
             });
         }}>{t("stores.ticket.send")}</button>
+        {openTicket !== null && (
+          <button type="button" style={btn} disabled={lines.length === 0} onClick={() => {
+            const out = lines.map((l) => ({ itemId: l.itemId, qtyBase: Number(qty[l.itemId] ?? String(l.proposed)) })).filter((l) => l.qtyBase > 0);
+            if (out.length === 0) return;
+            addToOpenTicket(openTicket.id, out)
+              .then((r) => onDone(r.alreadyOn.length > 0 ? `${t("stores.ticket.added")} · ${t("stores.ticket.alreadyOn")}` : t("stores.ticket.added")))
+              .catch((e: unknown) => (storesErrorCode(e) === "already_on_ticket" ? setNotice(t("stores.ticket.alreadyOn")) : fail(e)));
+          }}>{`${t("stores.ticket.addToOpen")} ${openTicket.indentNo.slice(-4)}`}</button>
+        )}
         <button type="button" style={btn} disabled={lines.length === 0} onClick={() => {
           const out = lines.map((l) => ({ itemId: l.itemId, qty: Number(qty[l.itemId] ?? String(l.proposed)) })).filter((l) => l.qty > 0);
           saveReorder(shelfId, out).then(() => onDone(t("stores.shelf.draftSaved"))).catch(fail);
