@@ -228,6 +228,9 @@ department shelves every department (housekeeping included) receives from. Pharm
   census). `stores_nudges` (migration 0241) PK (ticket, step) is the "one nudge per step" guarantee: insert first
   `on conflict do nothing`, bells only for the won row, same tx. Steps `approval`, `pick`, `leg:<n>`. It also calls
   S2c's `notifyOverdueGatePasses`, so "Pass overdue" no longer waits for someone to open the Passes list.
+  Each ticket's nudge runs in its own try/catch (pre-merge review S4): a failure is logged (`stores-chaser`) and
+  counted in `run.failed`, writes no `stores_nudges` row (so the next minute retries it), and never stops later
+  tickets or the overdue-pass notices.
 - Concierge: `copilot-intents.ts` (cue-routed only, no menu), `copilot-tools.ts` (six reads), `copilot-acts.ts`
   (`stores.reorder`). Department-scoped grants: the tools declare `scopedGate` (`kernel/copilot/catalog.ts` admits a holder at
   ANY scope; each tool narrows to `myShelves` / `holds(…, dept)` or everything for `stores.tower.read`).

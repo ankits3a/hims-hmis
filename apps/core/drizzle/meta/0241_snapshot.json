@@ -57753,6 +57753,18 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true
+        },
+        "phone_at": {
+          "name": "phone_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "flag": {
+          "name": "flag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -57833,6 +57845,10 @@
         "stores_delivery_lines_qty_ck": {
           "name": "stores_delivery_lines_qty_ck",
           "value": "\"stores_delivery_lines\".\"accepted\" >= 0 and \"stores_delivery_lines\".\"short\" >= 0 and \"stores_delivery_lines\".\"wrong\" >= 0 and \"stores_delivery_lines\".\"damaged\" >= 0"
+        },
+        "stores_delivery_lines_flag_ck": {
+          "name": "stores_delivery_lines_flag_ck",
+          "value": "\"stores_delivery_lines\".\"flag\" is null or \"stores_delivery_lines\".\"flag\" in ('late', 'future')"
         }
       },
       "isRLSEnabled": false
@@ -58581,21 +58597,7 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "stores_scan_confirmations_handoff_id_stores_custody_handoffs_id_fk": {
-          "name": "stores_scan_confirmations_handoff_id_stores_custody_handoffs_id_fk",
-          "tableFrom": "stores_scan_confirmations",
-          "tableTo": "stores_custody_handoffs",
-          "columnsFrom": [
-            "handoff_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

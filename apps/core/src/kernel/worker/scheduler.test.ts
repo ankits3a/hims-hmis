@@ -406,7 +406,7 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
     jest.spyOn(opdQueueNudgesMod, "sweepQueueNudges").mockImplementation(async () => 0),
     // Stores S3 (#1113) — the Stores chaser rides the same job; its behaviour is asserted in
     // `modules/stores/acceptance/stores-s3-1113.test.ts` (D13) on a fixture clock.
-    jest.spyOn(storesChaserMod, "runStoresChaser").mockImplementation(async () => ({ approval: 0, pick: 0, leg: 0, passes: 0 })),
+    jest.spyOn(storesChaserMod, "runStoresChaser").mockImplementation(async () => ({ approval: 0, pick: 0, leg: 0, passes: 0, failed: 0 })),
     /**
      * PHARMACY P6 (patient messages) — the refill reminders, stubbed on `modules/pharmacy/messages` (the
      * module the index re-exports FROM, the eleventh's rule). Un-stubbed it would read the preferences

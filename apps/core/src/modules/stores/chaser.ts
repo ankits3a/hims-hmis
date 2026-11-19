@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { storesNudges } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { CARRIER_KINDS, chainsOf } from "./chain";
@@ -38,7 +39,9 @@ export const CHASER_WORDS = {
   leg: ["Leg over 30 min", "30 मिनट से ज़्यादा"],
 } as const;
 
-export type ChaserRun = { approval: number; pick: number; leg: number; passes: number };
+export type ChaserRun = { approval: number; pick: number; leg: number; passes: number; failed: number };
+
+const log = new Logger("stores-chaser");
 
 const MIN = 60_000;
 
@@ -66,20 +69,33 @@ async function dueNudges(db: Db, now: Date, cards: readonly BoardCard[]): Promis
 }
 
 export async function runStoresChaser(db: Db, now: Date = new Date()): Promise<ChaserRun> {
-  const run: ChaserRun = { approval: 0, pick: 0, leg: 0, passes: 0 };
+  const run: ChaserRun = { approval: 0, pick: 0, leg: 0, passes: 0, failed: 0 };
   const cards = await boardCards(db, now);
+  // Pre-merge review S4: each ticket is chased on its own. One that fails (a bad row, a recipient lookup, a bell) is
+  // logged and counted; the sweep goes on to the next ticket and to the overdue passes, and the failed nudge, having
+  // written no row, is tried again next minute.
   for (const d of await dueNudges(db, now, cards)) {
-    const recipients = await d.to();
-    if (recipients.length === 0) continue;
-    const sent = await withTx(db, async (tx) => {
-      const won = await tx.insert(storesNudges).values({ indentId: d.card.card.id, step: d.step, sentAt: now, recipients })
-        .onConflictDoNothing().returning({ indentId: storesNudges.indentId });
-      if (won.length === 0) return false;
-      for (const u of recipients) await notify(tx, u, d.words, { id: d.card.card.id, indentNo: d.card.card.indentNo }, `chase-${d.step}`, now);
-      return true;
-    });
-    if (sent) run[d.step.startsWith("leg:") ? "leg" : (d.step as "approval" | "pick")] += 1;
+    try {
+      const recipients = await d.to();
+      if (recipients.length === 0) continue;
+      const sent = await withTx(db, async (tx) => {
+        const won = await tx.insert(storesNudges).values({ indentId: d.card.card.id, step: d.step, sentAt: now, recipients })
+          .onConflictDoNothing().returning({ indentId: storesNudges.indentId });
+        if (won.length === 0) return false;
+        for (const u of recipients) await notify(tx, u, d.words, { id: d.card.card.id, indentNo: d.card.card.indentNo }, `chase-${d.step}`, now);
+        return true;
+      });
+      if (sent) run[d.step.startsWith("leg:") ? "leg" : (d.step as "approval" | "pick")] += 1;
+    } catch (err) {
+      run.failed += 1;
+      log.error(`stores chaser: ticket ${d.card.card.indentNo} step ${d.step} failed; the sweep goes on`, err instanceof Error ? err.stack : String(err));
+    }
   }
-  run.passes = await notifyOverdueGatePasses(db, now);
+  try {
+    run.passes = await notifyOverdueGatePasses(db, now);
+  } catch (err) {
+    run.failed += 1;
+    log.error("stores chaser: the overdue gate-pass notices failed", err instanceof Error ? err.stack : String(err));
+  }
   return run;
 }
