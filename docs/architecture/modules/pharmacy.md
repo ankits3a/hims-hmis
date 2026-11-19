@@ -37,6 +37,7 @@ Source: `apps/core/src/modules/pharmacy/`
 - `config.ts`
   - `CONTROLLED_STORE_CODE`
   - `DOWNTIME_BACKFILL_DAYS`
+  - `EXPIRY_ACTIONS_IST`
   - `LICENCE_RENEWAL_NOTICE_DAYS`
   - `OPD_PHARMACY_STORE_CODE`
   - `PHARMACY_BILL_TEMPLATE`
@@ -107,6 +108,16 @@ Source: `apps/core/src/modules/pharmacy/`
   - `retailLineReturned`
   - `retailSold`
   - `substitutionRecorded`
+- `expiry-actions.ts`
+  - `EXPIRY_RUN_ACTOR: Actor`
+  - `expiryActionList(db: Db, actor: Actor, now: Date): Promise<ExpiryActionList>`
+  - `fefoLeftovers(batches: readonly { key: string; free: number; daysLeft: number }[], perDay: number): Map<string, number>`
+  - `lastScheduledExpiryRunAt(now: Date): Date`
+  - `moveExpiryBatch(db: Db, actor: Actor, input: { storeResourceId: string; batchId: string }, now: Date): Promise<{ transferId: string; qtyBas…`
+  - `nextExpiryRunAt(now: Date): Date`
+  - `runExpiryActionsNow(db: Db, actor: Actor, now: Date): Promise<{ run: ExpiryRunResult; list: ExpiryActionList }>`
+  - `runWeeklyExpiryActions(db: Db, now: Date): Promise<ExpiryRunResult>`
+  - types: `ExpiryActionGroup`, `ExpiryActionKind`, `ExpiryActionList`, `ExpiryActionRow`, `ExpiryRunResult`, `ExpiryRunState`
 - `expiry.ts`
   - `PHARMACY_PICK_SWEEP_ACTOR: Actor`
   - `PICK_EXPIRED_REASON`

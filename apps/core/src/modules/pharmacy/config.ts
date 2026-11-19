@@ -177,3 +177,16 @@ export const REFILL_LOOKBACK_DAYS = 200;
  * named wording with DLT and WhatsApp first, or the gateways will drop every such message.
  */
 export const REFILL_REMINDER_NAMES_DRUGS = false;
+
+/**
+ * #1063 — THE WEEKLY EXPIRY ACTION LIST (`expiry-actions.ts`). DECIDED with the owner's approved defaults:
+ *   - the horizon is the six-month near-expiry rule: every counter batch that has expired or expires within 180 days;
+ *   - a counter's sales are its last 90 days of `consume` rows (a hand-over and a walk-in sale both consume);
+ *   - the run is Monday 07:00 IST: registered daily at 07:00, it acts on a Monday, or at the first tick after a
+ *     missed one, and never twice in a week (`jobs.ts` `runExpiryActions`).
+ */
+export const EXPIRY_ACTION_HORIZON_DAYS = 180;
+export const EXPIRY_SALES_WINDOW_DAYS = 90;
+export const EXPIRY_ACTIONS_IST = "07:00";
+/** Monday, as `Date.prototype.getUTCDay` counts it on the IST calendar. */
+export const EXPIRY_ACTIONS_WEEKDAY = 1;

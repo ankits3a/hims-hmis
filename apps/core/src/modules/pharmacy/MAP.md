@@ -150,6 +150,16 @@ H1 row, `retail.sold`. Returns: sealed pack, 7 days, at least 30 days of shelf l
 - Estimated cost (0093): a blank opening rate costs `estimatedPackCostPaise` = MRP / (1 + GST) x 0.80, flagged
   `estimated_cost` on the GRN line and the batch; `materials/reports.ts` `stockValuationAt` reports known and
   estimated value apart. An explicit 0 stays zero cost.
+- Expiry action list (#1063): `expiry-actions.ts` `expiryActionList` (computed on read) sorts every batch of PHARM-OPD
+  and PHARM-RETAIL (trays with their counter) expiring within `EXPIRY_ACTION_HORIZON_DAYS` (180) or expired into one
+  action: Return (inside the supplier's window) · Move (the other counter sold it in `EXPIRY_SALES_WINDOW_DAYS`, this
+  one did not; main shelf only) · At risk (more than 90 days out, leftover after FEFO sales, `fefoLeftovers`) · Write off
+  (past the window, no supplier, damage tray). NDPS apart, never drafted. `runWeeklyExpiryActions` (job, daily 07:00
+  IST, acts once per Monday-07:00 window, `nextExpiryRunAt`) and `runExpiryActionsNow` top up ONE open agent draft per
+  supplier (`materials/supplier-returns.ts` `topUpAgentReturns`, actor `EXPIRY_RUN_ACTOR`) under an advisory lock; a
+  supplier whose draft no longer fits the stock is skipped and logged. Run log = event `expiry_actions.ran`.
+  `moveExpiryBatch` drafts a transfer (`materials.stock.issue`). Page `?view=returns&page=expiring`. The returns
+  page's older "Make the drafts" (`draftSupplierReturns`) still makes a new draft per supplier and includes NDPS.
 - The counter pack is one rule: `@hmis/contracts` `counterPackOf`, used by `bill-rows.ts` `counterPacks` and the web
   desk's `packOf`. Drug expiry is a month (#1048): `@hmis/contracts` `expiryFromLabel`, `monthEndOf`,
   `sameExpiryMonth`.
@@ -232,7 +242,8 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
 ## 8. Constants worth knowing
 `config.ts`: `PICK_RESERVATION_MINUTES` 30, `SCHEDULED_FLAGS` H/H1, `REGISTER_FLAGS` H1, `REFUSED_FLAGS` X,
 `DOWNTIME_BACKFILL_DAYS` 7. `materials/config.ts`: near-expiry 6 months / 75% of shelf life, PO head limit Rs 50k,
-receipt tolerance 2%, bill tolerance 1% / Rs 10, purchase price check 2% (0096), MSME 45 days. `opening-stock.ts`: `OPENING_MAX_ROWS` 2000.
+receipt tolerance 2%, bill tolerance 1% / Rs 10, purchase price check 2% (0096), MSME 45 days. `opening-stock.ts`: `OPENING_MAX_ROWS` 2000. `config.ts` (#1063): `EXPIRY_ACTION_HORIZON_DAYS` 180,
+`EXPIRY_SALES_WINDOW_DAYS` 90, `EXPIRY_ACTIONS_IST`.
 `scripts/standup-check.ts` holds the pharmacy readiness rows. `pharmacist_council_number` is red while every current
 registration is a TRIAL placeholder (`pharmacists.ts` `isTrialRegistration`, shared with `office-needs.ts`);
 `pharmacist_registration_not_lapsing` still counts a TRIAL registration as current.

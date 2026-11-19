@@ -118,6 +118,8 @@ describe("the office returns (parity P4)", () => {
     }, HEAD);
     renderWithRouter(<PharmacyOffice />, "/pharmacy/office");
     await userEvent.click(await screen.findByTestId("office-view-returns"));
+    // #1063 — Returns has two pages now (the expiry action list beside it), so the side opens its menu first.
+    await userEvent.click(within(await screen.findByTestId("office-drop-returns")).getByTestId("office-entry-returns"));
     expect(await screen.findByTestId("returns-count-expired")).toHaveTextContent("2");
     expect(screen.getByTestId("returns-count-expired")).toHaveTextContent("₹125.00");
     expect(screen.getByTestId("returns-count-d30")).toHaveTextContent("1");
