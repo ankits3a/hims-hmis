@@ -3096,7 +3096,7 @@
         "today_one": "Reminder today",
         "today_other": "Reminders today"
       },
-      "stores": {"indentsToApprove_one": "Indent to approve", "indentsToApprove_other": "Indents to approve", "toPick_one": "Ticket to pick", "toPick_other": "Tickets to pick", "toReceive_one": "Delivery to receive", "toReceive_other": "Deliveries to receive", "condemnToSign_one": "Condemnation to sign", "condemnToSign_other": "Condemnations to sign", "purchaseToApprove_one": "Purchase to approve", "purchaseToApprove_other": "Purchases to approve", "awardToSign_one": "Award to sign", "awardToSign_other": "Awards to sign"},
+      "stores": {"indentsToApprove_one": "Indent to approve", "indentsToApprove_other": "Indents to approve", "toPick_one": "Ticket to pick", "toPick_other": "Tickets to pick", "toReceive_one": "Delivery to receive", "toReceive_other": "Deliveries to receive", "condemnToSign_one": "Condemnation to sign", "condemnToSign_other": "Condemnations to sign", "purchaseToApprove_one": "Purchase to approve", "purchaseToApprove_other": "Purchases to approve", "awardToSign_one": "Award to sign", "awardToSign_other": "Awards to sign", "servicesToConfirm_one": "Service to confirm", "servicesToConfirm_other": "Services to confirm", "msmeDueSoon_one": "MSME bill due soon", "msmeDueSoon_other": "MSME bills due soon", "flagsToReview_one": "Flag to review", "flagsToReview_other": "Flags to review"},
       "roster": {
         "leaveToDecide_one": "Leave to decide",
         "leaveToDecide_other": "Leaves to decide",

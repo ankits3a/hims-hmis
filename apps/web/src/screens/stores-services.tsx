@@ -3,10 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { dateLocale } from "../lib/date-locale";
-import { confirmService, serviceDepartments, servicesToConfirm } from "../lib/paying-api";
+import { confirmService, reverseService, serviceDepartments, serviceSheets, servicesToConfirm } from "../lib/paying-api";
 import { storesErrorCode } from "../lib/stores-api";
 import "./stores.css";
-import type { WireServiceToConfirm } from "@hmis/contracts";
+import type { WireServiceEntryRow, WireServiceToConfirm } from "@hmis/contracts";
 
 /**
  * STORES S6a (#1116, spec "## Screens": Service to confirm) — `/stores/services`, the department's PHONE screen (390 px).
@@ -14,6 +14,9 @@ import type { WireServiceToConfirm } from "@hmis/contracts";
  * and one line). A contract billed at the start of its term is confirmed with "Term started". Done: "Confirmed". Refused:
  * "Already confirmed", "Not your department". The departments are the reader's `stores.ses.confirm` grants (department
  * scope, or any department for a hospital-scope holder such as biomedical).
+ *
+ * S6c (#1116, decision 2): under the list, the department's confirmed sheets ("Confirmed / पुष्टि हुई"), each with
+ * "Reverse / उलटें" and a reason while it is on no bill: a reversing sheet names the first, and the month is due again.
  */
 const page: React.CSSProperties = {
   maxWidth: "100%", overflowX: "hidden", boxSizing: "border-box", padding: "12px 16px 24px", display: "flex", flexDirection: "column", gap: 10,
@@ -40,7 +43,7 @@ export function StoresServices(): React.ReactElement {
         </select>
       )}
       {q.isPending ? <div aria-busy="true" style={{ height: 60, background: "var(--rule, #eee)", borderRadius: 6 }} />
-        : chosen === null ? <p>{t("stores.services.notYourDept")}</p> : <List departmentId={chosen} />}
+        : chosen === null ? <p>{t("stores.services.notYourDept")}</p> : <><List departmentId={chosen} /><Sheets departmentId={chosen} /></>}
     </div>
   );
 }
@@ -109,3 +112,53 @@ function Service({ s }: { s: WireServiceToConfirm }): React.ReactElement {
     </div>
   );
 }
+
+function Sheets({ departmentId }: { departmentId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["stores-services", "sheets", departmentId], queryFn: () => serviceSheets(departmentId) });
+  if (q.isPending || q.isError) return null;
+  const rows = q.data.filter((s) => !s.reversal);
+  if (rows.length === 0) return null;
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 8 }} data-testid="service-sheets">
+      <h2 style={{ margin: 0, fontSize: 16 }}>{t("stores.services.sheets")}</h2>
+      {rows.map((s) => <Sheet key={s.id} s={s} />)}
+    </section>
+  );
+}
+
+function Sheet({ s }: { s: WireServiceEntryRow }): React.ReactElement {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [why, setWhy] = useState("");
+  const [note, setNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const month = new Date(`${s.period.start}T00:00:00`).toLocaleDateString(dateLocale(), { month: "short", year: "numeric" });
+  const status = s.reversed ? t("stores.services.reversed") : s.billNo !== null ? t("stores.services.billed") : t("stores.services.confirmed");
+  const reverse = async (): Promise<void> => {
+    setBusy(true);
+    try { await reverseService(s.id, why.trim()); setNote({ text: t("stores.services.reversed"), ok: true }); await qc.invalidateQueries({ queryKey: ["stores-services"] }); }
+    catch (e) {
+      const code = e instanceof ApiError ? storesErrorCode(e) : null;
+      setNote({ text: code === "not_permitted" ? t("stores.services.notYourDept") : t(`stores.err.${code ?? "failed"}`, { defaultValue: t("stores.err.failed") }), ok: false });
+    } finally { setBusy(false); }
+  };
+  return (
+    <div style={card} data-testid={`sheet-${s.id}`}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <strong style={{ minWidth: 0, overflowWrap: "anywhere", flex: "1 1 160px" }}>{s.sesNo} · {month}</strong>
+        <span style={{ fontWeight: 600, padding: "2px 8px", borderRadius: 10, border: "1px solid var(--ink, #222)", fontSize: 13, whiteSpace: "nowrap" }}>{status}</span>
+      </div>
+      <span style={cut}>{s.poNo} · {s.vendorName}</span>
+      {note !== null && <p role="status" style={{ margin: 0, fontWeight: 700 }}>{note.text}</p>}
+      {!s.reversed && s.billNo === null && note?.ok !== true && (open ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input aria-label={t("stores.paying.reason")} placeholder={t("stores.paying.reason")} style={{ ...input, flex: "1 1 180px" }} value={why} onChange={(e) => setWhy(e.target.value)} />
+          <button type="button" style={primary} disabled={busy || why.trim() === ""} onClick={() => void reverse()}>{t("stores.services.reverse")}</button>
+        </div>
+      ) : <button type="button" style={{ ...btn, alignSelf: "flex-start" }} onClick={() => setOpen(true)}>{t("stores.services.reverse")}</button>)}
+    </div>
+  );
+}
+

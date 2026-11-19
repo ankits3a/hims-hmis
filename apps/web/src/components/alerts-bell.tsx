@@ -71,6 +71,10 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   // S6a (#1116): "Holds to clear" opens the bill's hold cards; "Run to authorise" opens the owner's two-tap sheet.
   stores_pay_hold: (refId) => ({ to: "/stores/pay", search: { bill: refId } }),
   stores_pay_run: (refId) => ({ to: "/stores/pay", search: { run: refId } }),
+  // S6c (#1116): "Service to confirm" opens the department's services; "MSME bill due soon" the Due tab; "Flags to review" the flags.
+  stores_ses: () => ({ to: "/stores/services", search: {} }),
+  stores_pay_due: () => ({ to: "/stores/pay", search: { tab: "due" } }),
+  stores_audit_flags: () => ({ to: "/stores/pay", search: { flags: "1" } }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {

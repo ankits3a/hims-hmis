@@ -9,6 +9,7 @@ import {
 } from "../lib/paying-api";
 import { dateLocale } from "../lib/date-locale";
 import { storesErrorCode } from "../lib/stores-api";
+import { AuditFlags, MsmeObjections, MsmeReport, TallyLedgers, TaxTab } from "./stores-paying-tax";
 import "./stores.css";
 import type { WireGstCredit, WirePayDue, WirePayHold, WirePayRun, WirePayToBook, WirePayingDesk, WireRunToAuthorise } from "@hmis/contracts";
 
@@ -28,9 +29,15 @@ import type { WireGstCredit, WirePayDue, WirePayHold, WirePayRun, WirePayToBook,
  * Reverse charge, which the officer confirms; it takes the IRN, and says "IRN missing" for a supplier declared for
  * e-invoicing whose bill claims credit, and "TDS not checked" while no CA-signed TDS table exists. The owner's MSME
  * 15-day rule and TDS on goods switches work like the pharmacy-holds one (see what changes, then switch on).
+ *
+ * S6c (#1116): a Tax button beside the six tabs (the CA's TDS and GST-credit tables: in force, drafts, "Record signature"; certificates),
+ * the Tally ledger names under Exports, MSME objections and the half-yearly MSME dues report under Due, and `?flags=1`, the
+ * auditor's flags (`stores-paying-tax.tsx`).
  */
-type Tab = "toBook" | "holds" | "due" | "runs" | "payments" | "exports";
+type Tab = "toBook" | "holds" | "due" | "runs" | "payments" | "exports" | "tax";
 const TABS: Tab[] = ["toBook", "holds", "due", "runs", "payments", "exports"];
+/** S6c (#1116): "Tax" holds the CA's tables and the certificates (the accounts officer's) — beside the spec's six tabs, not one of them. */
+const ALL_TABS: Tab[] = [...TABS, "tax"];
 
 const page: React.CSSProperties = {
   maxWidth: "100%", overflowX: "hidden", boxSizing: "border-box", padding: "12px 16px 24px", display: "flex", flexDirection: "column", gap: 10,
@@ -94,17 +101,22 @@ const Empty = (): React.ReactElement => { const { t } = useTranslation(); return
 
 export function StoresPaying(): React.ReactElement {
   const { t } = useTranslation();
-  const search = useSearch({ strict: false }) as { run?: string; bill?: string; tab?: string };
-  const [tab, setTab] = useState<Tab>(TABS.includes(search.tab as Tab) ? (search.tab as Tab) : "toBook");
+  const search = useSearch({ strict: false }) as { run?: string; bill?: string; tab?: string; flags?: string | number };
+  const [tab, setTab] = useState<Tab>(ALL_TABS.includes(search.tab as Tab) ? (search.tab as Tab) : "toBook");
+  // S6c (#1116): the auditor's flags (the materials head's and the stores auditor's; the owner's monthly list), from the notice.
+  if (search.flags !== undefined) return <AuditFlags />;
   if (search.run !== undefined) return <div className="stores-ui" data-testid="stores-paying" style={page}><AuthoriseSheet id={search.run} /></div>;
   if (search.bill !== undefined) return <div className="stores-ui" data-testid="stores-paying" style={page}><BillHolds billId={search.bill} /></div>;
   return (
     <div className="stores-ui" data-testid="stores-paying" style={page}>
       <h1 style={{ margin: 0, fontSize: 20 }}>{t("stores.paying.title")}</h1>
-      <div role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {TABS.map((k) => (
-          <button key={k} type="button" role="tab" aria-selected={tab === k} style={tab === k ? primary : btn} onClick={() => setTab(k)}>{t(`stores.paying.tab.${k}`)}</button>
-        ))}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {TABS.map((k) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} style={tab === k ? primary : btn} onClick={() => setTab(k)}>{t(`stores.paying.tab.${k}`)}</button>
+          ))}
+        </div>
+        <button type="button" aria-pressed={tab === "tax"} style={tab === "tax" ? primary : btn} onClick={() => setTab("tax")}>{t("stores.paying.tab.tax")}</button>
       </div>
       <Desk tab={tab} />
     </div>
@@ -122,9 +134,13 @@ function Desk({ tab }: { tab: Tab }): React.ReactElement {
       {tab === "toBook" && <ToBook rows={d.toBook} can={d.can.book} />}
       {tab === "holds" && (d.holds.length === 0 ? <Empty /> : <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))" }}>{d.holds.map((h) => <HoldCard key={h.id} h={h} />)}</div>)}
       {tab === "due" && <Due rows={d.due} />}
+      {tab === "due" && <MsmeObjections docs={d.toBook} />}
+      {tab === "due" && <MsmeReport />}
       {tab === "runs" && <Runs runs={d.runs} desk={d} />}
       {tab === "payments" && <Payments desk={d} />}
       {tab === "exports" && <Exports />}
+      {tab === "exports" && d.can.export && <TallyLedgers />}
+      {tab === "tax" && <TaxTab />}
       {d.can.owner && <Settings desk={d} />}
     </>
   );
