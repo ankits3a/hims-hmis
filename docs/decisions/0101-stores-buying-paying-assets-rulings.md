@@ -1,6 +1,6 @@
 ---
 type: decision
-id: "0100"
+id: "0101"
 title: "Stores S4–S7: MSME clock per the Act, GST credit not available by default, full purchase committee, single-source and emergency rules, condemnation above ₹50,000, hold release, equipment-only advances, V/E/D safety stock"
 description: "Eight owner rulings on money, procurement and law for the Stores asset passport, buying desk, paying desk and stock planner (#1114–#1117), plus the medical superintendent as HOD stand-in."
 generated: { by: agent:claude, at: 2026-11-19 }
@@ -16,7 +16,7 @@ sources:
   - { id: spec-1116, resource: "docs/specs/1116-stores-paying-desk.md", title: "Spec: S6 paying desk and auditor agent" }
   - { id: spec-1117, resource: "docs/specs/1117-stores-stock-planner.md", title: "Spec: S7 stock planner agent" }
 ---
-# 0100 — Stores S4–S7 rulings: buying, paying, assets, planning
+# 0101 — Stores S4–S7 rulings: buying, paying, assets, planning
 
 - **Date:** 2026-11-19   **Status:** Ruled
 - **Area:** stores, procurement, money, law (milestone "Stores & procurement", #1114–#1117); builds on 0099
@@ -67,7 +67,7 @@ the figures to the CA.
 ## Consequences / how to apply
 
 - The four specs are approved (`docs/specs/1114` to `1117`, `status: approved`); each open question in them now
-  reads "Ruled (decision 0100 Qk)".
+  reads "Ruled (decision 0101 Qk)".
 - **Consequences, DECIDED in the specs and now carried by this ruling:** a scrap sale takes one buyer up to
   ₹25,000, three written bids above, and the owner's approval above ₹5 lakh, with tax on the sale the
   accountant's (S4); a planner or department draft over budget is never held for any category, carries the mark

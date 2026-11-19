@@ -3,7 +3,7 @@ issue: 1114
 status: approved
 approved: 2026-11-19
 ---
-# SPEC: Stores S4, the asset passport: one QR per unit, holder and place, AMC, calibration, condemnation (#1114) — APPROVED by owner 2026-11-19 (decision 0100)
+# SPEC: Stores S4, the asset passport: one QR per unit, holder and place, AMC, calibration, condemnation (#1114) — APPROVED by owner 2026-11-19 (decision 0101)
 
 Slice S4 of the Stores & Procurement programme (`docs/specs/stores-programme.md`). Written to decision 0099 Q3
 (ruled 2026-11-18): a QR tag on all medical equipment at any value, and on IT and furniture worth ₹5,000 or more;
@@ -67,7 +67,7 @@ S2c (#1119), all built. Owner's bar (programme §0A): auditable, flawless experi
 8. **Condemnation.** The HOD or biomedical proposes (reason from a list). Each committee seat (user HOD, biomedical
    for medical equipment, accounts, materials head) signs once on the phone, in any order. The medical
    superintendent then approves the write-off (the approval that exists today), and the owner also approves above
-   the value line (ruled, decision 0100 Q5). An objection stops it with a reason. The unit reads "Condemned / नाकारा". Disposal by
+   the value line (ruled, decision 0101 Q5). An objection stops it with a reason. The unit reads "Condemned / नाकारा". Disposal by
    the materials head (scrap sale, buy-back, e-waste recycler) posts the write-off and raises the non-returnable
    gate pass; the guard's exit scan ends the unit's life: "Disposed / निपटाया".
 9. **Accountant.** Once a month opens "Asset additions / नई संपत्ति" and "Assets removed / हटाई संपत्ति" and
@@ -152,7 +152,7 @@ S2c (#1119), all built. Owner's bar (programme §0A): auditable, flawless experi
       because the final approval is theirs.
     - **Then the approval that exists today:** `materials_stock_adjustment` (the medical superintendent), raised
       by the stores intent once every seat has signed. S4 never posts a write-off without it.
-    - **Then the owner**, when the unit's original cost is above the value line or unknown. Ruled (decision 0100 Q5): the owner also approves when the unit's original cost is above ₹50,000 or unknown, the same line as the PO tiers.
+    - **Then the owner**, when the unit's original cost is above the value line or unknown. Ruled (decision 0101 Q5): the owner also approves when the unit's original cost is above ₹50,000 or unknown, the same line as the PO tiers.
     - **Objection.** Any seat may object with a reason; the proposal reads "Objected / आपत्ति" and stops. The unit
       stays in use. A fresh proposal is a new row naming the old one.
     - A condemned unit refuses issue, transfer, tag and returnable pass, and moves to the `CONDEMNED` hold store.
@@ -245,7 +245,7 @@ Each id is one acceptance test that calls intents, passes `now` in (no real cloc
 - **D10** `proposeUnitTransfer` then `acceptUnitTransfer` by a holder of the receiving department moves the place,
   the ledger balance and the cost centre together; acceptance by the proposer is refused (`own_transfer`).
 - **D11** A condemnation with one seat unsigned, or without the `materials_stock_adjustment` grant, or (above the
-  ₹50,000 line of decision 0100 Q5, or cost unknown) without the owner, stays pending and posts nothing. A second signature by the same
+  ₹50,000 line of decision 0101 Q5, or cost unknown) without the owner, stays pending and posts nothing. A second signature by the same
   person is refused. A proposal while the accounts seat has no holder is refused (`committee_seat_empty`). An
   objection sets "Objected" and the unit can still be issued.
 - **D12** A condemned unit is refused for issue, transfer, tag and returnable pass. An IT unit marked as holding
