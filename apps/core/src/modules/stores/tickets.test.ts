@@ -86,6 +86,18 @@ describe("Stores S2a tickets: write-once stamps, emergency review, hours", () =>
     expect(await code(issueTicket(db, keeper.actor, t.id, { lines: [{ lineIdx: 0, qtyBase: 9 }] }, NOW))).toBe("indent_closed");
   });
 
+  it("pre-merge review S6: a reason or a note alone is no stamp; a ticket's details are never changed or removed", async () => {
+    const t = await raiseTicket(db, inA.actor, { shelfId: shelf, lines: [{ itemId: mop, qtyBase: 10 }], priority: "routine" }, NOW);
+    expect(await dbRefusal(db.execute(sql`update store_indents set approval_reason = 'pre-filled' where id = ${t.id}`))).toMatch(/store_indent_stamp_write_once/);
+    const e = await raiseTicket(db, inA.actor, { shelfId: shelf, lines: [{ itemId: mop, qtyBase: 2 }], priority: "emergency", emergencyReason: "Spill" }, NOW);
+    await issueTicket(db, keeper.actor, e.id, {}, NOW);
+    expect(await dbRefusal(db.execute(sql`update store_indents set review_note = 'pre-filled' where id = ${e.id}`))).toMatch(/store_indent_stamp_write_once/);
+    expect(await dbRefusal(db.execute(sql`update stores_ticket_details set priority = 'emergency', emergency_reason = 'x' where indent_id = ${t.id}`))).toMatch(/stores_ticket_details_append_only/);
+    expect(await dbRefusal(db.execute(sql`delete from stores_ticket_details where indent_id = ${t.id}`))).toMatch(/stores_ticket_details_append_only/);
+    // The real decision still stamps, reason and all, in one update.
+    await approveTicket(db, hod.actor, t.id, {}, NOW);
+  });
+
   it("an emergency issued first is reviewed once (agree / query), leaves the overdue list, and the review is on the timeline", async () => {
     const t = await raiseTicket(db, inA.actor, { shelfId: shelf, lines: [{ itemId: mop, qtyBase: 2 }], priority: "emergency", emergencyReason: "Spill" }, NOW);
     expect(await code(reviewEmergency(db, hod.actor, t.id, { decision: "agree" }, NOW))).toBe("not_emergency");
