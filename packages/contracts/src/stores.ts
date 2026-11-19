@@ -214,3 +214,39 @@ export type WireTimelineStep = {
   phoneAt?: string | null; recordedAt?: string | null;
 };
 export type WireTicketTimeline = { indentId: string; indentNo: string; steps: WireTimelineStep[] };
+
+// ── S2c (#1119): gate passes and the guard's scan ──
+export const STORES_GATE_PASS_PURPOSES = ["repair", "calibration", "refill", "loan"] as const;
+const gateLines = z.array(z.object({ itemId: id, qty: z.number().int().min(1).max(1_000_000) })).min(1).max(50);
+export const storesGatePassBody = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("returnable"), storeId: id, purpose: z.enum(STORES_GATE_PASS_PURPOSES), party: z.string().max(200),
+    dueBack: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD"), lines: gateLines, note: z.string().max(200).nullish(),
+  }),
+  // The record is optional in the SHAPE so that its absence is the server's refusal ("Return or write-off needed"), not a 400.
+  z.object({ kind: z.literal("non_returnable"), refType: z.enum(["supplier_return", "write_off"]).nullish(), refId: id.nullish(), note: z.string().max(200).nullish() }),
+]);
+export const storesGatePassScanBody = z.object({
+  code: z.string().min(4).max(40), act: z.enum(["exit", "entry"]), lines: gateLines.optional(), ...scanFields,
+});
+export const storesGatePassCloseBody = z.object({ reason: z.string().max(200) });
+
+export type WireGatePassStatus = "raised" | "out" | "overdue" | "back" | "closed";
+export type WireGatePass = {
+  id: string; passNo: string; kind: "returnable" | "non_returnable"; purpose: (typeof STORES_GATE_PASS_PURPOSES)[number] | null;
+  party: string; dueBack: string | null; status: WireGatePassStatus;
+  store: { id: string; code: string; name: string };
+  ref: { type: "supplier_return" | "write_off"; id: string; no: string } | null;
+  note: string | null;
+  lines: { itemId: string; itemCode: string; itemName: string; baseUom: string; qty: number; out: number; back: number }[];
+  raisedBy: WireTicketPerson; raisedAt: string;
+  scans: { kind: "exit" | "entry" | "close"; by: WireTicketPerson; at: string; recordedAt: string; flag: "late" | "future" | null; reason: string | null; lines: { itemId: string; qty: number }[] }[];
+};
+export type WireGatePassLookup = { pass: WireGatePass; act: "exit" | "entry" };
+export type WireGatePassScanResult = { pass: WireGatePass; duplicate: boolean; flag: "late" | "future" | null };
+export type WireGatePassSource = {
+  type: "supplier_return" | "write_off"; id: string; no: string; party: string; store: { id: string; code: string; name: string }; at: string;
+  lines: { itemId: string; itemName: string; qty: number }[];
+};
+/** The store's "New pass" sheet: where a returnable pass may start, and what a non-returnable pass may stand on. */
+export type WireGatePassForm = { stores: { id: string; code: string; name: string }[]; sources: WireGatePassSource[] };

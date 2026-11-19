@@ -29,6 +29,8 @@ export const STORES_ACTS = [
   // S2b (#1112): the custody chain, the receipt, what went back, the shorts' resolutions, returns, late scans, adding to a ticket.
   "take_custody", "hand_over", "take_over", "deliver_ticket", "send_back", "return_undelivered", "accept_return", "resolve_short",
   "reask_ticket", "raise_return", "receive_return", "confirm_late_scan", "add_to_ticket",
+  // S2c (#1119): a gate pass's raise, the guard's exit and entry scans, and the close of a pass that never left (refId = the pass).
+  "raise_gate_pass", "gate_pass_out", "gate_pass_in", "close_gate_pass",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

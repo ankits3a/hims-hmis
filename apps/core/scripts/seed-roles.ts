@@ -1330,6 +1330,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.masters.manage",
       // STORES S2a (#1112, decision 16) — the audit pack.
       "stores.audit.read",
+      // STORES S2c (#1119, decision 3) — raise, print and close a gate pass (never scan one: the guard does).
+      "stores.gatepass.raise",
     ],
   },
   {
@@ -1352,6 +1354,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D3 — the storekeeper reads the main store's fridge on the same schedule as the counter's.
       // DEFAULT — owner may change.
       "pharmacy.coldchain.record",
+      // STORES S2c (#1119, decision 3) — raise, print and close a gate pass for what leaves the store.
+      "stores.gatepass.raise",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -2030,6 +2034,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * ticket by scanning its label (or typing its last four digits), hand it on, bring it back undelivered. Assigned by nobody.
    */
   { roleKey: "support_staff", permissions: ["stores.carry"] },
+  /**
+   * STORES S2c (#1119, decision 3) — the guard at the hospital gate: `security_guard`, the IPD train's (#967) key and
+   * title, whichever lands second merges its grants into this row at rebase. Here it holds only `stores.gatepass.scan`:
+   * scan a gate pass out and in. It never raises one, and the person who raised a pass is refused as its scanner.
+   * Assigned by nobody.
+   */
+  { roleKey: "security_guard", permissions: ["stores.gatepass.scan"] },
 ];
 
 /**
@@ -2299,6 +2310,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   stores_auditor: "Stores Auditor (internal audit: reads the Stores audit pack, changes nothing)",
   // STORES S2b (#1112) — the IPD train's exact key and title.
   support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
+  // STORES S2c (#1119) — the IPD train's exact key and title.
+  security_guard: "Security Guard (scans attendant and visitor passes at the ward door)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

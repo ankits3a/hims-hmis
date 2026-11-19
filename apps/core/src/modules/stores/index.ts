@@ -8,7 +8,7 @@ export { StoresError, STORES_ERROR_CODES, storesHttpStatus } from "./errors";
 export type { StoresErrorCode } from "./errors";
 export { STORES_ACTS, STORES_ACT_EVENT, STORES_EVENTS, storesActRecorded } from "./events";
 export type { StoresAct } from "./events";
-export { STORES_AUDIT_READ, STORES_INDENTS_APPROVE, STORES_MASTERS, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_READ, STORES_SHELF_WORK } from "./access";
+export { STORES_AUDIT_READ, STORES_GATEPASS_RAISE, STORES_GATEPASS_SCAN, STORES_INDENTS_APPROVE, STORES_MASTERS, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_READ, STORES_SHELF_WORK } from "./access";
 export {
   CENTRAL_STORE_CODE, NIGHT_STORE_CODE, STORES_TOP_CATEGORIES, createCategory, importStoresItems, listCategories, listNewItemRequests,
   listStoresItems, registerStoresItem, requestNewItem, resolveNewItemRequest, searchStoresItems, seedStoresMasters, updateStoresItem,
@@ -35,3 +35,9 @@ export {
 } from "./custody";
 export { ISSUE_VOUCHER_DOCUMENT, addToOpenTicket, openTicketFor, reAskShort } from "./tickets";
 export { registerStoresPrinting, renderIssueVoucher } from "./voucher";
+// S2c (#1119) — gate passes: raise, the guard's lookup and scan, close, the overdue list and its notice, the print.
+export {
+  GATE_PASS_DOCUMENT, closeGatePass, gatePassForm, gatePassLookup, gatePassSources, getGatePass, listGatePasses, notifyOverdueGatePasses,
+  overdueGatePasses, raiseGatePass, scanGatePass,
+} from "./gate-pass";
+export { renderGatePass } from "./gate-pass-print";

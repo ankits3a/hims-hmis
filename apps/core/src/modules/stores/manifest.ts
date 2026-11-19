@@ -28,7 +28,12 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * S2b (#1112, decision 7) adds `stores.carry` (hospital; the porter, `support_staff`): take custody of an
  * issued ticket by scanning its label, hand it on, bring it back undelivered.
  *
- * One menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
+ * S2c (#1119, decision 3) adds two: `stores.gatepass.raise` (hospital; the storekeeper and the materials head) raises,
+ * prints and closes a gate pass; `stores.gatepass.scan` (hospital; the security guard, `security_guard`) scans it out
+ * and in. Each has its own menu row: the guard's Gate (`/stores/gate`, the only screen a guard has) and the store's
+ * Passes (`/stores/passes`).
+ *
+ * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
  */
@@ -37,6 +42,8 @@ export const storesManifest: ModuleManifest = {
   title: "Stores",
   menu: [
     { label: "Stores", path: "/stores", permission: "stores.masters.manage" },
+    { label: "Gate passes", path: "/stores/passes", permission: "stores.gatepass.raise" },
+    { label: "Gate", path: "/stores/gate", permission: "stores.gatepass.scan" },
   ],
   permissions: [
     "stores.masters.manage",
@@ -46,6 +53,8 @@ export const storesManifest: ModuleManifest = {
     "stores.nightstore.issue",
     "stores.audit.read",
     "stores.carry",
+    "stores.gatepass.raise",
+    "stores.gatepass.scan",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the three Now cards: "Indents to approve", "To pick", "To receive" (`desk.ts`). */

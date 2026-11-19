@@ -26,6 +26,10 @@ export const STORES_INDENTS_APPROVE = "stores.indents.approve";
 export const STORES_NIGHTSTORE_ISSUE = "stores.nightstore.issue";
 /** S2a (#1112, decision 16) — the audit pack: materials head, medical superintendent, owner, the internal auditor. */
 export const STORES_AUDIT_READ = "stores.audit.read";
+/** S2c (#1119, decision 3) — raise, print and close a gate pass: the storekeeper and the materials head. */
+export const STORES_GATEPASS_RAISE = "stores.gatepass.raise";
+/** S2c (#1119, decision 3) — scan a pass out and in at the gate: the security guard. Never the pass's raiser. */
+export const STORES_GATEPASS_SCAN = "stores.gatepass.scan";
 
 export async function holds(db: Db | Tx, actor: Actor, permission: string, departmentId?: string): Promise<boolean> {
   if (actor.type !== "user") return false;

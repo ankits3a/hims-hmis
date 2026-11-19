@@ -1720,6 +1720,15 @@ transit against the last person who held it until the materials head marks it fo
 goes to the medical superintendent's approval). `stores.carry` is held by the new role `support_staff` (the
 porter), which holds nothing else here and is assigned by no seed.
 
+**Stores gate passes (decision 0099, S2c #1119, 2026-11-19).** Nothing leaves the hospital gate without a pass.
+A returnable pass (repair, calibration, refill, loan) names the items, who they go to and the day they are due
+back; the guard's scan moves the stock to an "out on pass" store and the scan on return brings it back, so it is
+always somewhere on the books. A non-returnable pass stands only on a dispatched supplier return or a posted
+write-off. The pass prints with a QR; the guard scans it or types its last four digits. Every scan is a row nobody
+can change. `stores.gatepass.raise` is held by `storekeeper` and `materials_head`; `stores.gatepass.scan` by the
+new role `security_guard`, which holds nothing else here and is assigned by no seed. The person who raised a pass
+is refused as its scanner.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the
