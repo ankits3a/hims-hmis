@@ -6,7 +6,7 @@ import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { MaterialsError } from "./errors";
 import { materialDiscrepancyFlagged, materialIssued, materialReceived } from "./events";
 import { fefoPick, getBatch, postMovements } from "./ledger";
-import { ensureTransitStore, requireStore, storeCustodianRoles } from "./stores";
+import { ensureTransitStore, isStoresPlace, requireStore, storeCustodianRoles } from "./stores";
 import type { MovementInput } from "./ledger";
 import type { Actor } from "@hmis/contracts";
 import type { Custody } from "./controlled";
@@ -232,7 +232,7 @@ export async function refuseStoresPlacesOnMaterialsRoute(db: Db | Tx, storeIds: 
   if (storeIds.length === 0) return;
   const rows = await db.select({ id: resources.id, code: resources.code, attributes: resources.attributes }).from(resources)
     .where(inArray(resources.id, [...storeIds]));
-  const hit = rows.find((r) => ((r.attributes ?? {}) as Record<string, unknown>).domain === "stores");
+  const hit = rows.find((r) => isStoresPlace(r));
   if (hit !== undefined) {
     throw new MaterialsError(
       "moves_through_stores",

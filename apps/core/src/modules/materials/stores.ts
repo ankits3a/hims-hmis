@@ -12,6 +12,19 @@ import type { Db, Tx } from "../../kernel/db/client";
 export type StoreRow = typeof resources.$inferSelect;
 
 /**
+ * STORES (pre-merge review S1) — the system stores only the Stores intents move stock through. They carry no
+ * `domain` (they are created by materials helpers) but are Stores places all the same: out of pharmacy's lists and
+ * refused on the materials transfer route, like every `domain = 'stores'` row.
+ */
+export const STORES_SYSTEM_STORE_CODES: readonly string[] = [QUARANTINE_STORE_CODE];
+
+/** A Stores place: a `domain = 'stores'` row or one of the Stores system stores. */
+export function isStoresPlace(row: { code: string; attributes: unknown }): boolean {
+  return ((row.attributes ?? {}) as Record<string, unknown>).domain === "stores"
+    || STORES_SYSTEM_STORE_CODES.some((c) => c.toLowerCase() === row.code.toLowerCase());
+}
+
+/**
  * PLAN 14 T5 / DD2, DD9 — stock LOCATIONS, which are registry resources of kind `store`.
  *
  * ═══ THERE IS NO `stores` TABLE, AND THAT IS THE WHOLE POINT ═══
@@ -243,6 +256,7 @@ export async function listStores(
   }
   if (opts.includeStoresDomain !== true) {
     clauses.push(sql`coalesce(${resources.attributes}->>'domain', '') <> 'stores'`);
+    clauses.push(sql`lower(${resources.code}) not in (${sql.join(STORES_SYSTEM_STORE_CODES.map((c) => sql`${c.toLowerCase()}`), sql`, `)})`);
   }
   return db.select().from(resources).where(and(...clauses)).orderBy(asc(resources.code));
 }

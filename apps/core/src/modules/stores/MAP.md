@@ -124,9 +124,17 @@ department shelves every department (housekeeping included) receives from. Pharm
   else the transfer's issuer (`chain.ts` `holderOf`). The LEDGER IS UNTOUCHED by hand-offs.
 - The label QR carries the indent number only; the typed fallback is its last four digits, matched among tickets on
   their way that the act admits (`ticketByCode`): none = `unknown_ticket`, two = `ambiguous_code`.
-- Scans: `stores_client_keys` (actor, key) records once; `scanClock` keeps the phone time (`phone_at`), dates the row
-  by it unless it is in the future (then server time), flags `late` (> 12 h) / `future`, and tells the source keepers
-  "Late scan to confirm" (`stores_scan_confirmations`, `confirmLateScan`).
+- Scans: `stores_client_keys` (actor, key) records once; `scanClock` always keeps the phone time (`phone_at`) and
+  dates the act by it ONLY when it is at most 12 h old and not before the floor (`scanFloor`: the transfer's issue or
+  its newest hand-off); otherwise the act (hand-off, receipt, ledger rows, charge) is dated at the server's time and
+  flagged `late` / `future`. A flagged hand-off or receipt tells the source keepers "Late scan to confirm"
+  (`lateScansToConfirm`, `confirmLateScan`; a receipt's id there is its transfer's, `stores_delivery_lines.flag`).
+  TRAP: a backdated receipt would otherwise land before its issue or in a closed month's department charge.
+- Guards in the database (0239): `stores_custody_handoffs` and `stores_delivery_lines` append-only;
+  `stores_transit_resolutions` takes one change, `pending` → `posted` (by/at) or `refused`, nothing else.
+  `stores_scan_confirmations.handoff_id` has no foreign key (a hand-off id or a transfer id).
+- `/materials/transfers/:id/receive` refuses a Stores transfer (`moves_through_stores`): a department return is
+  received by `receiveReturn`, which writes the department's credit.
 - `deliverTicket` refuses the issuer (`you_issued_it`) and every carrier (`you_carried_it`) BEFORE the shelf grant;
   per ticket line accepted/short/wrong/damaged = issued, split over the batches (`planDelivery`). Only `accepted` goes
   through `receiveAtShelf` (charged). Wrong/damaged become `sent_back` rows in `stores_transit_resolutions`

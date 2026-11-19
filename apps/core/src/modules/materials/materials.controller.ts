@@ -1387,7 +1387,13 @@ export class MaterialsController {
   ): Promise<{ status: string; shortfalls: unknown[] }> {
     const b = parsed(receiveBody, body);
     try {
-      return await withTx(this.db, (tx) => receiveStock(tx, actor, transferId, b.lines, new Date()));
+      return await withTx(this.db, async (tx) => {
+        // Pre-merge review S5: a Stores transfer (a ticket, a department return) is received through Stores, which
+        // asks the keeper and writes the department's cost centre; this route does neither.
+        const transfer = await getTransfer(tx, transferId);
+        if (transfer !== undefined) await refuseStoresPlacesOnMaterialsRoute(tx, [transfer.fromResourceId, transfer.toResourceId]);
+        return receiveStock(tx, actor, transferId, b.lines, new Date());
+      });
     } catch (e) { toHttp(e); }
   }
 

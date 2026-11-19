@@ -248,4 +248,52 @@ describe("Stores S2b: the paths beside the done-means", () => {
     await confirmLateScan(db, keeperB.actor, late!.handoffId, later);
     expect(await storesTakeBackDesk.load(ctx)).toEqual([]);
   });
+
+  it("pre-merge review M1: a receipt scanned with a phone time before the issue or a month back is dated and charged at the server's time, flagged, and on the keeper's list", async () => {
+    const t = await issued([{ itemId: mop, qtyBase: 10 }]);
+    await takeCustody(db, porterA.actor, { code: t.indentNo, scannedAt: at(5).toISOString() }, at(5));
+    const backdated = "2026-10-01T06:30:00.000Z";
+    const r = await deliverTicket(db, inA.actor, t.id, { scannedAt: backdated }, at(20));
+    expect(r.flag).toBe("late");
+    const shelfRows = (await db.select().from(stockLedger)).filter((x) => x.resourceId === shelfA);
+    expect(shelfRows.length).toBeGreaterThan(0);
+    for (const x of shelfRows) expect(x.occurredAt.toISOString()).toBe(at(20).toISOString());
+    expect((await departmentChargeOn(db, "HSK", "2026-10-01")).chargePaise).toBe(0);
+    expect(await charge()).toBe(10 * 250);
+    const lines = (await db.execute(sql`select received_at, phone_at, flag from stores_delivery_lines where indent_id = ${t.id}`)).rows as { received_at: Date; phone_at: Date; flag: string }[];
+    expect(lines.map((l) => [new Date(l.received_at).toISOString(), new Date(l.phone_at).toISOString(), l.flag])).toEqual([[at(20).toISOString(), backdated, "late"]]);
+    const flagged = await lateScansToConfirm(db, keeperA.actor);
+    expect(flagged).toEqual([expect.objectContaining({ indentId: t.id, kind: "deliver", phoneAt: backdated, flag: "late" })]);
+    await confirmLateScan(db, keeperA.actor, flagged[0]!.handoffId, at(30));
+    expect(await lateScansToConfirm(db, keeperA.actor)).toEqual([]);
+    expect(await refusal(confirmLateScan(db, keeperA.actor, flagged[0]!.handoffId, at(31)))).toBe("already_confirmed");
+  });
+
+  it("pre-merge review M1: a hand-over whose phone time is before the take it follows is dated at the server's time and flagged; one inside the window keeps the phone's time", async () => {
+    const t = await issued([{ itemId: mop, qtyBase: 4 }]);
+    await takeCustody(db, porterA.actor, { code: t.indentNo, scannedAt: at(6).toISOString() }, at(7));
+    const r = await handOver(db, porterB.actor, { code: t.indentNo, fromUserId: porterA.id, scannedAt: at(4).toISOString() }, at(9));
+    expect(r.flag).toBe("late");
+    const rows = (await db.execute(sql`select kind, occurred_at, phone_at, flag from stores_custody_handoffs where indent_id = ${t.id} order by recorded_at`)).rows as { kind: string; occurred_at: Date; phone_at: Date; flag: string | null }[];
+    expect(rows.map((h) => [h.kind, new Date(h.occurred_at).toISOString(), new Date(h.phone_at).toISOString(), h.flag])).toEqual([
+      ["take", at(6).toISOString(), at(6).toISOString(), null],
+      ["hand_over", at(9).toISOString(), at(4).toISOString(), "late"],
+    ]);
+  });
+
+  it("pre-merge review S6: a delivery line is never changed or deleted; a transit resolution takes only pending to posted or refused", async () => {
+    const t = await issued([{ itemId: mop, qtyBase: 10 }]);
+    await takeCustody(db, porterA.actor, { code: t.indentNo }, at(5));
+    await deliverTicket(db, inA.actor, t.id, { lines: [{ lineIdx: 0, accepted: 8, wrong: 2 }] }, at(20));
+    const dbRefusal = async (q: Promise<unknown>): Promise<string> => {
+      try { await q; } catch (e) { return String((e as { cause?: { message?: string } }).cause?.message ?? (e as Error).message); }
+      throw new Error("expected the database to refuse");
+    };
+    expect(await dbRefusal(db.execute(sql`update stores_delivery_lines set accepted = 10, wrong = 0 where indent_id = ${t.id}`))).toMatch(/stores_delivery_lines_append_only/);
+    expect(await dbRefusal(db.execute(sql`delete from stores_delivery_lines where indent_id = ${t.id}`))).toMatch(/stores_delivery_lines_append_only/);
+    expect(await dbRefusal(db.execute(sql`update stores_transit_resolutions set qty = 1 where indent_id = ${t.id}`))).toMatch(/stores_transit_resolution_immutable/);
+    expect(await dbRefusal(db.execute(sql`delete from stores_transit_resolutions where indent_id = ${t.id}`))).toMatch(/stores_transit_resolution_immutable/);
+    await acceptReturn(db, keeperA.actor, t.id, at(30));
+    expect(await dbRefusal(db.execute(sql`update stores_transit_resolutions set status = 'refused', posted_by = null, posted_at = null where indent_id = ${t.id}`))).toMatch(/stores_transit_resolution_immutable/);
+  });
 });
