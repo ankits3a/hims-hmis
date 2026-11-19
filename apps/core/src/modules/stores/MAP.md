@@ -16,7 +16,7 @@ with a module name, `kernel/`, `packages/` or `apps/`. Citations name a file and
 Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials core), 0081 (done-means tests).
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
-`docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4a built here; S4b next).
+`docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -286,8 +286,53 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Exports: `assetAdditions(month)` (GRN units put to use in the IST month; installed date else first shelf day; GST =
   cost × item GST rate; input credit blank until S6), one `asset_export` act per call.
 
+## 10c. Condemnation, loss and disposal (S4b #1114, `condemnation.ts`; ruling 0101 Q5)
+- Tables (migration 0243, all append-only by the 0242 trigger function): `stores_condemnations` (one proposal, written
+  once: kind `condemn` | `loss`, reason, the SEATS frozen on the row, cost judged on, `needs_owner`, `holds_data`,
+  `replaces_id`, `round_id`), `stores_condemnation_signatures` (one row per seat, one per person: `sign` | `object`),
+  `stores_condemnation_steps` (`raised` | `approved` | `rejected` | `posted`, one each), `stores_scrap_sales` (the
+  disposal: scrap sale, buy-back or e-waste, bids, wipe certificate, the write-off). Status is DERIVED (`statusOfFull`).
+- Seats are filled BY ROLE (`SEAT_ROLE`: `department_head` AT the unit's department, `accounts_officer`,
+  `materials_head`, `biomedical_engineer` for `tag_rule = always`), and the role must hold `stores.assets.condemn`
+  (`seatHolders`). No user department (a unit in a store) = no HOD seat. A seat with no holder refuses the proposal
+  (`committee_seat_empty`, `detail.seat`). One act per person per proposal (`already_signed`).
+- The last signature (`raiseAfterSeats`, in the signature's tx and its ONE act): the books move to the materials
+  `CONDEMNED` hold (`ensureCondemnedStore`, a Stores system store; two ledger rows, the transit leg keeps `ref_type =
+  'transfer'` so `inTransitByLine` sees it leave), a `moved` unit event with `data.hold` (`condemned` → "Withdrawn",
+  `loss` → "Missing"), then materials `raiseWriteOff` (reason `condemned`, raised AS the materials-head seat's signer:
+  it holds `materials.writeoffs.manage`; the requester of `materials_stock_adjustment`), and when `needs_owner` the new
+  approval type `stores_condemnation_owner` (approver owner; in `MATERIALS_APPROVAL_TYPES`, so the seed registers it).
+- `settleCondemnations` reads the two approvals back (chaser minute sweep, every condemnation read, the passport's
+  read): both granted → step `approved` + unit event `condemned` (a loss: none, it stays Missing); either rejected →
+  step `rejected`, `condemn_objected`, and the books go back to where they stood (the `raised` step's `data`). It is NOT
+  an act (D17: one act per person's act); the unit events carry the approver as actor. TRAP: a write-off the MS granted
+  whose owner then rejected stays "requested, granted" in materials; its CONDEMNED stock is gone back, so it cannot post.
+- Disposal (`disposeUnit`, `stores.masters.manage`): refuses `regulator_paper_needed` (item `regulated_by` without a
+  `regulator_paper` event), `wipe_certificate_needed` (`holds_data`; default true for a top category `ITP`),
+  `bids_required` (scrap sale above ₹25,000: three distinct bidders, the buyer the highest), `not_approved` above ₹5
+  lakh without the owner's grant. One tx: `postWriteOff` (buyer = agency, invoice or recycler certificate = manifest,
+  today), the sale row, step `posted`, and the non-returnable pass (`raiseGatePassInTx(..., { quiet: true })`, ref
+  `scrap_sale` for a sale/buy-back, `write_off` for e-waste) when the actor holds `stores.gatepass.raise`; the act is
+  `dispose_unit` and names the pass. The guard's exit scan writes `disposed` for the line's `unit_ids`.
+- Ledger check: a sold unit is off the books from its sale row until the exit scan (`stores_scrap_sales` excluded from
+  `live`); an opening row whose `ref_id` is a write-off (`markFound`) is not a new unit (excluded from `entered`).
+- Loss: `runLossProposals` (chaser) proposes each unit a closed round did not see, 30 days on, with nothing placing or
+  seeing it since and no open proposal (actor `system:stores-loss-sweep`); S4a's lost short of a tagged unit routes to
+  `proposeLossInTx` (one per unit, no transit resolution row). `writeOffLoss` posts with agency "lost" and the inquiry
+  note's number, writes `written_off`; no pass (gate sources leave loss write-offs out). `markFound` = `found` + one
+  `opening_balance` row on the unit's own batch naming the write-off; the write-off row is untouched.
+- Withdrawn (decision 7): `withdrawUnit` / `returnToUse` are `moved` events AT the same shelf with `data.hold`, no
+  ledger row; the HOD (condemn + indents.approve at the department), the in-charge or biomedical.
+- Audit pack `{unitId}`: the unit's own acts (refId = the unit) plus every record its events name (GRN line, transfers
+  and their tickets, passes, condemnations). Removals export: `assetRemovals(month)` by the `posted` step's IST day.
+- Now cards: "Faults to see" (`stores.faults`, newest fault after the last repair act) and "Condemnation to sign"
+  (`stores.condemn`, also the waiting kind `stores.condemnToSign`: the HOD's seat is department-scoped). Web
+  `/stores/condemn` (the signer's phone), the Condemnation tab (Propose, dispose, write off), Removals in Exports.
+- A refusal of the passport carries `detail.ask` (the home department's in-charges, else the materials head); the
+  phone shows "Not your department: ask <names>". A fault may carry a photo (document store key on the event).
+- Receive: a ticket line's `units` (still in transit) let the receiver scan what arrived; `unitIds` go with the line.
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
-staff app); choosing which porter to send; purchasing (S5). S4b (#1114): condemnation, loss, disposal, regulated
-equipment, scrap sales, removals export, the audit pack's `{unit}` (D11–D14, D17); `stores.assets.condemn` is not
-declared yet; "Withdrawn" has no act yet; the "Faults to see" Now card.
+staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
+SITE (no sites yet), the dated HOD delegation (S5 decision 11), PDF/print of the removals export (CSV + screen only).

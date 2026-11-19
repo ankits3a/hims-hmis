@@ -516,13 +516,31 @@ function ReceiveCard({ ticket, focused }: { ticket: WireTicket; focused: boolean
   const [kind, setKind] = useState<Record<number, Remainder>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // S4b (#1114, edge case 1): a line of tagged units is received by scanning the units that arrived; the rest is the short.
+  const [scans, setScans] = useState<Record<number, string[]>>({});
+  const [scanning, setScanning] = useState<number | null>(null);
   const holder = ticket.custody?.holder ?? null;
+  const scanUnit = (lineIdx: number, units: { id: string; tagNo: string }[], code: string): void => {
+    const c = code.trim().toUpperCase();
+    const hit = units.filter((u) => u.tagNo === c || (c.length === 4 && u.tagNo.endsWith(c)));
+    if (hit.length !== 1) { setNotice(t(hit.length === 0 ? "stores.assets.notOnTicket" : "stores.ticket.twoMatch")); return; }
+    setNotice(null);
+    setScans((x) => ({ ...x, [lineIdx]: [...new Set([...(x[lineIdx] ?? []), hit[0]!.id])] }));
+  };
+  const gotOf = (l: WireTicket["lines"][number]): number => {
+    const issued = l.qtyIssued ?? 0;
+    // Until the first scan the whole line counts as arrived (the server reads no scans the same way).
+    if ((l.units ?? []).length > 0 && (scans[l.lineIdx] ?? []).length > 0) return Math.min(issued, scans[l.lineIdx]!.length);
+    return got[l.lineIdx] ?? issued;
+  };
   const confirm = (): void => {
     const lines: DeliverLine[] = issuedLines.map((l) => {
       const issued = l.qtyIssued ?? 0;
-      const accepted = got[l.lineIdx] ?? issued;
+      const accepted = gotOf(l);
       const rest = issued - accepted;
-      return rest > 0 ? { lineIdx: l.lineIdx, accepted, [kind[l.lineIdx] ?? "short"]: rest } : { lineIdx: l.lineIdx, accepted };
+      const units = scans[l.lineIdx];
+      const base = { lineIdx: l.lineIdx, accepted, ...(units !== undefined && units.length > 0 && (l.units ?? []).length > 0 ? { unitIds: units } : {}) };
+      return rest > 0 ? { ...base, [kind[l.lineIdx] ?? "short"]: rest } : base;
     });
     setBusy(true);
     deliverTicket(ticket.id, lines)
@@ -551,7 +569,8 @@ function ReceiveCard({ ticket, focused }: { ticket: WireTicket; focused: boolean
       </div>
       {issuedLines.map((l) => {
         const issued = l.qtyIssued ?? 0;
-        const accepted = got[l.lineIdx] ?? issued;
+        const accepted = gotOf(l);
+        const unitLine = (l.units ?? []).length > 0;
         const rest = issued - accepted;
         const word: Remainder | "accept" = rest > 0 ? (kind[l.lineIdx] ?? "short") : "accept";
         const set = (n: number): void => setGot((c) => ({ ...c, [l.lineIdx]: Math.min(issued, Math.max(0, n)) }));
@@ -560,14 +579,24 @@ function ReceiveCard({ ticket, focused }: { ticket: WireTicket; focused: boolean
             <label data-testid={`receive-line-${String(l.lineIdx)}`} style={rowStyle}>
               <span style={cell}>{l.itemName}</span>
               <span style={num}>{String(issued)}</span>
-              <input
-                type="number" inputMode="numeric" min={0} max={issued} aria-label={`${t("stores.ticket.issued")} · ${l.itemName}`}
-                value={accepted}
-                onChange={(e) => set(Number(e.target.value.replace(/\D/g, "") || "0"))}
-                style={{ width: 56, minHeight: 40, flexShrink: 0, textAlign: "right", boxSizing: "border-box", padding: "0 6px" }}
-              />
-              <button type="button" style={{ ...btn, width: 40, padding: 0 }} disabled={accepted <= 0} aria-label={`${t("stores.ux.oneLess")} · ${l.itemName}`}
-                onClick={(e) => { e.preventDefault(); set(accepted - 1); }}>−1</button>
+              {unitLine ? (
+                <>
+                  <span data-testid={`receive-scanned-${String(l.lineIdx)}`} style={{ width: 56, flexShrink: 0, textAlign: "center", fontWeight: 700 }}>{String(accepted)}</span>
+                  <button type="button" style={{ ...btn, minWidth: 40, padding: "0 6px" }} aria-label={`${t("stores.assets.scanUnit")} · ${l.itemName}`}
+                    onClick={(e) => { e.preventDefault(); setScanning(scanning === l.lineIdx ? null : l.lineIdx); }}>{t("stores.assets.scanShort")}</button>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="number" inputMode="numeric" min={0} max={issued} aria-label={`${t("stores.ticket.issued")} · ${l.itemName}`}
+                    value={accepted}
+                    onChange={(e) => set(Number(e.target.value.replace(/\D/g, "") || "0"))}
+                    style={{ width: 56, minHeight: 40, flexShrink: 0, textAlign: "right", boxSizing: "border-box", padding: "0 6px" }}
+                  />
+                  <button type="button" style={{ ...btn, width: 40, padding: 0 }} disabled={accepted <= 0} aria-label={`${t("stores.ux.oneLess")} · ${l.itemName}`}
+                    onClick={(e) => { e.preventDefault(); set(accepted - 1); }}>−1</button>
+                </>
+              )}
               {rest > 0
                 ? (
                   <button type="button" style={{ ...btn, minWidth: 72, padding: "0 6px" }} onClick={(e) => { e.preventDefault(); setKind((c) => ({ ...c, [l.lineIdx]: REMAINDERS[(REMAINDERS.indexOf(word as Remainder) + 1) % REMAINDERS.length]! })); }}>
@@ -576,6 +605,12 @@ function ReceiveCard({ ticket, focused }: { ticket: WireTicket; focused: boolean
                 )
                 : <span style={{ flexShrink: 0, width: 72, textAlign: "center" }}>{t("stores.ticket.status.accept")}</span>}
             </label>
+            {unitLine && scanning === l.lineIdx && (
+              <div data-testid={`receive-scan-${String(l.lineIdx)}`} style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 12 }}>
+                <span style={{ fontSize: 14 }}>{t("stores.assets.scannedOf", { n: (scans[l.lineIdx] ?? []).length, m: issued })}</span>
+                <ScanOrType label={t("stores.assets.scanUnit")} onCode={(c) => scanUnit(l.lineIdx, l.units ?? [], c)} />
+              </div>
+            )}
             {rest > 0 && (
               <div role="radiogroup" aria-label={`${t("stores.ux.restIs")} · ${l.itemName}`} style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 12, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13 }}>{`${t("stores.ux.restIs")} ${String(rest)}:`}</span>

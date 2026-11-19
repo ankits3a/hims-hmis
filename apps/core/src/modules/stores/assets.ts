@@ -7,7 +7,7 @@ import {
   episodeSeries, items, resources, roleAssignments, rolePermissions, storesAssetUnitEvents, storesAssetUnits, storesGatePasses, users, vendors,
 } from "../../kernel/db/schema";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
-import { OUT_ON_PASS_STORE_CODE, TRANSIT_STORE_CODE, ensureTransitStore, issueStock, postOpeningBalances } from "../materials";
+import { CONDEMNED_STORE_CODE, OUT_ON_PASS_STORE_CODE, TRANSIT_STORE_CODE, ensureTransitStore, issueStock, postOpeningBalances } from "../materials";
 import {
   STORES_MASTERS, STORES_SHELF_READ, STORES_SHELF_WORK, departmentOf, holds, isStoresStore, recordAct, requireShelf, requireShelfAct, requireStoresStore,
   toStoresStore,
@@ -15,9 +15,10 @@ import {
 import { itemRules, tagDecisionFor, unitsOfLine } from "./asset-rules";
 import { StoresError } from "./errors";
 import { holdersOf, keepsStore } from "./tickets";
+import { latestCondemnation, openCondemnationOf, settleUnit } from "./condemnation";
 import { receiveAtShelf } from "./use";
 import type {
-  StoresAssetStatus, StoresDueWord, WireAssetDue, WireAssetEvent, WireAssetLookup, WireAssetNext, WireAssetPassportFull, WireAssetRegisterRow,
+  StoresAssetStatus, StoresCondemnationStatus, StoresDueWord, WireAssetDue, WireAssetEvent, WireAssetLookup, WireAssetNext, WireAssetPassportFull, WireAssetRegisterRow,
   WireTagLine,
 } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
@@ -146,7 +147,7 @@ async function storeInfos(db: Db | Tx, ids: readonly string[]): Promise<Map<stri
   const rows = await (db as Db).select().from(resources).where(inArray(resources.id, want));
   return new Map(rows.map((r) => {
     const s = isStoresStore(r) ? toStoresStore(r) : null;
-    const kind = s?.kind ?? (r.code === TRANSIT_STORE_CODE ? "transit" : r.code === OUT_ON_PASS_STORE_CODE ? "out_on_pass" : "other");
+    const kind = s?.kind ?? (r.code === TRANSIT_STORE_CODE ? "transit" : r.code === OUT_ON_PASS_STORE_CODE ? "out_on_pass" : r.code === CONDEMNED_STORE_CODE ? "condemned" : "other");
     return [r.id, { id: r.id, code: r.code, name: r.name, kind, departmentId: s?.departmentId ?? null }] as const;
   }));
 }
@@ -293,8 +294,12 @@ export async function statusOf(db: Db | Tx, s: UnitState, now: Date, missing?: S
   const pass = await passOf(db, s);
   if (pass !== null) return { status: pass.dueBack !== "" && pass.dueBack < istDayString(now) ? "overdue" : "out_repair", out: pass };
   if (s.place.kind === "transit" || s.pendingTransfer !== null) return { status: "on_its_way", out: null };
+  // S4b (#1114): the committee has signed; the books wait in the CONDEMNED hold (a loss still reads Missing).
+  if (s.place.kind === "condemned") return { status: (s.placeEvent.data as { hold?: unknown }).hold === "loss" ? "missing" : "withdrawn", out: null };
   if (s.openRepair) return { status: "under_repair", out: null };
   if ((missing ?? (await missingUnits(db))).has(s.unit.id)) return { status: "missing", out: null };
+  // S4b (#1114, decision 7): the HOD withdrew it (NABH practice): it stays on the shelf, out of use.
+  if ((s.placeEvent.data as { hold?: unknown }).hold === "withdrawn") return { status: "withdrawn", out: null };
   return { status: s.place.kind === "shelf" ? "in_use" : "in_store", out: null };
 }
 
@@ -404,6 +409,13 @@ async function fullPassport(db: Db | Tx, actor: Actor, s: UnitState, now: Date, 
     acceptTransfer = await worksAt(db, actor, to.departmentId);
   }
   const tagNo = s.liveTags[s.liveTags.length - 1] ?? s.unit.tagNo;
+  const home = homeDepartmentOf(s);
+  const worksHome = await worksAt(db, actor, home);
+  const hod = home !== null && (await holds(db, actor, "stores.assets.condemn", home)) && (await holds(db, actor, "stores.indents.approve", home));
+  const open = await openCondemnationOf(db, s.unit.id);
+  const lastCond = await lastCondemnationOf(db, s.unit.id);
+  const reg = await regulationOf(db, s);
+  const withdrawn = (s.placeEvent.data as { hold?: unknown }).hold === "withdrawn";
   const view: WireAssetPassportFull = {
     access: "full", tagReplaced,
     unit: {
@@ -423,7 +435,13 @@ async function fullPassport(db: Db | Tx, actor: Actor, s: UnitState, now: Date, 
       addDetails: manage && s.ended === null,
       transfer: s.ended === null && s.place.kind === "shelf" && s.pendingTransfer === null && (await worksAt(db, actor, s.place.departmentId)),
       foundHere: false, acceptTransfer,
+      withdraw: s.ended === null && s.place.kind === "shelf" && !withdrawn && (worksHome || hod || manage),
+      returnToUse: s.ended === null && s.place.kind === "shelf" && withdrawn && (worksHome || hod || manage),
+      condemn: s.ended === null && open === null && s.place.kind !== "condemned" && s.place.kind !== "out_on_pass" && s.pendingTransfer === null && (manage || hod),
     },
+    condemnation: lastCond === null ? null : { id: lastCond.id, condNo: lastCond.condNo, kind: lastCond.kind, status: lastCond.status },
+    regulatedBy: reg.regulatedBy, regulatorPaper: reg.paper,
+    askWho: await askWhoFor(db, home),
   };
   if (await holds(db, actor, STORES_ASSETS_READ)) view.costPaise = (s.corrected.unitCostPaise as number | undefined) ?? s.unit.unitCostPaise;
   return view;
@@ -458,6 +476,7 @@ async function unitsByCode(db: Db | Tx, actor: Actor, code: string): Promise<{ u
  * sees "Belongs to …" and Found here, nothing more; nobody else.
  */
 export async function assetPassport(db: Db | Tx, actor: Actor, by: { unitId?: string; code?: string }, now: Date = new Date()): Promise<WireAssetLookup> {
+  if (by.unitId !== undefined) await settleUnit(db as Db, by.unitId, now);
   let unitId = by.unitId;
   let voided = false;
   if (unitId === undefined) {
@@ -474,6 +493,7 @@ export async function assetPassport(db: Db | Tx, actor: Actor, by: { unitId?: st
     }
     unitId = found.unitIds[0]!;
     voided = found.voided;
+    await settleUnit(db as Db, unitId, now);
   }
   const s = await unitState(db, unitId);
   if (await seesUnit(db, actor, s)) return fullPassport(db, actor, s, now, voided);
@@ -487,7 +507,11 @@ export async function assetPassport(db: Db | Tx, actor: Actor, by: { unitId?: st
       belongsTo: { departmentId: dept?.id ?? null, departmentName: dept?.name ?? s.place.name },
     };
   }
-  throw new StoresError("not_permitted", "not your department", { unitId });
+  // S4a UX: a refusal names who to ask, so it is never a dead end ("Not your department: ask <in-charge>").
+  const deptId = homeDepartmentOf(s);
+  throw new StoresError("not_permitted", "not your department", {
+    unitId, departmentName: deptId === null ? null : (await departmentOf(db, deptId)).name, ask: await askWhoFor(db, deptId),
+  });
 }
 
 // ═══════════════════════════════ tagging at the GRN (decision 1, flow step 1) ═══════════════════════════════
@@ -734,16 +758,17 @@ async function tell(tx: Tx, users_: readonly string[], words: readonly [string, 
 }
 
 /** The department in-charge (or biomedical) reports a fault: one line. The third in 30 days tells the materials head "Replace?". */
-export async function reportFault(db: Db, actor: Actor, unitId: string, input: { text: string }, now: Date = new Date()): Promise<WireAssetLookup> {
+export async function reportFault(db: Db, actor: Actor, unitId: string, input: { text: string; photoKey?: string | null }, now: Date = new Date()): Promise<WireAssetLookup> {
   const text = clean(input.text);
   if (text === null) throw new StoresError("reason_required", "say what is wrong, in one line");
   await withTx(db, async (tx) => {
     const s = await unitState(tx, unitId);
     if (s.ended !== null) throw new StoresError("unit_ended", "this unit is no longer in service");
     if (!(await worksAt(tx, actor, homeDepartmentOf(s))) && !(await holds(tx, actor, STORES_ASSETS_MANAGE))) {
-      throw new StoresError("not_permitted", "not your department", { permission: STORES_SHELF_WORK });
+      throw new StoresError("not_permitted", "not your department", { permission: STORES_SHELF_WORK, ask: await askWhoFor(tx, homeDepartmentOf(s)) });
     }
-    const [eventId] = await appendUnitEvents(tx, actor, now, [{ unitId, kind: "fault_reported", data: { text: text.slice(0, 200) } }]);
+    // S4b (#1114, "Report fault" sheet): the optional photo's bytes sit in the document store; the event names its key.
+    const [eventId] = await appendUnitEvents(tx, actor, now, [{ unitId, kind: "fault_reported", data: { text: text.slice(0, 200), ...(input.photoKey == null ? {} : { photoKey: input.photoKey }) } }]);
     await recordAct(tx, actor, now, { act: "report_fault", storeId: s.place.id, itemId: s.unit.itemId, refId: unitId, reason: text.slice(0, 200) });
     const after = { ...s, faults: [...s.faults, now] };
     const unit = { id: unitId, tag: s.liveTags[s.liveTags.length - 1] ?? s.unit.tagNo, name: await itemName(tx, s.unit.itemId) };
@@ -906,6 +931,19 @@ export async function unitsInTransitOn(db: Db | Tx, transferId: string): Promise
   return (await unitsAt(db, transit)).filter((s) => s.placeEvent.refType === "transfer" && s.placeEvent.refId === transferId);
 }
 
+/** S4b (#1114): the units still in IN-TRANSIT on each of these transfers (one read of the transit store). */
+export async function unitsOnTransfers(db: Db | Tx, transferIds: readonly string[]): Promise<Map<string, { id: string; tagNo: string; itemId: string }[]>> {
+  const out = new Map<string, { id: string; tagNo: string; itemId: string }[]>();
+  if (transferIds.length === 0) return out;
+  const want = new Set(transferIds);
+  const transit = await ensureTransitStore(db as Tx);
+  for (const s of await unitsAt(db, transit)) {
+    if (s.placeEvent.refType !== "transfer" || s.placeEvent.refId === null || !want.has(s.placeEvent.refId)) continue;
+    out.set(s.placeEvent.refId, [...(out.get(s.placeEvent.refId) ?? []), { id: s.unit.id, tagNo: lastTag(s), itemId: s.unit.itemId }]);
+  }
+  return out;
+}
+
 /**
  * Units follow quantities moved OUT of IN-TRANSIT for this transfer (a receipt, a send-back taken back, a short
  * resolved): `qty` units of each batch go to `toStoreId`. `chosen` names the exact units (a receiver's scans).
@@ -1000,3 +1038,113 @@ export async function departmentNameOf(db: Db | Tx, storeId: string): Promise<st
   return info?.departmentId == null ? "" : (await departmentOf(db, info.departmentId)).name;
 }
 export { homeDepartmentOf, missingUnits, readsAll, storeInfos, itemName };
+
+/** S4a UX (#1114): the names a refused reader asks: the department's in-charges, else the materials head. Names only, at most two. */
+async function askWhoFor(db: Db | Tx, departmentId: string | null): Promise<string[]> {
+  let ids = departmentId === null ? [] : await holdersOf(db, STORES_SHELF_WORK, { departmentId });
+  if (ids.length === 0) ids = await holdersOf(db, STORES_MASTERS, "hospital");
+  return [...(await names(db, ids.slice(0, 2))).values()];
+}
+
+/** The newest proposal of a unit, open or not (the passport shows its word). */
+async function lastCondemnationOf(db: Db | Tx, unitId: string): Promise<{ id: string; condNo: string; kind: "condemn" | "loss"; status: StoresCondemnationStatus } | null> {
+  const f = await latestCondemnation(db, unitId);
+  return f;
+}
+
+/** Decision 18: the regulator an item answers to (set by biomedical) and whether this unit's paper is on file. */
+export async function regulationOf(db: Db | Tx, s: UnitState): Promise<{ regulatedBy: "radiation" | "ultrasound" | null; paper: boolean }> {
+  const [i] = await (db as Db).select({ r: items.regulatedBy }).from(items).where(eq(items.id, s.unit.itemId));
+  const regulatedBy = (i?.r ?? null) as "radiation" | "ultrasound" | null;
+  return { regulatedBy, paper: s.events.some((e) => e.kind === "regulator_paper") };
+}
+
+/** Decision 18: refused (`regulator_paper_needed`) when any of these units is regulated and has no paper on file. */
+export async function requireRegulatorPaper(db: Db | Tx, unitIds: readonly string[]): Promise<void> {
+  for (const s of (await unitStates(db, unitIds)).values()) {
+    const r = await regulationOf(db, s);
+    if (r.regulatedBy !== null && !r.paper) throw new StoresError("regulator_paper_needed", "Regulator paper needed", { unitId: s.unit.id, regulatedBy: r.regulatedBy });
+  }
+}
+
+/** Decision 18: biomedical marks an item as regulated (`radiation`: X-ray, CT; `ultrasound`: PC-PNDT) or clears it. */
+export async function setItemRegulation(db: Db, actor: Actor, itemId: string, regulatedBy: "radiation" | "ultrasound" | null, now: Date = new Date()): Promise<void> {
+  await requireAssetsManage(db, actor);
+  if (regulatedBy !== null && !["radiation", "ultrasound"].includes(regulatedBy)) throw new StoresError("bad_quantity", "radiation, ultrasound or none");
+  await withTx(db, async (tx) => {
+    const [i] = await tx.select({ r: items.regulatedBy }).from(items).where(eq(items.id, itemId));
+    if (i === undefined) throw new StoresError("unknown_item", "no such item", { itemId });
+    await tx.update(items).set({ regulatedBy }).where(eq(items.id, itemId));
+    await recordAct(tx, actor, now, { act: "regulated_by", itemId, refId: itemId, before: i.r, after: regulatedBy });
+  });
+}
+
+/** Decision 18: the regulator's approval or intimation, uploaded on the passport (HMIS files nothing with the regulator). */
+export async function addRegulatorPaper(
+  db: Db, actor: Actor, unitId: string, input: { kind: "decommission" | "transfer" | "intimation"; refNo: string; documentId?: string | null }, now: Date = new Date(),
+): Promise<WireAssetLookup> {
+  await requireAssetsManage(db, actor);
+  const refNo = clean(input.refNo);
+  if (refNo === null || !["decommission", "transfer", "intimation"].includes(input.kind)) throw new StoresError("reason_required", "the paper's kind and number");
+  await withTx(db, async (tx) => {
+    const s = await unitState(tx, unitId);
+    await appendUnitEvents(tx, actor, now, [{ unitId, kind: "regulator_paper", data: { kind: input.kind, refNo, documentId: input.documentId ?? null } }]);
+    await recordAct(tx, actor, now, { act: "regulator_paper", storeId: s.place.id, itemId: s.unit.itemId, refId: unitId, after: { kind: input.kind, refNo } });
+  });
+  return assetPassport(db, actor, { unitId }, now);
+}
+
+async function mayWithdraw(db: Db | Tx, actor: Actor, s: UnitState): Promise<void> {
+  const home = homeDepartmentOf(s);
+  if ((await worksAt(db, actor, home)) || (await holds(db, actor, STORES_ASSETS_MANAGE))) return;
+  if (home !== null && (await holds(db, actor, "stores.assets.condemn", home)) && (await holds(db, actor, "stores.indents.approve", home))) return;
+  throw new StoresError("not_permitted", "not your department", { permission: STORES_SHELF_WORK, ask: await askWhoFor(db, home) });
+}
+
+/**
+ * Decision 7 (NABH practice): HMIS never locks a device; the HOD or in-charge withdraws it: a `moved` to the
+ * department's own hold (the same shelf, no ledger row), "Withdrawn". `returnToUse` puts it back the same way.
+ */
+export async function withdrawUnit(db: Db, actor: Actor, unitId: string, input: { reason: string }, now: Date = new Date()): Promise<WireAssetLookup> {
+  const reason = clean(input.reason);
+  if (reason === null) throw new StoresError("reason_required", "say why it is withdrawn");
+  await withTx(db, async (tx) => {
+    const s = await unitState(tx, unitId);
+    if (s.ended !== null) throw new StoresError("unit_ended", "this unit is no longer in service");
+    if (s.place.kind !== "shelf") throw new StoresError("not_on_shelf", "only a unit in a department is withdrawn");
+    await mayWithdraw(tx, actor, s);
+    if ((s.placeEvent.data as { hold?: unknown }).hold === "withdrawn") throw new StoresError("already_decided", "already withdrawn");
+    await appendUnitEvents(tx, actor, now, [{ unitId, kind: "moved", storeId: s.place.id, refType: "withdrawal", refId: unitId, data: { hold: "withdrawn", reason } }]);
+    await recordAct(tx, actor, now, { act: "withdraw_unit", storeId: s.place.id, itemId: s.unit.itemId, refId: unitId, reason });
+  });
+  return assetPassport(db, actor, { unitId }, now);
+}
+
+export async function returnToUse(db: Db, actor: Actor, unitId: string, now: Date = new Date()): Promise<WireAssetLookup> {
+  await withTx(db, async (tx) => {
+    const s = await unitState(tx, unitId);
+    if (s.ended !== null) throw new StoresError("unit_ended", "this unit is no longer in service");
+    await mayWithdraw(tx, actor, s);
+    if ((s.placeEvent.data as { hold?: unknown }).hold !== "withdrawn") throw new StoresError("already_decided", "it is in use");
+    await appendUnitEvents(tx, actor, now, [{ unitId, kind: "moved", storeId: s.place.id, refType: "withdrawal", refId: unitId, data: { hold: null } }]);
+    await recordAct(tx, actor, now, { act: "return_to_use", storeId: s.place.id, itemId: s.unit.itemId, refId: unitId });
+  });
+  return assetPassport(db, actor, { unitId }, now);
+}
+
+/**
+ * S4b (#1114, flow step 5) — biomedical's "Faults to see": every live unit whose newest fault came after its last repair
+ * act (opened or closed), oldest fault first.
+ */
+export async function faultsToSee(db: Db | Tx): Promise<{ unitId: string; name: string; last4: string; place: string; at: string; text: string }[]> {
+  const ids = (await (db as Db).execute(sql`
+    select f.unit_id from (select distinct on (unit_id) unit_id, seq from stores_asset_unit_events where kind = 'fault_reported' order by unit_id, seq desc) f
+     where not exists (select 1 from stores_asset_unit_events r where r.unit_id = f.unit_id and r.kind in ('repair_opened', 'repair_closed') and r.seq > f.seq)`)).rows as { unit_id: string }[];
+  const out = [];
+  for (const s of (await unitStates(db, ids.map((r) => r.unit_id))).values()) {
+    if (s.ended !== null) continue;
+    const f = [...s.events].reverse().find((e) => e.kind === "fault_reported")!;
+    out.push({ unitId: s.unit.id, name: await itemName(db, s.unit.itemId), last4: lastTag(s).slice(-4), place: s.place.name, at: f.occurredAt.toISOString(), text: String((f.data as { text?: unknown }).text ?? "") });
+  }
+  return out.sort((a, b) => a.at.localeCompare(b.at));
+}

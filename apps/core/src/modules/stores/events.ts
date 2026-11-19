@@ -36,6 +36,9 @@ export const STORES_ACTS = [
   // S4a (#1114): the asset passport (refId = the unit, the GRN line for tag_units, the round for a verification).
   "tag_units", "void_tag", "retag", "open_unit", "fill_cost", "asset_details", "link_device", "report_fault", "open_repair", "close_repair",
   "found_here", "propose_unit_transfer", "accept_unit_transfer", "asset_export", "start_round", "close_round",
+  // S4b (#1114): withdrawal, regulation, the committee, the approvals read back, disposal, loss and a unit found again (refId = the unit).
+  "withdraw_unit", "return_to_use", "regulated_by", "regulator_paper", "propose_condemnation", "propose_loss", "sign_condemnation",
+  "object_condemnation", "dispose_unit", "write_off_loss", "mark_found",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

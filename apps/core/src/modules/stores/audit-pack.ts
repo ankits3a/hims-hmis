@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
-import { events, roleAssignments, storeIndents, users } from "../../kernel/db/schema";
+import { events, roleAssignments, storeIndents, storesAssetUnitEvents, users } from "../../kernel/db/schema";
 import { STORES_AUDIT_READ, holds, recordAct } from "./access";
 import { StoresError } from "./errors";
 import { STORES_ACT_EVENT } from "./events";
@@ -60,6 +60,20 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
     conds.push(or(sql`${events.payload}->>'itemId' = ${filter.itemId}`, sql`${events.payload}->'lines' @> ${JSON.stringify([{ itemId: filter.itemId }])}::jsonb`));
   }
   if (filter.personId !== undefined) conds.push(eq(events.actorId, filter.personId));
+  if (filter.unitId !== undefined) {
+    // S4b (#1114): the unit's own acts (refId = the unit), and the records its events name: the GRN line it was tagged on,
+    // the transfers that carried it (and their tickets), its gate passes, its condemnations and their write-offs.
+    const evs = await db.select({ refType: storesAssetUnitEvents.refType, refId: storesAssetUnitEvents.refId }).from(storesAssetUnitEvents)
+      .where(eq(storesAssetUnitEvents.unitId, filter.unitId));
+    const refs = new Set<string>([filter.unitId, ...evs.map((e) => e.refId).filter((x): x is string => x !== null)]);
+    const transfers = evs.filter((e) => e.refType === "transfer" && e.refId !== null).map((e) => e.refId!);
+    if (transfers.length > 0) for (const i of await db.select({ id: storeIndents.id }).from(storeIndents).where(inArray(storeIndents.transferId, transfers))) refs.add(i.id);
+    const list = [...refs];
+    conds.push(or(
+      inArray(events.correlationId, list), sql`${events.payload}->>'refId' in (${sql.join(list.map((r) => sql`${r}`), sql`, `)})`,
+      sql`${events.payload}->'lines' @> ${JSON.stringify([{ unitId: filter.unitId }])}::jsonb`,
+    ));
+  }
   if (filter.storeId !== undefined) {
     const s = filter.storeId;
     conds.push(or(
@@ -104,6 +118,7 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
 
   const shown = {
     ticketId: filter.ticketId ?? null, itemId: filter.itemId ?? null, personId: filter.personId ?? null, storeId: filter.storeId ?? null,
+    ...(filter.unitId === undefined ? {} : { unitId: filter.unitId }),
     from: filter.from.toISOString(), to: filter.to.toISOString(),
   };
   await withTx(db, (tx) => recordAct(tx, actor, now, {

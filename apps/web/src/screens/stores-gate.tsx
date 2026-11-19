@@ -422,7 +422,7 @@ function NewPass({ onDone }: { onDone: (notice: string | null) => void }): React
                   <span style={cell}>{s.party}</span>
                 </span>
                 <span style={{ display: "flex", gap: 8, width: "100%", whiteSpace: "nowrap", overflow: "hidden", fontSize: 14, color: "var(--dim, #5c6f66)" }}>
-                  <span style={cell}>{`${t(s.type === "supplier_return" ? "stores.gate.supplierReturn" : "stores.gate.writeOff")} · ${s.lines.map((l) => `${l.itemName} ${String(l.qty)}`).join(" · ")}`}</span>
+                  <span style={cell}>{`${t(s.type === "supplier_return" ? "stores.gate.supplierReturn" : s.type === "scrap_sale" ? "stores.gate.scrapSale" : "stores.gate.writeOff")} · ${s.lines.map((l) => `${l.itemName} ${String(l.qty)}`).join(" · ")}`}</span>
                 </span>
               </button>
             ))}

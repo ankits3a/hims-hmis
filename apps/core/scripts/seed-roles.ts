@@ -1244,6 +1244,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // STORES S4a (#1114, decision 16) — the asset passport: tag units, record warranty, AMC/CMC and calibration, open
       // and close repairs, link a unit to its radiology or lab device, run the go-live opening sweep; read every unit.
       "stores.assets.manage", "stores.assets.read",
+      // STORES S4b (#1114, decision 13) — the biomedical seat of the condemnation committee (medical equipment).
+      "stores.assets.condemn",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1348,6 +1350,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.tower.read", "stores.spend.read",
       // STORES S4a (#1114, decision 16) — tag units, contracts, calibration, repairs, the opening sweep; read every passport.
       "stores.assets.manage", "stores.assets.read",
+      // STORES S4b (#1114, decision 13) — the materials head's seat of the condemnation committee (and disposal).
+      "stores.assets.condemn",
     ],
   },
   {
@@ -2037,7 +2041,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * The materials head keeps the Stores masters (`stores.masters.manage`, in its own row above).
    */
   { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work"] },
-  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve"] },
+  // STORES S4b (#1114, decision 13): + `stores.assets.condemn`, the user department's seat (asked AT the department).
+  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve", "stores.assets.condemn"] },
   /**
    * STORES S2a (#1112, decisions 3, 5, 16). `department_head` above approves its department's tickets
    * (`stores.indents.approve`, asked AT the department). Two more roles, assigned by nobody:
@@ -2065,7 +2070,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * lands second merges its grants into this row at rebase). Here it holds only `stores.assets.export`: the month's
    * asset additions for Tally's fixed-asset register (cost, GST, put-to-use date, GRN and bill). Assigned by nobody.
    */
-  { roleKey: "accounts_officer", permissions: ["stores.assets.export"] },
+  // STORES S4b (#1114, decision 13): + `stores.assets.condemn`, the accounts seat of the condemnation committee.
+  { roleKey: "accounts_officer", permissions: ["stores.assets.export", "stores.assets.condemn"] },
 ];
 
 /**

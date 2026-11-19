@@ -4,14 +4,14 @@ import { raiseNotice } from "../../kernel/alerts/notices";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import {
-  items, resources, stockLedger, stockWriteOffLines, stockWriteOffs, storesGatePassLines, storesGatePassScans, storesGatePasses, supplierReturnLines,
-  supplierReturns, users, vendors,
+  items, resources, stockLedger, stockWriteOffLines, stockWriteOffs, storesCondemnationSteps, storesCondemnations, storesGatePassLines, storesGatePassScans,
+  storesGatePasses, storesScrapSales, supplierReturnLines, supplierReturns, users, vendors,
 } from "../../kernel/db/schema";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { availableQty, ensureOutOnPassStore, fefoPick, postMovements, sellableBatchesByItem } from "../materials";
 import { taggedBatchIds } from "./asset-rules";
-import { appendUnitEvents, requireUnitsAt, unitsAt } from "./assets";
+import { appendUnitEvents, requireRegulatorPaper, requireUnitsAt, unitsAt } from "./assets";
 import { STORES_GATEPASS_RAISE, STORES_GATEPASS_SCAN, holds, recordAct, requireStoresStore } from "./access";
 import { scanClock } from "./custody";
 import { StoresError } from "./errors";
@@ -115,6 +115,8 @@ async function refNos(db: Db | Tx, passes: PassRow[]): Promise<Map<string, strin
   const wo = passes.filter((p) => p.refType === "write_off").map((p) => p.refId!);
   if (ret.length > 0) for (const r of await db.select({ id: supplierReturns.id, no: supplierReturns.returnNo }).from(supplierReturns).where(inArray(supplierReturns.id, ret))) out.set(r.id, r.no);
   if (wo.length > 0) for (const w of await db.select({ id: stockWriteOffs.id, no: stockWriteOffs.writeOffNo }).from(stockWriteOffs).where(inArray(stockWriteOffs.id, wo))) out.set(w.id, w.no);
+  const sales = passes.filter((p) => p.refType === "scrap_sale").map((p) => p.refId!);
+  if (sales.length > 0) for (const x of await db.select({ id: storesScrapSales.id, no: storesScrapSales.invoiceNo }).from(storesScrapSales).where(inArray(storesScrapSales.id, sales))) out.set(x.id, x.no);
   return out;
 }
 
@@ -202,7 +204,15 @@ export async function notifyOverdueGatePasses(db: Db, now: Date = new Date()): P
 
 // ═══════════════════════════════ raise ═══════════════════════════════
 
-type SourceRecord = { storeId: string; party: string; no: string; lines: { itemId: string; qty: number }[] };
+type SourceRecord = { storeId: string; party: string; no: string; lines: { itemId: string; qty: number; unitIds?: string[] }[] };
+
+/** S4b (#1114): the tagged units a condemnation's write-off carries (the units that leave on its pass). */
+async function unitsOfWriteOff(db: Db | Tx, writeOffId: string): Promise<{ kind: string; unitIds: string[] } | null> {
+  const rows = await db.select({ unitId: storesCondemnations.unitId, kind: storesCondemnations.kind }).from(storesCondemnationSteps)
+    .innerJoin(storesCondemnations, eq(storesCondemnations.id, storesCondemnationSteps.condemnationId))
+    .where(and(eq(storesCondemnationSteps.kind, "raised"), eq(storesCondemnationSteps.writeOffId, writeOffId)));
+  return rows.length === 0 ? null : { kind: rows[0]!.kind, unitIds: rows.map((r) => r.unitId) };
+}
 
 /** Decision 2: the record a non-returnable pass stands on — a dispatched supplier return or a posted write-off — or `ref_required`. */
 async function sourceRecord(db: Db | Tx, refType: GatePassRefType, refId: string): Promise<SourceRecord> {
@@ -215,12 +225,27 @@ async function sourceRecord(db: Db | Tx, refType: GatePassRefType, refId: string
     const lines = await db.select().from(supplierReturnLines).where(eq(supplierReturnLines.returnId, refId)).orderBy(asc(supplierReturnLines.id));
     return { storeId: lines[0]?.storeResourceId ?? "", party: r.trade ?? r.legal, no: r.r.returnNo, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qtyBase })) };
   }
+  if (refType === "scrap_sale") {
+    // S4b (#1114, decision 14): a scrap sale or buy-back of a condemned unit; the buyer is the party, the unit leaves by name.
+    const [x] = await db.select({ s: storesScrapSales, buyer: vendors.legalName }).from(storesScrapSales)
+      .innerJoin(vendors, eq(vendors.id, storesScrapSales.buyerId)).where(eq(storesScrapSales.id, refId));
+    if (x === undefined) throw new StoresError("ref_required", "a scrap-sale pass needs a recorded sale", { refType });
+    const [w] = await db.select().from(stockWriteOffs).where(eq(stockWriteOffs.id, x.s.writeOffId));
+    const lines = await db.select().from(stockWriteOffLines).where(eq(stockWriteOffLines.writeOffId, x.s.writeOffId)).orderBy(asc(stockWriteOffLines.id));
+    return { storeId: w?.storeResourceId ?? "", party: x.buyer, no: x.s.invoiceNo, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qtyBase, unitIds: [x.s.unitId] })) };
+  }
   const [w] = await db.select().from(stockWriteOffs).where(eq(stockWriteOffs.id, refId));
   if (w === undefined || w.status !== "posted") {
     throw new StoresError("ref_required", "a non-returnable pass needs a posted write-off", { refType, status: w?.status ?? null });
   }
+  // S4b (#1114): a lost unit's write-off has nothing to carry out of the gate; a condemned one names its unit.
+  const units = await unitsOfWriteOff(db, refId);
+  if (units?.kind === "loss") throw new StoresError("ref_required", "a lost unit has nothing to let out", { refType });
   const lines = await db.select().from(stockWriteOffLines).where(eq(stockWriteOffLines.writeOffId, refId)).orderBy(asc(stockWriteOffLines.id));
-  return { storeId: w.storeResourceId, party: w.disposalAgency ?? "", no: w.writeOffNo, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qtyBase })) };
+  return {
+    storeId: w.storeResourceId, party: w.disposalAgency ?? "", no: w.writeOffNo,
+    lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qtyBase, ...(units === null ? {} : { unitIds: units.unitIds }) })),
+  };
 }
 
 /** One line per item, in the order first named; quantities of a repeated item add up. */
@@ -251,6 +276,16 @@ async function countedPick(db: Db | Tx, storeId: string, itemId: string, qty: nu
 }
 
 export async function raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassInput, now: Date = new Date()): Promise<GatePassView> {
+  const id = await withTx(db, async (tx) => (await raiseGatePassInTx(tx, actor, input, now)).id);
+  return (await getGatePass(db, id, now))!;
+}
+
+/**
+ * The raise, in the caller's transaction. `quiet` (S4b #1114: a disposal raises its pass inside its own act) writes no
+ * act of its own: the disposal's one act names the pass.
+ */
+export async function raiseGatePassInTx(tx: Tx, actor: Actor, input: RaiseGatePassInput, now: Date, opts: { quiet?: boolean } = {}): Promise<{ id: string; passNo: string }> {
+  const db = tx as unknown as Db;
   await requireRaiser(db, actor);
   const today = istDayString(now);
   let pass: Omit<PassRow, "id" | "passNo" | "raisedBy" | "raisedAt">;
@@ -276,6 +311,8 @@ export async function raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassIn
       if (units.length > 0 || item.trackMode === "tagged") {
         if (units.length !== l.qty) throw new StoresError("units_required", "name each tagged unit that goes out", { itemId: l.itemId });
         await requireUnitsAt(db, units, l.itemId, store.id);
+        // S4b (#1114, decision 18): a regulated unit leaves for repair only with the regulator's paper on file.
+        await requireRegulatorPaper(db, units);
       } else if ((await countedPick(db, store.id, l.itemId, l.qty, now)).reduce((a, p) => a + p.qty, 0) < l.qty) {
         throw new StoresError("units_required", "name each tagged unit that goes out", { itemId: l.itemId });
       }
@@ -291,7 +328,7 @@ export async function raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassIn
     pass = { kind: "non_returnable", purpose: null, sourceStoreId: src.storeId, party: src.party === "" ? src.no : src.party, dueBack: null, refType: input.refType, refId: input.refId, note: clean(input.note) };
   }
 
-  const id = await withTx(db, async (tx) => {
+  {
     if (pass.refId !== null) {
       // One live pass per record: serialise raisers of the same record, then look.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`stores-gate-pass:${pass.refId}`}))`);
@@ -305,16 +342,17 @@ export async function raiseGatePass(db: Db, actor: Actor, input: RaiseGatePassIn
     const outId = await ensureOutOnPassStore(tx);
     await tx.insert(storesGatePasses).values({ id: passId, passNo, ...pass, raisedBy: actor.id, raisedAt: now });
     await tx.insert(storesGatePassLines).values(lines.map((l, i) => ({ passId, lineIdx: i, itemId: l.itemId, qty: l.qty, unitIds: l.unitIds ?? null })));
-    await recordAct(tx, actor, now, {
-      act: "raise_gate_pass", storeId: outId, refId: passId, reason: pass.note,
-      after: { passNo, kind: pass.kind, purpose: pass.purpose, party: pass.party, dueBack: pass.dueBack, refType: pass.refType, refId: pass.refId },
-      lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty, storeId: pass.sourceStoreId, ...(l.unitIds === undefined ? {} : { unitIds: l.unitIds }) })),
-    });
+    if (opts.quiet !== true) {
+      await recordAct(tx, actor, now, {
+        act: "raise_gate_pass", storeId: outId, refId: passId, reason: pass.note,
+        after: { passNo, kind: pass.kind, purpose: pass.purpose, party: pass.party, dueBack: pass.dueBack, refType: pass.refType, refId: pass.refId },
+        lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty, storeId: pass.sourceStoreId, ...(l.unitIds === undefined ? {} : { unitIds: l.unitIds }) })),
+      });
+    }
     // Decision 6: the pass prints with its QR. The relay prints it; the store's own browser can print it too (`/print`).
     await enqueuePrintJob(tx, { document: GATE_PASS_DOCUMENT, params: { passId }, dedupeKey: `stores-gate-pass:${passId}`, requestedBy: actor.id });
-    return passId;
-  });
-  return (await getGatePass(db, id, now))!;
+    return { id: passId, passNo };
+  }
 }
 
 /** The records a non-returnable pass may stand on and that have no live pass yet, newest first. */
@@ -327,8 +365,16 @@ export async function gatePassSources(db: Db, actor: Actor): Promise<GatePassSou
   const rets = await db.select({ r: supplierReturns, legal: vendors.legalName, trade: vendors.tradeName }).from(supplierReturns)
     .innerJoin(vendors, eq(vendors.id, supplierReturns.vendorId)).where(eq(supplierReturns.status, "dispatched"))
     .orderBy(desc(supplierReturns.dispatchedAt)).limit(50);
-  const wos = await db.select().from(stockWriteOffs).where(eq(stockWriteOffs.status, "posted")).orderBy(desc(stockWriteOffs.postedAt)).limit(50);
+  const wos = await db.select().from(stockWriteOffs).where(and(eq(stockWriteOffs.status, "posted"),
+    // S4b (#1114): a lost unit's write-off lets nothing out, and a sold unit leaves on its sale.
+    sql`not exists (select 1 from stores_condemnation_steps cs join stores_condemnations c on c.id = cs.condemnation_id
+      where cs.kind = 'raised' and cs.write_off_id = ${stockWriteOffs.id} and c.kind = 'loss')`,
+    sql`not exists (select 1 from stores_scrap_sales x where x.write_off_id = ${stockWriteOffs.id} and x.method <> 'e_waste')`))
+    .orderBy(desc(stockWriteOffs.postedAt)).limit(50);
+  const sales = await db.select({ s: storesScrapSales, buyer: vendors.legalName }).from(storesScrapSales).innerJoin(vendors, eq(vendors.id, storesScrapSales.buyerId))
+    .where(sql`${storesScrapSales.method} <> 'e_waste'`).orderBy(desc(storesScrapSales.at)).limit(50);
   const wanted = [
+    ...sales.filter((x) => !taken.has(x.s.id)).map((x) => ({ type: "scrap_sale" as const, id: x.s.id, no: x.s.invoiceNo, party: x.buyer, at: x.s.at.toISOString() })),
     ...rets.filter((r) => !taken.has(r.r.id)).map((r) => ({ type: "supplier_return" as const, id: r.r.id, no: r.r.returnNo, party: r.trade ?? r.legal, at: (r.r.dispatchedAt ?? r.r.updatedAt).toISOString() })),
     ...wos.filter((w) => !taken.has(w.id)).map((w) => ({ type: "write_off" as const, id: w.id, no: w.writeOffNo, party: w.disposalAgency ?? "", at: (w.postedAt ?? w.requestedAt).toISOString() })),
   ];
@@ -427,9 +473,15 @@ export async function scanGatePass(db: Db, actor: Actor, input: GatePassScanInpu
     const lineUnits = new Map((await tx.select().from(storesGatePassLines).where(eq(storesGatePassLines.passId, row.id)))
       .filter((l) => l.unitIds !== null && l.unitIds.length > 0).map((l) => [l.itemId, l.unitIds!] as const));
     const unitMoves: { unitId: string; kind: "out_on_pass" | "back"; storeId: string }[] = [];
+    const disposed: string[] = [];
     if (input.act === "exit") {
       for (const l of view.lines) {
-        if (row.kind === "non_returnable") { crossed.push({ itemId: l.itemId, batchId: null, qty: l.qty }); continue; }
+        if (row.kind === "non_returnable") {
+          crossed.push({ itemId: l.itemId, batchId: null, qty: l.qty });
+          // S4b (#1114): a condemned unit leaving on its disposal pass ends its life here: "Disposed".
+          for (const unitId of lineUnits.get(l.itemId) ?? []) disposed.push(unitId);
+          continue;
+        }
         const named = lineUnits.get(l.itemId);
         if (named !== undefined) {
           // S4 (#1114): the named units go out, each on its own batch.
@@ -496,6 +548,7 @@ export async function scanGatePass(db: Db, actor: Actor, input: GatePassScanInpu
     if (won.length === 0) return true;
     if (movements.length > 0) await postMovements(tx, actor, movements);
     await appendUnitEvents(tx, actor, now, unitMoves.map((m) => ({ unitId: m.unitId, kind: m.kind, storeId: m.storeId, refType: "gate_pass", refId: row.id, occurredAt: clock.occurredAt })));
+    await appendUnitEvents(tx, actor, now, disposed.map((unitId) => ({ unitId, kind: "disposed", refType: "gate_pass", refId: row.id, occurredAt: clock.occurredAt, data: { passNo: row.passNo } })));
     const outBefore = view.lines.reduce((a, l) => a + l.out, 0);
     const delta = crossed.reduce((a, c) => a + c.qty, 0);
     await recordAct(tx, actor, now, {

@@ -24,7 +24,8 @@ async function fileToCappedJpeg(file: File): Promise<Blob | null> {
   return canvasToCappedJpeg(canvas);
 }
 
-export function PhotoCapture({ onCapture }: { onCapture: (blob: Blob | null) => void }): React.ReactElement {
+/** `facing` (default the front camera, a patient's face): `environment` for a photo of a thing (Stores S4b, a fault). */
+export function PhotoCapture({ onCapture, facing = "user" }: { onCapture: (blob: Blob | null) => void; facing?: "user" | "environment" }): React.ReactElement {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -42,7 +43,7 @@ export function PhotoCapture({ onCapture }: { onCapture: (blob: Blob | null) => 
   const start = async (): Promise<void> => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: TARGET_W, height: TARGET_H },
+        video: { facingMode: facing, width: TARGET_W, height: TARGET_H },
       });
       streamRef.current = stream;
       videoRef.current!.srcObject = stream;
@@ -106,7 +107,7 @@ export function PhotoCapture({ onCapture }: { onCapture: (blob: Blob | null) => 
         {mode !== "streaming" && mode !== "captured" && (
           <label className="cursor-pointer rounded border px-3 py-1.5 text-sm">
             {t("photo.fallback")}
-            <input type="file" accept="image/*" capture="user" className="hidden" onChange={(e) => void onFile(e)} />
+            <input type="file" accept="image/*" capture={facing} className="hidden" onChange={(e) => void onFile(e)} />
           </label>
         )}
       </div>

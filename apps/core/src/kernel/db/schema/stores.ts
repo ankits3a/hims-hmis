@@ -275,7 +275,7 @@ export const storesGatePasses = pgTable(
     index("stores_gate_passes_ref_idx").on(t.refType, t.refId),
     check("stores_gate_passes_kind_ck", sql`${t.kind} in ('returnable', 'non_returnable')`),
     check("stores_gate_passes_purpose_ck", sql`${t.purpose} is null or ${t.purpose} in ('repair', 'calibration', 'refill', 'loan')`),
-    check("stores_gate_passes_ref_type_ck", sql`${t.refType} is null or ${t.refType} in ('supplier_return', 'write_off')`),
+    check("stores_gate_passes_ref_type_ck", sql`${t.refType} is null or ${t.refType} in ('supplier_return', 'write_off', 'scrap_sale')`),
     check(
       "stores_gate_passes_shape_ck",
       sql`(${t.kind} = 'returnable' and ${t.purpose} is not null and ${t.dueBack} is not null and ${t.refType} is null and ${t.refId} is null)
@@ -484,5 +484,131 @@ export const storesAssetVerifications = pgTable(
     index("stores_asset_verifications_dept_idx").on(t.departmentId, t.at),
     check("stores_asset_verifications_kind_ck", sql`${t.kind} in ('start', 'close')`),
     check("stores_asset_verifications_start_ck", sql`${t.kind} <> 'start' or ${t.roundId} = ${t.id}`),
+  ],
+);
+
+/**
+ * STORES S4b (#1114, decision 13, ruling 0101 Q5) — A CONDEMNATION OR LOSS PROPOSAL, written once. `kind` is
+ * `condemn` (the HOD or biomedical proposed it, with a reason from the list) or `loss` (a unit not seen 30 days after a
+ * verification round, or lost on its way to a department: reason `lost`). The committee's seats are frozen on the row
+ * (`seats`: `hod` for the user department, `accounts`, `materials`, and `biomedical` for medical equipment), as are
+ * the cost it was judged on (null = "Cost unknown") and whether the owner must also approve (above ₹50,000 or cost
+ * unknown). A fresh proposal after an objection is a NEW row naming the old one (`replaces_id`). Status is DERIVED
+ * from the signatures, the steps and the approvals, never stored. APPEND-ONLY IN THE DATABASE (migration 0243).
+ */
+export const STORES_CONDEMNATION_REASONS = ["beyond_repair", "obsolete", "damaged", "lost"] as const;
+export const STORES_COMMITTEE_SEATS = ["hod", "accounts", "materials", "biomedical"] as const;
+
+export const storesCondemnations = pgTable(
+  "stores_condemnations",
+  {
+    id: text("id").primaryKey(),
+    condNo: text("cond_no").notNull(),
+    unitId: text("unit_id").notNull().references(() => storesAssetUnits.id),
+    kind: text("kind").notNull(),
+    reason: text("reason").notNull(),
+    note: text("note"),
+    /** The user department whose HOD holds a seat (null: the unit sits in a store, no user department). */
+    departmentId: text("department_id"),
+    seats: text("seats").array().notNull(),
+    /** An IT unit that stored data needs a wipe or destruction certificate before it leaves (DPDP Act). */
+    holdsData: boolean("holds_data").notNull().default(false),
+    costPaise: bigint("cost_paise", { mode: "number" }),
+    needsOwner: boolean("needs_owner").notNull(),
+    replacesId: text("replaces_id"),
+    roundId: text("round_id"),
+    proposedBy: text("proposed_by").notNull(),
+    proposedAt: timestamp("proposed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_condemnations_no_ux").on(t.condNo),
+    index("stores_condemnations_unit_idx").on(t.unitId, t.proposedAt),
+    check("stores_condemnations_kind_ck", sql`${t.kind} in ('condemn', 'loss')`),
+    check("stores_condemnations_reason_ck", sql`${t.reason} in ('beyond_repair', 'obsolete', 'damaged', 'lost')`),
+    check("stores_condemnations_loss_ck", sql`${t.kind} <> 'loss' or ${t.reason} = 'lost'`),
+  ],
+);
+
+/**
+ * STORES S4b (#1114, decision 13) — EACH SEAT'S SIGNATURE OR OBJECTION, written once. One signature per seat and one
+ * act per person on a proposal (one person never fills two seats); an objection carries its reason and stops the
+ * proposal. APPEND-ONLY IN THE DATABASE (migration 0243).
+ */
+export const storesCondemnationSignatures = pgTable(
+  "stores_condemnation_signatures",
+  {
+    id: text("id").primaryKey(),
+    condemnationId: text("condemnation_id").notNull().references(() => storesCondemnations.id),
+    seat: text("seat").notNull(),
+    kind: text("kind").notNull(),
+    actorId: text("actor_id").notNull(),
+    reason: text("reason"),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_condemnation_signatures_seat_ux").on(t.condemnationId, t.seat),
+    uniqueIndex("stores_condemnation_signatures_actor_ux").on(t.condemnationId, t.actorId),
+    check("stores_condemnation_signatures_seat_ck", sql`${t.seat} in ('hod', 'accounts', 'materials', 'biomedical')`),
+    check("stores_condemnation_signatures_kind_ck", sql`${t.kind} in ('sign', 'object')`),
+    check("stores_condemnation_signatures_reason_ck", sql`${t.kind} <> 'object' or ${t.reason} is not null`),
+  ],
+);
+
+/**
+ * STORES S4b (#1114, decisions 13, 14) — WHAT HAPPENED AFTER THE SEATS, written once each: `raised` (every seat signed:
+ * the unit's books moved to the `CONDEMNED` hold, the write-off raised with its superintendent approval, the owner's
+ * approval asked when the row needs it), `approved` / `rejected` (read off those approvals), `posted` (the write-off
+ * posted: a disposal or a loss). APPEND-ONLY IN THE DATABASE (migration 0243).
+ */
+export const storesCondemnationSteps = pgTable(
+  "stores_condemnation_steps",
+  {
+    id: text("id").primaryKey(),
+    condemnationId: text("condemnation_id").notNull().references(() => storesCondemnations.id),
+    kind: text("kind").notNull(),
+    writeOffId: text("write_off_id"),
+    ownerApprovalId: text("owner_approval_id"),
+    /** `raised`: where the unit's books stood before the hold (and the transfer when it was in transit). */
+    data: jsonb("data").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    actorId: text("actor_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_condemnation_steps_kind_ux").on(t.condemnationId, t.kind),
+    check("stores_condemnation_steps_kind_ck", sql`${t.kind} in ('raised', 'approved', 'rejected', 'posted')`),
+  ],
+);
+
+/**
+ * STORES S4b (#1114, decision 14) — A CONDEMNED UNIT'S DISPOSAL, written once: scrap sale (buyer from the supplier
+ * list, amount, accounts' receipt reference, the sale invoice number, the written bids above ₹25,000), buy-back (the
+ * purchase order and the amount) or an authorised e-waste recycler (its certificate). The wipe certificate of a unit
+ * that held data rides here. Tax on the sale is the accountant's: HMIS records the invoice number and the amount only.
+ * APPEND-ONLY IN THE DATABASE (migration 0243).
+ */
+export const storesScrapSales = pgTable(
+  "stores_scrap_sales",
+  {
+    id: text("id").primaryKey(),
+    condemnationId: text("condemnation_id").notNull().references(() => storesCondemnations.id),
+    unitId: text("unit_id").notNull().references(() => storesAssetUnits.id),
+    method: text("method").notNull(),
+    buyerId: text("buyer_id").notNull().references(() => vendors.id),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    invoiceNo: text("invoice_no").notNull(),
+    receiptRef: text("receipt_ref"),
+    bids: jsonb("bids").$type<{ vendorId: string; amountPaise: number }[]>().notNull().default(sql`'[]'::jsonb`),
+    poRef: text("po_ref"),
+    certificateNo: text("certificate_no"),
+    wipeCertificateNo: text("wipe_certificate_no"),
+    writeOffId: text("write_off_id").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_scrap_sales_condemnation_ux").on(t.condemnationId),
+    index("stores_scrap_sales_unit_idx").on(t.unitId),
+    check("stores_scrap_sales_method_ck", sql`${t.method} in ('scrap_sale', 'buy_back', 'e_waste')`),
+    check("stores_scrap_sales_amount_ck", sql`${t.amountPaise} >= 0`),
   ],
 );

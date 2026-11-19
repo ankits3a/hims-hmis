@@ -32,6 +32,8 @@ export const WAITING_KINDS = [
   "stores.indentsToApprove",
   "stores.toPick",
   "stores.toReceive",
+  // STORES S4b (#1114) — a committee seat's condemnations to sign (the HOD's is department-scoped, so a waiting line).
+  "stores.condemnToSign",
   "reminders.today",
   "roster.dutiesToday",
 ] as const;
@@ -67,6 +69,7 @@ export const WAITING_WEB_HREF: Record<WaitingKind, string | null> = {
   "stores.indentsToApprove": "/stores/approve",
   "stores.toPick": "/stores/pick",
   "stores.toReceive": "/stores/receive",
+  "stores.condemnToSign": "/stores/condemn",
   "reminders.today": null,
   "roster.dutiesToday": "/roster/my-duties",
 };
@@ -85,6 +88,7 @@ export const WAITING_TONE: Record<WaitingKind, WaitingTone> = {
   "stores.indentsToApprove": "warn",
   "stores.toPick": "warn",
   "stores.toReceive": "calm",
+  "stores.condemnToSign": "warn",
   "reminders.today": "calm",
   "roster.dutiesToday": "calm",
 };

@@ -24,6 +24,7 @@ Source: `apps/core/src/modules/materials/`
   - `requestCountAdjustment(db: Db, actor: Actor, countId: string, input: { lines: { lineId: string; reasonCode: AdjustmentReason }[]; note?: st…`
   - types: `AdjustmentReason`, `AdjustmentView`
 - `approval-types.ts`
+  - `CONDEMNATION_OWNER_APPROVAL_TYPE`
   - `MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
   - `MRP_REVISION_APPROVAL_TYPE`
   - `NEAR_EXPIRY_APPROVAL_TYPE`
@@ -41,6 +42,7 @@ Source: `apps/core/src/modules/materials/`
   - `BLACKLIST_REASONS`
   - `BLACKLIST_YEARS`
   - `CASH_PAYMENT_DAILY_LIMIT_PAISE`
+  - `CONDEMNED_STORE_CODE`
   - `DEEMED_SUPPLY_DAYS`
   - `DEFAULT_SUPPLIER_TERMS_DAYS`
   - `EXPIRY_REPORT_PRESET_DAYS`
@@ -292,6 +294,7 @@ Source: `apps/core/src/modules/materials/`
   - types: `CatalogueItem`, `LossBooking`, `StockInKind`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`
 - `stores.ts`
   - `createStore(tx: Tx, actor: Actor, input: { code: string; name: string; parentId?: string | null; siteId?: string; attributes?: Record<strin…`
+  - `ensureCondemnedStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureOutOnPassStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureTransitStore(tx: Tx, siteId = "main"): Promise<string>`

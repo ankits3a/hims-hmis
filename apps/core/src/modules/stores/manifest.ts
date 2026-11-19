@@ -48,6 +48,10 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * Tally. A department's shelf-grant holders read their own units without any of the three. The desk is
  * `/stores/assets` (its own menu row); the phone passport `/stores/asset` is opened by a scan.
  *
+ * S4b (#1114, decision 16) adds one: `stores.assets.condemn` (the committee's seats: `department_head` at its
+ * department, `accounts_officer`, `materials_head`, `biomedical_engineer`) signs or objects to a condemnation or a loss;
+ * the HOD at the department or biomedical proposes one. The phone signs at `/stores/condemn`.
+ *
  * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -77,6 +81,7 @@ export const storesManifest: ModuleManifest = {
     "stores.assets.manage",
     "stores.assets.read",
     "stores.assets.export",
+    "stores.assets.condemn",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */

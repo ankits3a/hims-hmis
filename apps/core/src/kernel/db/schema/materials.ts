@@ -1777,7 +1777,7 @@ export const stockWriteOffs = pgTable(
     uniqueIndex("stock_write_offs_write_off_no_ux").on(t.writeOffNo),
     index("stock_write_offs_approval_idx").on(t.approvalId),
     index("stock_write_offs_status_idx").on(t.status),
-    check("stock_write_offs_reason_ck", sql`${t.reason} in ('expiry', 'damage', 'recall')`),
+    check("stock_write_offs_reason_ck", sql`${t.reason} in ('expiry', 'damage', 'recall', 'condemned')`),
     check("stock_write_offs_status_ck", sql`${t.status} in ('requested', 'posted', 'refused')`),
     check("stock_write_offs_value_ck", sql`${t.totalValuePaise} >= 0`),
     check("stock_write_offs_posted_ck", sql`(${t.status} = 'posted') = (${t.postedAt} is not null) and (${t.postedAt} is null) = (${t.postedBy} is null) and (${t.status} <> 'posted' or (${t.disposalAgency} is not null and ${t.manifestNo} is not null and ${t.disposalDate} is not null))`),

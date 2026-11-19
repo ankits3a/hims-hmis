@@ -142,7 +142,7 @@ export const storesDeclineBody = z.object({ reason: z.string().max(500) });
 export const storesReviewBody = z.object({ decision: z.enum(["agree", "query"]), note: z.string().max(500).nullish() });
 export const storesIssueBody = z.object({ lines: z.array(z.object({ lineIdx: z.number().int().min(0), qtyBase: z.number().int().min(0), unitIds: z.array(id).max(500).optional() })).max(100).optional() });
 export const storesAuditQuery = z.object({
-  ticketId: id.optional(), itemId: id.optional(), personId: id.optional(), storeId: id.optional(),
+  ticketId: id.optional(), itemId: id.optional(), personId: id.optional(), storeId: id.optional(), unitId: id.optional(),
   from: instant, to: instant, format: z.enum(["json", "csv"]).optional(),
   afterSeq: z.coerce.number().int().nonnegative().optional(), limit: z.coerce.number().int().positive().max(5000).optional(),
 });
@@ -194,7 +194,11 @@ export type WireTicket = {
   review: { decision: "agree" | "query"; by: WireTicketPerson; at: string; note: string | null } | null;
   claim: { by: WireTicketPerson; at: string; lapsesAt: string } | null;
   transfer: { id: string; status: string } | null;
-  lines: { lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null }[];
+  lines: {
+    lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null;
+    /** S4b (#1114): the tagged units still on their way on this line (the receiver scans the ones that arrived). */
+    units?: { id: string; tagNo: string }[];
+  }[];
   /** S2b (#1112): whose hands it is in, what the receiver said per line, and the shorts still in transit. */
   custody?: { holder: WireTicketPerson | null; legs: number; lastCustodian: WireTicketPerson } | null;
   delivery?: {
@@ -227,7 +231,7 @@ export const storesGatePassBody = z.discriminatedUnion("kind", [
     dueBack: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD"), lines: gateLines, note: z.string().max(200).nullish(),
   }),
   // The record is optional in the SHAPE so that its absence is the server's refusal ("Return or write-off needed"), not a 400.
-  z.object({ kind: z.literal("non_returnable"), refType: z.enum(["supplier_return", "write_off"]).nullish(), refId: id.nullish(), note: z.string().max(200).nullish() }),
+  z.object({ kind: z.literal("non_returnable"), refType: z.enum(["supplier_return", "write_off", "scrap_sale"]).nullish(), refId: id.nullish(), note: z.string().max(200).nullish() }),
 ]);
 export const storesGatePassScanBody = z.object({
   code: z.string().min(4).max(40), act: z.enum(["exit", "entry"]), lines: gateLines.optional(), ...scanFields,
@@ -239,7 +243,7 @@ export type WireGatePass = {
   id: string; passNo: string; kind: "returnable" | "non_returnable"; purpose: (typeof STORES_GATE_PASS_PURPOSES)[number] | null;
   party: string; dueBack: string | null; status: WireGatePassStatus;
   store: { id: string; code: string; name: string };
-  ref: { type: "supplier_return" | "write_off"; id: string; no: string } | null;
+  ref: { type: "supplier_return" | "write_off" | "scrap_sale"; id: string; no: string } | null;
   note: string | null;
   lines: { itemId: string; itemCode: string; itemName: string; baseUom: string; qty: number; out: number; back: number }[];
   raisedBy: WireTicketPerson; raisedAt: string;
@@ -248,7 +252,7 @@ export type WireGatePass = {
 export type WireGatePassLookup = { pass: WireGatePass; act: "exit" | "entry" };
 export type WireGatePassScanResult = { pass: WireGatePass; duplicate: boolean; flag: "late" | "future" | null };
 export type WireGatePassSource = {
-  type: "supplier_return" | "write_off"; id: string; no: string; party: string; store: { id: string; code: string; name: string }; at: string;
+  type: "supplier_return" | "write_off" | "scrap_sale"; id: string; no: string; party: string; store: { id: string; code: string; name: string }; at: string;
   lines: { itemId: string; itemName: string; qty: number }[];
 };
 /** The store's "New pass" sheet: where a returnable pass may start, and what a non-returnable pass may stand on. */
@@ -349,7 +353,18 @@ export type WireAssetPassportFull = {
   replace: boolean;
   /** Only for a holder of `stores.assets.read` (the key is absent otherwise). Null: "Cost unknown". */
   costPaise?: number | null;
-  can: { reportFault: boolean; addDetails: boolean; transfer: boolean; foundHere: boolean; acceptTransfer: boolean };
+  can: {
+    reportFault: boolean; addDetails: boolean; transfer: boolean; foundHere: boolean; acceptTransfer: boolean;
+    /** S4b (#1114): the HOD or in-charge takes it out of use ("Withdrawn") or back; the HOD or biomedical proposes condemnation. */
+    withdraw?: boolean; returnToUse?: boolean; condemn?: boolean;
+  };
+  /** S4b (#1114): the open (or last) condemnation or loss proposal, its number and its word. */
+  condemnation?: { id: string; condNo: string; kind: "condemn" | "loss"; status: StoresCondemnationStatus } | null;
+  /** S4b (#1114, decision 18): the regulator the item answers to, and whether its paper is on file. */
+  regulatedBy?: "radiation" | "ultrasound" | null;
+  regulatorPaper?: boolean;
+  /** S4a UX (#1114): who to ask when an act is refused (the department's in-charges, else the materials head). */
+  askWho?: string[];
 };
 /** Another department's unit (decision 18 of the flow): name, tag, whose it is, and Found here. Nothing else. */
 export type WireAssetPassportForeign = {
@@ -385,7 +400,7 @@ export const storesTagUnitsBody = z.object({
   grnLineId: id,
   units: z.array(z.object({ serial: z.string().trim().max(80).nullish(), tagNo: z.string().regex(/^AST\d{10}$/).optional() })).min(1).max(200),
 });
-export const storesAssetFaultBody = z.object({ text: z.string().trim().min(1).max(200) });
+export const storesAssetFaultBody = z.object({ text: z.string().trim().min(1).max(200), photoId: id.nullish() });
 export const storesAssetRepairBody = z.object({ note: z.string().max(300).nullish() });
 export const storesAssetCloseRepairBody = z.object({ outcome: z.enum(["repaired", "not_repairable", "preventive"]), note: z.string().max(300).nullish() });
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
@@ -408,3 +423,51 @@ export const storesAssetOpenBody = z.object({
 export const storesAssetCostBody = z.object({ unitCostPaise: z.number().int().min(0).max(10_000_000_000) });
 export const storesVerificationStartBody = z.object({ departmentId: id });
 export const storesVerificationScanBody = z.object({ code: z.string().min(4).max(20).optional(), unitId: id.optional(), shelfId: id });
+
+// ── S4b (#1114): condemnation, loss, disposal ──
+export const STORES_CONDEMNATION_REASONS = ["beyond_repair", "obsolete", "damaged", "lost"] as const;
+export type StoresCondemnationReason = (typeof STORES_CONDEMNATION_REASONS)[number];
+/** The words of a proposal (spec #1114 "Condemnation"): Pending, Objected, Approved; then Disposed or Written off. */
+export type StoresCondemnationStatus = "pending" | "objected" | "approved" | "disposed" | "written_off";
+export type StoresCommitteeSeat = "hod" | "accounts" | "materials" | "biomedical";
+export type WireCondemnation = {
+  id: string; condNo: string; kind: "condemn" | "loss"; reason: StoresCondemnationReason; note: string | null;
+  unit: { id: string; tagNo: string; last4: string; name: string; place: string; department: string | null };
+  status: StoresCondemnationStatus;
+  /** Present only for a holder of `stores.assets.read` or `stores.assets.condemn`. Null: "Cost unknown". */
+  costPaise?: number | null;
+  /** Whole years since it was put to use (null: not known). */
+  ageYears: number | null;
+  repairs12m: number;
+  holdsData: boolean;
+  regulatedBy: "radiation" | "ultrasound" | null;
+  regulatorPaper: boolean;
+  /** Each seat: who may sign it (names), and the signature or objection once there. */
+  seats: { seat: StoresCommitteeSeat; holders: string[]; signed: { by: string; at: string; kind: "sign" | "object"; reason: string | null } | null }[];
+  needsOwner: boolean;
+  approvals: { ms: { approvalId: string; status: string } | null; owner: { approvalId: string; status: string } | null };
+  writeOffId: string | null;
+  disposal: { method: "scrap_sale" | "buy_back" | "e_waste"; amountPaise: number; invoiceNo: string; buyer: string; passId: string | null } | null;
+  proposedBy: { id: string; name: string }; proposedAt: string;
+  can: { sign: boolean; object: boolean; dispose: boolean; writeOff: boolean };
+};
+export type WireAssetRemoval = {
+  unitId: string; tagNo: string; name: string; category: string; condemnationNo: string; reason: StoresCondemnationReason; method: "scrap_sale" | "buy_back" | "e_waste" | "lost";
+  amountPaise: number; invoiceNo: string | null; on: string; costPaise: number | null;
+};
+export const storesCondemnBody = z.object({
+  unitId: id, reason: z.enum(STORES_CONDEMNATION_REASONS), note: z.string().trim().max(300).nullish(), holdsData: z.boolean().optional(), replacesId: id.nullish(),
+});
+export const storesCondemnObjectBody = z.object({ reason: z.string().trim().min(1).max(300) });
+export const storesDisposeBody = z.object({
+  method: z.enum(["scrap_sale", "buy_back", "e_waste"]), buyerId: id, amountPaise: z.number().int().min(0).max(10_000_000_000),
+  invoiceNo: z.string().trim().min(1).max(60), receiptRef: z.string().trim().max(60).nullish(), poRef: z.string().trim().max(60).nullish(),
+  certificateNo: z.string().trim().max(60).nullish(), wipeCertificateNo: z.string().trim().max(60).nullish(),
+  bids: z.array(z.object({ vendorId: id, amountPaise: z.number().int().min(0).max(10_000_000_000) })).max(10).optional(),
+});
+export const storesWriteOffLossBody = z.object({ inquiryNo: z.string().trim().min(1).max(60) });
+export const storesMarkFoundBody = z.object({ storeId: id });
+export const storesRegulatorPaperBody = z.object({ kind: z.enum(["decommission", "transfer", "intimation"]), refNo: z.string().trim().min(1).max(80), documentId: id.nullish() });
+export const storesRegulationBody = z.object({ regulatedBy: z.enum(["radiation", "ultrasound"]).nullable() });
+export const storesWithdrawBody = z.object({ reason: z.string().trim().min(1).max(200) });
+

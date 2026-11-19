@@ -1751,6 +1751,14 @@ what it is doing is read from its events every time, never typed, and the units 
 A department's own shelf staff read their own units without any of the three; anyone else who scans a unit sees only
 whose it is and "Found here".
 
+**Stores condemnation and disposal (decision 0101 Q5, S4b #1114, 2026-11-19).** A unit leaves the books only after the
+condemnation committee signs, each seat once and on the phone: the user department's HOD, accounts, the materials head,
+and biomedical for medical equipment. The medical superintendent then approves the write-off as today, and the owner
+too when the unit cost more than ₹50,000 or its cost is unknown. Disposal is a scrap sale, a buy-back or an e-waste
+recycler, and the guard's exit scan ends the unit's life; a lost unit is written off the same way, without a pass.
+`stores.assets.condemn` is held by `department_head` (at its department), `accounts_officer`, `materials_head` and
+`biomedical_engineer`.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

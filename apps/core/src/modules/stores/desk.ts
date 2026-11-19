@@ -3,6 +3,8 @@ import { STORES_INDENTS_APPROVE, STORES_SHELF_WORK } from "./access";
 import { lateScansToConfirm, returnsToReceive, ticketsComingBack } from "./custody";
 import { ticketsToApprove, ticketsToPick, ticketsToReceive } from "./tickets";
 import { STORES_TOWER_READ, boardCards } from "./tower";
+import { STORES_ASSETS_MANAGE, faultsToSee } from "./assets";
+import { STORES_ASSETS_CONDEMN, condemnationsToSign } from "./condemnation";
 import type { DeskCard, DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
 import type { TicketView } from "./types";
 import type { WaitingItem, WaitingKind } from "@hmis/contracts";
@@ -108,4 +110,49 @@ export const storesStuckDesk: DeskProvider = {
   },
 };
 
-export const STORES_DESK_PROVIDERS = [storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk, storesStuckDesk] as const;
+/**
+ * S4b (#1114, flow step 5) — "Faults to see" (`stores.assets.manage`: biomedical, the materials head): every live unit
+ * whose newest fault came after its last repair act, oldest first. A unit name, its last four and its place per row.
+ */
+export const storesFaultsDesk: DeskProvider = {
+  key: "stores.faults", permission: STORES_ASSETS_MANAGE,
+  load: async (ctx) => {
+    const rows = await faultsToSee(ctx.db);
+    if (rows.length === 0) return [];
+    return [{
+      key: "stores.faults", band: "now", titleKey: "stores.now.faults",
+      stats: [{ key: "count", value: String(rows.length), href: "/stores/assets" }],
+      rows: rows.slice(0, MAX_ROWS).map((r) => ({
+        id: r.unitId, badge: null, title: `${r.name} · ${r.last4}`, subtitle: r.place, action: "Open", href: `/stores/asset?unit=${r.unitId}`, severity: "warn" as const,
+      })),
+    }];
+  },
+};
+
+/**
+ * S4b (#1114, decision 13) — "Condemnation to sign" (`stores.assets.condemn`): proposals with a seat this person may
+ * still sign. The HOD's seat is department-scoped, so it is also a waiting line (the roster-leave precedent).
+ */
+const toSign = (ctx: DeskProviderCtx) => condemnationsToSign(ctx.db, ctx.actor, ctx.now);
+export const storesCondemnDesk: DeskProvider = {
+  key: "stores.condemn", permission: STORES_ASSETS_CONDEMN,
+  load: async (ctx) => {
+    const rows = await toSign(ctx);
+    if (rows.length === 0) return [];
+    return [{
+      key: "stores.condemn", band: "now", titleKey: "stores.now.condemn",
+      stats: [{ key: "count", value: String(rows.length), href: "/stores/condemn" }],
+      rows: rows.slice(0, MAX_ROWS).map((c) => ({
+        id: c.id, badge: null, title: `${c.unit.name} · ${c.unit.last4}`, subtitle: c.condNo, action: "Open", href: `/stores/condemn?c=${c.id}`, severity: "warn" as const,
+      })),
+    }];
+  },
+  waiting: async (ctx) => {
+    const rows = await toSign(ctx);
+    const item = waitingItem("stores.condemnToSign", rows.length, rows.reduce<string | null>((o, c) => (o === null || c.proposedAt < o ? c.proposedAt : o), null));
+    return item === null ? [] : [item];
+  },
+  waitingSelfGated: true,
+};
+
+export const STORES_DESK_PROVIDERS = [storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk, storesStuckDesk, storesFaultsDesk, storesCondemnDesk] as const;
