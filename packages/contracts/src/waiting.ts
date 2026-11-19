@@ -37,6 +37,11 @@ export const WAITING_KINDS = [
   // STORES S5c (#1115) — "Purchase to approve" (the HOD's, department-scoped) and "Award to sign" (a committee seat's).
   "stores.purchaseToApprove",
   "stores.awardToSign",
+  // STORES S6c (#1116) — "Service to confirm" (department-scoped), "MSME bill due soon" (the payment preparers'), "Flags to
+  // review" (the materials head's and the stores auditor's).
+  "stores.servicesToConfirm",
+  "stores.msmeDueSoon",
+  "stores.flagsToReview",
   "reminders.today",
   "roster.dutiesToday",
 ] as const;
@@ -75,6 +80,9 @@ export const WAITING_WEB_HREF: Record<WaitingKind, string | null> = {
   "stores.condemnToSign": "/stores/condemn",
   "stores.purchaseToApprove": "/stores/buy",
   "stores.awardToSign": "/stores/buying",
+  "stores.servicesToConfirm": "/stores/services",
+  "stores.msmeDueSoon": "/stores/pay",
+  "stores.flagsToReview": "/stores/pay",
   "reminders.today": null,
   "roster.dutiesToday": "/roster/my-duties",
 };
@@ -96,6 +104,9 @@ export const WAITING_TONE: Record<WaitingKind, WaitingTone> = {
   "stores.condemnToSign": "warn",
   "stores.purchaseToApprove": "warn",
   "stores.awardToSign": "warn",
+  "stores.servicesToConfirm": "warn",
+  "stores.msmeDueSoon": "hot",
+  "stores.flagsToReview": "warn",
   "reminders.today": "calm",
   "roster.dutiesToday": "calm",
 };

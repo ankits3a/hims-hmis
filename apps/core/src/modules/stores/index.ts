@@ -125,3 +125,14 @@ export {
 export { MSME_ACT_DAYS, MSME_ACT_MAX_DAYS, actDueDate, closeMsmeObjection, msmeDryRun, onTheClock, recordMsmeObjection } from "./msme";
 export { setStoresTallyLedgers, storesTallyLedgerNames } from "./tally-split";
 export type { PayingSwitches } from "./paying-settings";
+// S6c (#1116): the auditor agent (T1: it flags, a person decides) and its review, the reversing service entry, the
+// half-yearly MSME dues report, the "Service to confirm" and "MSME bill due soon" notices, the desk's tax screens' reads.
+export {
+  AUDITOR_AGENT, AUDITOR_TOOL, AUDIT_FLAGS_PER_NIGHT, AUDIT_FLAG_WORDS, auditFlags, flagsToReview, ownerMonthlyList, reviewFlag, runAuditorNight, runAuditorNightIfDue,
+} from "./auditor-agent";
+export type { AuditorNightRun } from "./auditor-agent";
+export { reverseServiceEntry, serviceEntriesAt } from "./service-entries";
+export { MSME_REPORT_DAYS, msmeDuesReport, msmeHalfBounds, msmeHalfOf, msmeObjections } from "./msme";
+export { MSME_DUE_SOON_DAYS, MSME_DUE_WORDS, SERVICE_WORDS, msmeBillsDueSoon, sendMsmeDueSoon, sendServiceToConfirm, servicesDue } from "./paying-notices";
+export { gstNotCreditedBetween, payingSuppliers, tdsCertificates } from "./tax-on-bill";
+export { storesFlagsDesk, storesMsmeDueDesk, storesServicesDesk } from "./desk";

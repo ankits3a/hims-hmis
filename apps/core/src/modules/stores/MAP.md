@@ -18,7 +18,7 @@ Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
 `docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
 `docs/specs/1115-stores-buying-desk.md` (S5, built: S5a, S5b, S5c),
-`docs/specs/1116-stores-paying-desk.md` (S6, approved; S6a and S6b built here).
+`docs/specs/1116-stores-paying-desk.md` (S6, built: S6a, S6b, S6c).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -512,10 +512,43 @@ department shelves every department (housekeeping included) receives from. Pharm
 - "GST not credited" (`gstNotCreditedOn`): derived on read from shelf receipts × the billed line's GST rate where the mark is
   `not_available` (unbilled: the category default). Not yet on the spend/budget screens.
 
+## 10i. The auditor agent, the notices, the desk's tax screens (S6c #1116; decision 11)
+- Flags (`auditor-agent.ts`, migration 0249): `stores_audit_flags` (kind, `key` unique = kind + cited rows, `department_ids`,
+  text, cites, night) + `stores_audit_flag_reviews` (one per flag), both append-only. T1 only: rules over rows, no model, never
+  a hold/release/payment/supplier message. Rules: split POs (vendor + TOP category, Stores lines, each < `PO_HEAD_APPROVAL_LIMIT_PAISE`,
+  ≥ 2 within 7 days, sum above); both ends (bill created/accepted by the payment's recorder; PO `approved_by` = bill booker; PR
+  `raised_by` = GRN `qc_by` via award → group → PR); price drift (GRN cost/base > live contract rate/base + 2 %); more than book
+  (≥ 3 `check` acts with `more_than_book` per shelf per calendar quarter, `quarterOf`); use out of pattern (last 7 IST days vs
+  the 12 weeks before, per OPD visit when every week has visits, else at cost; ≥ 6 weeks with use; > 1.5 × median).
+  DECIDED: per bed-day waits for IPD on production. Text names departments, documents, item and category names — never a
+  person; a supplier is not named either (a proprietor is a person).
+- Night: `runAuditorNightIfDue` on the chaser's minute after the buyer's night (marker act `auditor_night`, advisory lock, no
+  new job name); halted by the copilot `draft`/`global` halt (writes nothing); cap 50 new flags a night; one "Flags to review"
+  notice per reviewer per night (`refType stores_audit_flags`).
+- Review (`reviewFlag`): role `materials_head` or `stores_auditor` (no new permission: the role is the seat, as for release);
+  never `department_head` AT a department the flag names (`hod_reviews_own`); one per flag (`flag_reviewed`; the
+  `copilot_acts` row's `confirm_id` = `af_<flag>` is unique too). Reads (`auditFlags`, `ownerMonthlyList`) also for the owner.
+  "Unreviewed 7 days is a tower card" → DECIDED a hot Now card (`storesFlagsDesk`): S3 locks the tower's key set.
+- Notices (`paying-notices.ts`, minute sweep, source keys checked before any write): "Service to confirm" to the confirmers
+  AT the department that confirmed the PO's last sheet (DECIDED: a service PO names no department, so a first month is not
+  announced); "MSME bill due soon" (MSME, accepted, unpaid, due within 5 days) to `materials.payments.prepare` holders and
+  accounts officers, plus a kept hold's keeper and the owner (edge 11). Waiting kinds `stores.servicesToConfirm`,
+  `stores.msmeDueSoon`, `stores.flagsToReview` (web + mobile words).
+- Reversing SES (`reverseServiceEntry`): header-only row naming the first (`reverses_id`), reason in `note`; refused on a billed
+  sheet (`ses_already_billed`: the supplier's credit note corrects it), on a reversal (`not_reversible`), twice (`already_reversed`).
+- MSME dues report (`msmeDuesReport`, FY halves `YYYY-H1` Apr–Sep / `YYYY-H2` Oct–Mar): micro/small bills accepted > 45 days
+  before the half's end (or today), outstanding then (payments dated after it added back).
+- "GST not credited" (`gstNotCreditedBetween`) on the tower's spend tile (`spend.departments[].gstNotCreditedPaise`, optional on
+  the wire) and the budgets month / `budgetView` — never inside `chargePaise` / `spentPaise`; `departmentBudget` (the approval's
+  hot path) does not compute it.
+- Web: `/stores/pay` Tax button beside the six tabs (`apps/web/src/screens/stores-paying-tax.tsx`: tables in force/drafts, Record signature, certificates), Exports →
+  Tally ledger names, Due → objections + MSME report, `?flags=1` the flags; `/stores/services` → confirmed sheets + Reverse.
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
 staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
 SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5 leaves: splitting one request line
-across groups; the buyer's chat intents (locked S3 D7 pin); paying an advance (S6). S6a leaves: the reversing SES, the "Service to confirm" notice (no job), the auditor agent (S6c).
-S6b leaves: "GST not credited" on the spend and budget screens; a screen to enter the CA's tables (API only); the half-yearly
-MSME-dues report; the "MSME bill due soon" notice (no job).
+across groups; the buyer's chat intents (locked S3 D7 pin). S6 leaves: PAYING an equipment advance (a bill-less payable
+needs `supplier_payments.run_id` and run lines' `bill_id` nullable in materials' pharmacy-live payment run — outside S6c,
+which touches no pharmacy file); auditor chat intents (locked S3 D7 pin); a document UPLOAD for the CA's tables and
+certificates (a reference is typed; there is no document store on this path); per bed-day use (IPD not on production).

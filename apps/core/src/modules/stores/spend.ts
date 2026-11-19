@@ -35,3 +35,8 @@ export async function departmentSpendByMonth(db: Db | Tx, month: string): Promis
   return new Map(rows.map((r) => [r.code!, Number(r.paise)] as const));
 }
 
+/** `YYYY-MM` → its last day, `YYYY-MM-DD` (S6c: the "GST not credited" month reads days, both ends inclusive). */
+export function monthLastDay(month: string): string {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}

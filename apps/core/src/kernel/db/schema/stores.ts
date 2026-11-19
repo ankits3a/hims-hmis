@@ -1537,3 +1537,48 @@ export const storesTallyLedgers = pgTable(
     check("stores_tally_ledgers_ck", sql`length(${t.key}) between 1 and 80 and length(${t.name}) between 1 and 100`),
   ],
 );
+
+/**
+ * STORES S6c (#1116, decision 11) — THE AUDITOR AGENT'S FLAGS (T1: it flags, a person decides). One row per finding:
+ * `kind` (`use_out_of_pattern` | `price_drift` | `split_po` | `both_ends` | `more_than_book`), the departments it names,
+ * its text (departments and documents only, never a person), the rows it cites, and `key` (kind + cited rows) so a
+ * night never raises one finding twice. The agent writes no hold, release, payment or supplier message. APPEND-ONLY (0249).
+ */
+export const storesAuditFlags = pgTable(
+  "stores_audit_flags",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    key: text("key").notNull(),
+    departmentIds: text("department_ids").array().notNull(),
+    text: text("text").notNull(),
+    cites: jsonb("cites").notNull(),
+    night: date("night", { mode: "string" }).notNull(),
+    raisedBy: text("raised_by").notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_audit_flags_key_ux").on(t.key),
+    index("stores_audit_flags_raised_idx").on(t.raisedAt),
+    check("stores_audit_flags_kind_ck", sql`${t.kind} in ('use_out_of_pattern', 'price_drift', 'split_po', 'both_ends', 'more_than_book') and length(${t.text}) > 0`),
+  ],
+);
+
+/** A person's review of a flag: `upheld` (one line on what was done) or `dismissed` (a reason). One per flag. APPEND-ONLY (0249). */
+export const storesAuditFlagReviews = pgTable(
+  "stores_audit_flag_reviews",
+  {
+    id: text("id").primaryKey(),
+    flagId: text("flag_id").notNull().references(() => storesAuditFlags.id),
+    verdict: text("verdict").notNull(),
+    note: text("note").notNull(),
+    confirmId: text("confirm_id").notNull(),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_audit_flag_reviews_flag_ux").on(t.flagId),
+    index("stores_audit_flag_reviews_at_idx").on(t.at),
+    check("stores_audit_flag_reviews_ck", sql`${t.verdict} in ('upheld', 'dismissed') and length(${t.note}) > 0`),
+  ],
+);

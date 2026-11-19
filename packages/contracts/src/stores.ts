@@ -305,7 +305,11 @@ export type WireTowerNumbers = {
 export type WireTowerSpend = {
   /** The IST month, `YYYY-MM`. */
   month: string;
-  departments: { id: string; code: string; name: string; chargePaise: number; perOpdVisitPaise: number | null; perBedDayPaise: number | null }[];
+  departments: {
+    id: string; code: string; name: string; chargePaise: number; perOpdVisitPaise: number | null; perBedDayPaise: number | null;
+    /** S6c (#1116, decision 4): "GST not credited / बिना क्रेडिट GST" this month, derived; never in `chargePaise`. */
+    gstNotCreditedPaise?: number;
+  }[];
   /** S4 (#1114, decision 19): tagged units received by departments this month: "Equipment received", never in `chargePaise`. */
   equipment?: WireEquipmentReceived[];
 };
@@ -507,6 +511,8 @@ export type WireDepartmentBudget = {
   departmentId: string; month: string; budgetPaise: number | null; spentPaise: number; pct: number | null;
   /** S5c (decision 15): the part of `spentPaise` that is Stores POs ordered for the department's requests and not yet delivered. */
   committedPaise: number;
+  /** S6c (#1116, decision 4): the month's "GST not credited", a second derived figure beside the spend (not in `spentPaise`). */
+  gstNotCreditedPaise?: number;
   /** Equipment is budgeted apart (decision 15): band C equipment requests approved in the month. */
   equipment: { requests: { prId: string; prNo: string; estimatePaise: number }[] };
 };
@@ -940,3 +946,32 @@ export type WireBillTaxProposal = {
 export type WireTdsDryRun = { at: string; bills: { billId: string; billNo: string; vendorName: string; basePaise: number; tdsPaise: number }[] };
 export type WireMsmeDryRun = { at: string; bills: { billId: string; billNo: string; vendorName: string; dueDate: string; actDueDate: string }[] };
 export type WireStoresTallyLedgers = { names: Record<string, string>; needed: string[] };
+
+/* ═══ STORES S6c (#1116, decision 11) — the auditor agent's flags and their review; the MSME dues report ═══ */
+
+export const AUDIT_FLAG_KINDS = ["use_out_of_pattern", "price_drift", "split_po", "both_ends", "more_than_book"] as const;
+export type WireAuditFlagKind = (typeof AUDIT_FLAG_KINDS)[number];
+/**
+ * One finding. `text` names departments and documents only, never a person: a person is seen only by opening a cited
+ * document under its own grant. `cites`: `{ type: "po" | "grn" | "bill" | "payment" | "pr" | "shelf" | "check" | "ses", id, no }`.
+ */
+export type WireAuditFlag = {
+  id: string; kind: WireAuditFlagKind; text: string; departments: { id: string; code: string; name: string }[];
+  cites: { type: string; id: string; no: string }[]; raisedAt: string; night: string;
+  status: "open" | "upheld" | "dismissed";
+  /** Open for 7 days or more (decision 11: an unreviewed flag is a Now card). */
+  stale: boolean;
+  review: { verdict: "upheld" | "dismissed"; note: string; by: { id: string; name: string }; at: string } | null;
+  /** May this reader review it now; else why not. */
+  canReview: boolean; refusal: "hod_reviews_own" | "not_permitted" | null;
+};
+export const storesFlagReviewBody = z.object({ verdict: z.enum(["upheld", "dismissed"]), note: z.string().trim().max(300) });
+
+/** The half-yearly MSME dues report (decision 6): micro and small suppliers' bills outstanding beyond 45 days at the half's end. */
+export type WireMsmeDuesReport = {
+  half: string; from: string; to: string; asOf: string;
+  rows: { billId: string; billNo: string; vendorBillNo: string; vendorId: string; vendorName: string; udyam: string | null; msmeClass: string; acceptanceDate: string; daysOutstanding: number; outstandingPaise: number }[];
+  totalPaise: number;
+};
+/** S6c: a department's sheet as its confirmer lists it — reversed (a reversing sheet names it) or itself a reversal. */
+export type WireServiceEntryRow = WireServiceEntry & { reversed: boolean; reversal: boolean };

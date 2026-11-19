@@ -1,8 +1,10 @@
-import { and, asc, eq, inArray, isNull, lte, or, gte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, or, gte, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import {
-  grns, storesMsmeObjectionCloses, storesMsmeObjections, storesServiceEntries, supplierBillLines, supplierBills, vendorDocuments, vendors,
+  grns, storesMsmeObjectionCloses, storesMsmeObjections, storesServiceEntries, supplierBillLines, supplierBills, supplierPaymentRunLines, supplierPayments,
+  vendorDocuments, vendors,
 } from "../../kernel/db/schema";
 import { addDays, dueDateFor } from "../materials";
 import { STORES_TAX_MANAGE, holds, recordAct } from "./access";
@@ -11,7 +13,7 @@ import { StoresError } from "./errors";
 import { requirePayingReader } from "./holds";
 import { payingSettings } from "./paying-settings";
 import type { Exec } from "./buying-common";
-import type { Actor, WireMsmeDryRun } from "@hmis/contracts";
+import type { Actor, WireMsmeDryRun, WireMsmeDuesReport } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -150,4 +152,80 @@ export async function closeMsmeObjection(db: Db, actor: Actor, objectionId: stri
     await recordAct(tx, actor, now, { act: "msme_objection_close", refId: objectionId, reason: note.slice(0, 300), after: { closedOn: input.closedOn } });
   });
   return { id: objectionId };
+}
+
+/** The objections on file, newest first, open ones on top (the desk's list; S6c). */
+export async function msmeObjections(db: Db, actor: Actor): Promise<{
+  id: string; kind: "qc_rejection" | "short"; vendorName: string; doc: { type: "grn" | "ses"; id: string; no: string }; raisedOn: string; reason: string;
+  closed: { on: string; note: string } | null;
+}[]> {
+  await requirePayingReader(db, actor);
+  const rows = await db.select({ o: storesMsmeObjections, c: storesMsmeObjectionCloses, legal: vendors.legalName, trade: vendors.tradeName, grnNo: grns.grnNo, sesNo: storesServiceEntries.sesNo })
+    .from(storesMsmeObjections).innerJoin(vendors, eq(vendors.id, storesMsmeObjections.vendorId))
+    .leftJoin(storesMsmeObjectionCloses, eq(storesMsmeObjectionCloses.objectionId, storesMsmeObjections.id))
+    .leftJoin(grns, eq(grns.id, storesMsmeObjections.grnId)).leftJoin(storesServiceEntries, eq(storesServiceEntries.id, storesMsmeObjections.sesId))
+    .orderBy(desc(storesMsmeObjections.raisedAt)).limit(200);
+  return rows.map(({ o, c, legal, trade, grnNo, sesNo }) => ({
+    id: o.id, kind: o.kind as "qc_rejection" | "short", vendorName: trade ?? legal,
+    doc: o.grnId !== null ? { type: "grn" as const, id: o.grnId, no: grnNo ?? "" } : { type: "ses" as const, id: o.sesId!, no: sesNo ?? "" },
+    raisedOn: o.raisedOn, reason: o.reason, closed: c === null ? null : { on: c.closedOn, note: c.note },
+  })).sort((a, b) => Number(a.closed !== null) - Number(b.closed !== null));
+}
+
+/* ─────────────────────────────── the half-yearly MSME dues report (S6c) ─────────────────────────────── */
+
+export const MSME_REPORT_DAYS = 45;
+
+/** A half of the financial year: `YYYY-H1` = April–September YYYY, `YYYY-H2` = October YYYY – March YYYY+1. */
+export function msmeHalfBounds(half: string): { from: string; to: string } {
+  const m = /^(\d{4})-H([12])$/.exec(half);
+  if (m === null) throw new StoresError("bad_month", "a half is YYYY-H1 (April–September) or YYYY-H2 (October–March)", { half });
+  const y = Number(m[1]);
+  return m[2] === "1" ? { from: `${String(y)}-04-01`, to: `${String(y)}-09-30` } : { from: `${String(y)}-10-01`, to: `${String(y + 1)}-03-31` };
+}
+
+/** The half an IST day falls in. */
+export function msmeHalfOf(now: Date): string {
+  const day = istDayString(now);
+  const y = Number(day.slice(0, 4));
+  const mo = Number(day.slice(5, 7));
+  return mo >= 4 && mo <= 9 ? `${String(y)}-H1` : mo >= 10 ? `${String(y)}-H2` : `${String(y - 1)}-H2`;
+}
+
+/**
+ * Decision 6's report: micro and small suppliers' bills outstanding more than 45 days after acceptance on the half's
+ * last day (or today, while the half runs) — the content of the companies' half-yearly MSME return. What was
+ * outstanding then: the bill less what was settled by then (payments dated after it are added back). Read only.
+ */
+export async function msmeDuesReport(db: Db, actor: Actor, half: string, now: Date = new Date()): Promise<WireMsmeDuesReport> {
+  await requirePayingReader(db, actor);
+  const { from, to } = msmeHalfBounds(half);
+  const today = istDayString(now);
+  const asOf = to < today ? to : today;
+  const cutoff = addDays(asOf, -MSME_REPORT_DAYS - 1);
+  const rows = await db.select({ b: supplierBills, legal: vendors.legalName, trade: vendors.tradeName, cls: vendors.msmeClass, udyam: vendors.msmeUdyamNo })
+    .from(supplierBills).innerJoin(vendors, eq(vendors.id, supplierBills.vendorId))
+    .where(and(
+      inArray(supplierBills.status, ["accepted", "part_paid", "paid"]), isNull(supplierBills.cancelledAt), isNotNull(supplierBills.acceptanceDate),
+      lte(supplierBills.acceptanceDate, cutoff), sql`lower(trim(${vendors.msmeClass})) in ('micro', 'small')`,
+    )).orderBy(asc(supplierBills.acceptanceDate), asc(supplierBills.billNo)).limit(2000);
+  const ids = rows.map((r) => r.b.id);
+  const later = new Map<string, number>();
+  if (ids.length > 0) {
+    const paidAfter = await db.select({ bill: supplierPaymentRunLines.billId, paise: sql<string>`sum(${supplierPaymentRunLines.payPaise} + ${supplierPaymentRunLines.creditPaise})` })
+      .from(supplierPaymentRunLines).innerJoin(supplierPayments, eq(supplierPayments.id, supplierPaymentRunLines.paymentId))
+      .where(and(inArray(supplierPaymentRunLines.billId, ids), gt(supplierPayments.paidOn, asOf))).groupBy(supplierPaymentRunLines.billId);
+    for (const p of paidAfter) later.set(p.bill, Number(p.paise));
+  }
+  const out: WireMsmeDuesReport["rows"] = [];
+  for (const { b, legal, trade, cls, udyam } of rows) {
+    const outstanding = b.totalPaise - b.paidPaise + (later.get(b.id) ?? 0);
+    if (outstanding <= 0) continue;
+    const days = Math.round((Date.parse(`${asOf}T00:00:00Z`) - Date.parse(`${b.acceptanceDate!}T00:00:00Z`)) / 86_400_000);
+    out.push({
+      billId: b.id, billNo: b.billNo, vendorBillNo: b.vendorBillNo, vendorId: b.vendorId, vendorName: trade ?? legal, udyam, msmeClass: (cls ?? "").trim().toLowerCase(),
+      acceptanceDate: b.acceptanceDate!, daysOutstanding: days, outstandingPaise: Math.min(outstanding, b.totalPaise),
+    });
+  }
+  return { half, from, to, asOf, rows: out, totalPaise: out.reduce((s, r) => s + r.outstandingPaise, 0) };
 }

@@ -11,7 +11,8 @@ import { assetRedCards, equipmentReceivedByMonth } from "./asset-reads";
 import { CARRIER_KINDS, chainsOf } from "./chain";
 import { overdueGatePasses } from "./gate-pass";
 import { listShelves } from "./shelves";
-import { departmentSpendByMonth, nextMonthStart } from "./spend";
+import { departmentSpendByMonth, monthLastDay, nextMonthStart } from "./spend";
+import { gstNotCreditedBetween } from "./tax-on-bill";
 import { EMERGENCY_REVIEW_MS, ticketViews } from "./tickets";
 import type { Chain } from "./chain";
 import type { TicketRow } from "./tickets";
@@ -380,13 +381,19 @@ async function spendOf(db: Db | Tx, now: Date): Promise<WireTowerSpend> {
     .where(and(inArray(opdEncounters.departmentId, opdIds), ne(opdEncounters.status, "abandoned"),
       gte(opdEncounters.serviceDate, `${month}-01`), lt(opdEncounters.serviceDate, nextMonthStart(month)))).groupBy(opdEncounters.departmentId))
     .map((v) => [v.dept, v.n] as const));
+  // S6c (#1116, decision 4): each department's derived "GST not credited" this month, beside (never inside) the charge.
+  const gst = new Map<string, number>();
+  for (const d of depts) gst.set(d.code, (await gstNotCreditedBetween(db, d.code, `${month}-01`, monthLastDay(month))).paise);
   return {
     month,
     departments: depts.map((d) => {
       const charge = byCode.get(d.code) ?? 0;
       const n = d.opd === null ? 0 : (visits.get(d.opd) ?? 0);
       // Per occupied bed-day once IPD is on production (owner 2026-10-13); null until then.
-      return { id: d.id, code: d.code, name: d.name, chargePaise: charge, perOpdVisitPaise: n === 0 ? null : Math.round(charge / n), perBedDayPaise: null };
+      return {
+        id: d.id, code: d.code, name: d.name, chargePaise: charge, perOpdVisitPaise: n === 0 ? null : Math.round(charge / n), perBedDayPaise: null,
+        gstNotCreditedPaise: gst.get(d.code) ?? 0,
+      };
     }).sort((a, b) => b.chargePaise - a.chargePaise || a.code.localeCompare(b.code)),
   };
 }

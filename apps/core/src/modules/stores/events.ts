@@ -58,6 +58,9 @@ export const STORES_ACTS = [
   // S6b (#1116): a tax table saved or signed (refId = the table), a lower-deduction certificate, a TDS changed from the
   // proposal (refId = the bill), an MSME objection raised or closed (refId = the objection), the Stores Tally ledger names.
   "tax_table_save", "tax_table_sign", "tds_certificate", "tds_change", "msme_objection", "msme_objection_close", "tally_ledgers",
+  // S6c (#1116): the auditor's night (refId null; after.flags), a person's review of a flag (refId = the flag), a service entry
+  // reversed (refId = the reversing sheet; after.reverses = the first).
+  "auditor_night", "audit_flag_review", "ses_reverse",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 
