@@ -33,7 +33,7 @@ export {
   LATE_SCAN_MS, STORES_CARRY, acceptReturn, confirmLateScan, deliverTicket, handOver, lateScansToConfirm, myCustody, postTransitLoss, raiseReturn,
   receiveReturn, resolveShort, returnUndelivered, returnsToReceive, scanClock, takeCustody, takeOverCustody, custodyLookup, ticketsComingBack,
 } from "./custody";
-export { ISSUE_VOUCHER_DOCUMENT, addToOpenTicket, openTicketFor, reAskShort } from "./tickets";
+export { ISSUE_VOUCHER_DOCUMENT, addToOpenTicket, openTicketFor, reAskShort, shelfTickets, whoToAsk } from "./tickets";
 export { registerStoresPrinting, renderIssueVoucher } from "./voucher";
 // S2c (#1119) — gate passes: raise, the guard's lookup and scan, close, the overdue list and its notice, the print.
 export {

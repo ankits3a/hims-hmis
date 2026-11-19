@@ -4,7 +4,7 @@ import {
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getToken } from "./lib/api";
-import { useAuth } from "./lib/auth";
+import { heldAnywhere, useAuth } from "./lib/auth";
 import { shownInMode, useLabMode } from "./lib/lab-mode";
 import type { LabMode } from "./lib/lab-mode";
 import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
@@ -150,8 +150,17 @@ const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "
  * several — the pharmacy office, whose menu entries each keep their old row's permission.
  */
 /** Owner 2026-10-12 — `labMode`: a lab menu shown only while the lab runs that mode (`lib/lab-mode.ts`). */
-type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[]; labMode?: LabMode | "never" };
-const navVisible = (e: NavEntry, can: (p: string) => boolean): boolean => can(e.permission) || (e.anyOf ?? []).some((p) => can(p));
+/**
+ * Stores UX pass (walk finding 13) — `anyScope`: a row that ALSO shows for a holder of any of these at ANY scope,
+ * department or floor included (`heldAnywhere`). `can()` reads hospital scope only, so a ward's store in-charge or
+ * a department's HOD had no way into Stores but a typed URL. Presentation only: the server asks each grant at the
+ * department it acts on.
+ */
+type NavEntry = {
+  to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[]; anyScope?: readonly string[]; labMode?: LabMode | "never";
+};
+const navVisible = (e: NavEntry, can: (p: string) => boolean, anywhere: (p: string) => boolean = can): boolean =>
+  can(e.permission) || (e.anyOf ?? []).some((p) => can(p)) || (e.anyScope ?? []).some((p) => anywhere(p));
 /**
  * Past this many places the bar stops being a row and becomes a wall: an owner-shaped grant drew
  * fifty links over seven lines, 250 px of menu above every screen (measured at 1280 px, 2026-10-01).
@@ -272,7 +281,12 @@ const NAV: readonly NavEntry[] = [
   { to: "/attendance/links", label: "nav.attendanceLinks", permission: "attendance.all.read", anyOf: ["auth.users.manage"], group: "admin" },
   // STORES S1 (#1111, decision 0099) — the non-drug Stores desk, `storesManifest.menu`'s entry. A department's
   // own shelf (`/stores/shelf/$shelfId`) is opened from it; its grants are department-scoped, so it is no menu row.
-  { to: "/stores", label: "nav.stores", permission: "stores.masters.manage", group: "admin" },
+  // Stores UX pass (walk finding 13): the same row for every holder of a Stores grant at any scope — the department's
+  // shelf, approval, a porter's carry, the night store — where `/stores` offers each person their own screens.
+  {
+    to: "/stores", label: "nav.stores", permission: "stores.masters.manage", group: "admin",
+    anyScope: ["stores.shelf.read", "stores.shelf.work", "stores.indents.approve", "stores.carry", "stores.nightstore.issue", "stores.audit.read"],
+  },
   // STORES S2c (#1119) — the store's gate passes and the guard's Gate (the only screen a guard has), `storesManifest.menu`'s two rows.
   { to: "/stores/passes", label: "nav.storesPasses", permission: "stores.gatepass.raise", group: "admin" },
   { to: "/stores/gate", label: "nav.storesGate", permission: "stores.gatepass.scan", group: "desk" },
@@ -450,7 +464,7 @@ declare module "@tanstack/react-router" {
  */
 function ShellChrome(): React.ReactElement {
   const { t, i18n } = useTranslation();
-  const { username, can, logout } = useAuth();
+  const { username, can, logout, permissions } = useAuth();
   const navigate = useNavigate();
   const palette = usePalette();
   const pathname = useRouterState({ select: (st) => st.location.pathname });
@@ -481,7 +495,7 @@ function ShellChrome(): React.ReactElement {
     return () => { document.removeEventListener("mousedown", close); };
   }, [openGroup]);
   const labModeNow = useLabMode();
-  const show = (e: NavEntry): boolean => navVisible(e, can) && shownInMode(e.labMode, labModeNow);
+  const show = (e: NavEntry): boolean => navVisible(e, can, (p) => heldAnywhere(permissions, p)) && shownInMode(e.labMode, labModeNow);
   const folded = NAV.filter(show).length > NAV_FOLD_AT;
   /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
   const [, setTick] = useState(0);
@@ -1884,6 +1898,8 @@ const storesDeskRoute = createRoute({
 const storesShelfRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/stores/shelf/$shelfId",
+  // Stores UX pass (walk finding 16): the materials head's "More than book" card opens the shelf's check.
+  validateSearch: (search: Record<string, unknown>): { check?: 1 } => (search.check === 1 || search.check === "1" ? { check: 1 } : {}),
   component: function StoresShelfPage() {
     const { shelfId } = storesShelfRoute.useParams();
     return <StoresShelf shelfId={shelfId} />;
@@ -1891,10 +1907,16 @@ const storesShelfRoute = createRoute({
 });
 // STORES S2a (#1112) — the HOD's Approve list, the store's To pick list and a ticket's timeline. No menu row:
 // they are reached from the Now cards, the notices and `/stores`; the server asks each grant at the department.
-const storesApproveRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/approve", component: () => <StoresApprove /> });
-const storesPickRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/pick", component: StoresPick });
+// Stores UX pass (walk finding 6): a Now card links `?ticket=<id>` (the shelf's Arriving, `?transfer=<id>`); the
+// screen brings that ticket to the top and marks it.
+const storesTicketSearch = (search: Record<string, unknown>): { ticket?: string; transfer?: string } => ({
+  ...(typeof search.ticket === "string" && search.ticket !== "" ? { ticket: search.ticket } : {}),
+  ...(typeof search.transfer === "string" && search.transfer !== "" ? { transfer: search.transfer } : {}),
+});
+const storesApproveRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/approve", validateSearch: storesTicketSearch, component: () => <StoresApprove /> });
+const storesPickRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/pick", validateSearch: storesTicketSearch, component: StoresPick });
 // STORES S2b (#1112) — the department's Receive and the porter's card, both phone screens reached from the Now cards.
-const storesReceiveRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/receive", component: StoresReceive });
+const storesReceiveRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/receive", validateSearch: storesTicketSearch, component: StoresReceive });
 const storesPorterRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/porter", component: StoresPorter });
 // STORES S2c (#1119) — the guard's Gate (phone) and the store's Passes; each grant is asked by the server.
 const storesGateRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/gate", component: StoresGate });

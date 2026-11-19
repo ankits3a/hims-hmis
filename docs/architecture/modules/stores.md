@@ -129,9 +129,11 @@ Source: `apps/core/src/modules/stores/`
   - `reAskShort(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
   - `reRaiseTicket(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
   - `reviewEmergency(db: Db, actor: Actor, indentId: string, input: { decision: "agree" | "query"; note?: string | null }, now: Date = new Date(…`
+  - `shelfTickets(db: Db | Tx, actor: Actor, shelfId: string, now: Date = new Date()): Promise<TicketView[]>`
   - `ticketsToApprove(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
   - `ticketsToPick(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
   - `ticketsToReceive(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
+  - `whoToAsk(db: Db | Tx, actor: Actor, at: { shelfId: string } | { indentId: string }): Promise<{ department: { id: string; name: string }; as…`
   - `withinServiceHours(hours: string | null, now: Date): boolean`
 - `timeline.ts`
   - `ticketTimeline(db: Db, actor: Actor, indentId: string): Promise<TicketTimeline>`
@@ -163,6 +165,6 @@ Foreign keys into: `materials`, `resources`
 
 ## HTTP routes
 
-- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/transit-losses`
+- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/transit-losses`, `/stores/who-to-ask`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`

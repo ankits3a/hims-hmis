@@ -1,9 +1,12 @@
 import { useState } from "react";
+import { Link, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  addToOpenTicket, getShelf, openTicketFor, raiseTicket, receiveTransfer, recordUse, reorderDraft, requestItem, saveCheck, saveReorder, searchItems, storesErrorCode, undoUse,
+  addToOpenTicket, getShelf, openTicketFor, raiseTicket, recordUse, reorderDraft, requestItem, saveCheck, saveReorder, searchItems, shelfTickets, storesErrorCode, undoUse,
 } from "../lib/stores-api";
+import { Refused, TicketNo, ageOf } from "./stores-tickets";
+import "./stores.css";
 import type { TicketPriority } from "../lib/stores-api";
 import type { WireReorderLine, WireShelfItem, WireShelfView } from "@hmis/contracts";
 
@@ -18,7 +21,9 @@ import type { WireReorderLine, WireShelfItem, WireShelfView } from "@hmis/contra
  * department".
  */
 const KEY = (shelfId: string) => ["stores", "shelf", shelfId] as const;
-type Mode = { kind: "list" } | { kind: "used"; item: WireShelfItem } | { kind: "check" } | { kind: "reorder" };
+type Mode = { kind: "list" } | { kind: "used"; item: WireShelfItem } | { kind: "check" } | { kind: "reorder" } | { kind: "tickets" };
+/** A notice on the shelf; after Send it names the new ticket, a link to its timeline (walk finding 5). */
+type Notice = { text: string; ticket?: { id: string; indentNo: string } } | null;
 
 const page: React.CSSProperties = {
   maxWidth: "100%", overflowX: "hidden", boxSizing: "border-box", padding: "12px 16px 24px", display: "flex", flexDirection: "column", gap: 10,
@@ -34,22 +39,25 @@ const primary: React.CSSProperties = { ...btn, background: "var(--ink, #222)", c
 export function StoresShelf({ shelfId }: { shelfId: string }): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const [mode, setMode] = useState<Mode>({ kind: "list" });
-  const [notice, setNotice] = useState<string | null>(null);
+  const { check } = useSearch({ strict: false }) as { check?: number | string };
+  const [mode, setMode] = useState<Mode>(String(check) === "1" ? { kind: "check" } : { kind: "list" });
+  const [notice, setNotice] = useState<Notice>(null);
   const shelf = useQuery({ queryKey: KEY(shelfId), queryFn: () => getShelf(shelfId), retry: false });
   const refresh = (): Promise<void> => qc.invalidateQueries({ queryKey: KEY(shelfId) });
 
   if (shelf.isError) {
     const code = storesErrorCode(shelf.error);
     return (
-      <div data-testid="stores-shelf" style={page}>
-        <p data-testid="shelf-refused" style={{ margin: 0 }}>{code === "not_permitted" ? t("stores.shelf.notYours") : t("stores.shelf.failed")}</p>
+      <div data-testid="stores-shelf" className="stores-ui" style={page}>
+        {code === "not_permitted"
+          ? <Refused at={{ shelfId }} testId="shelf-refused" />
+          : <p data-testid="shelf-refused" style={{ margin: 0 }}>{t("stores.shelf.failed")}</p>}
       </div>
     );
   }
   if (shelf.data === undefined) {
     return (
-      <div data-testid="stores-shelf" style={page} aria-busy="true">
+      <div data-testid="stores-shelf" className="stores-ui" style={page} aria-busy="true">
         {[0, 1, 2, 3].map((i) => <div key={i} style={{ ...rowStyle, background: "var(--rule, #eee)", borderRadius: 4 }} />)}
       </div>
     );
@@ -58,30 +66,34 @@ export function StoresShelf({ shelfId }: { shelfId: string }): React.ReactElemen
   const head = `${view.shelf.departmentName ?? view.shelf.departmentCode ?? ""} · ${view.shelf.floorName ?? view.shelf.name}`;
 
   if (mode.kind === "check") {
-    return <CheckScreen view={view} onDone={(n) => { setNotice(n); setMode({ kind: "list" }); void refresh(); }} onBack={() => setMode({ kind: "list" })} />;
+    return <CheckScreen view={view} onDone={(n) => { setNotice({ text: n }); setMode({ kind: "list" }); void refresh(); }} onBack={() => setMode({ kind: "list" })} />;
   }
   if (mode.kind === "reorder") {
     return <ReorderScreen shelfId={view.shelf.id} onDone={(n) => { setNotice(n); setMode({ kind: "list" }); }} onBack={() => setMode({ kind: "list" })} />;
   }
+  if (mode.kind === "tickets") return <TicketsScreen shelfId={view.shelf.id} onBack={() => setMode({ kind: "list" })} />;
 
   return (
-    <div data-testid="stores-shelf" style={page}>
+    <div data-testid="stores-shelf" className="stores-ui" style={page}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", overflow: "hidden" }}>
         <h1 style={{ margin: 0, fontSize: 18, overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{head}</h1>
         {view.may.work && <button type="button" style={primary} onClick={() => setMode({ kind: "reorder" })}>{t("stores.shelf.reorder")}</button>}
       </div>
-      {notice !== null && <p role="status" style={{ margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{notice}</p>}
+      {notice !== null && (
+        <p role="status" data-testid={notice.ticket === undefined ? undefined : "shelf-sent"}
+          style={{ margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", gap: 6 }}>
+          <span>{notice.text}</span>
+          {notice.ticket !== undefined && <TicketNo id={notice.ticket.id} no={notice.ticket.indentNo} />}
+        </p>
+      )}
+      {/* UX pass (walk finding 10): Arriving opens the counted Receive for this transfer — never a blind one-tap receipt. */}
       {view.arriving.map((a) => (
         <div key={a.transferId} data-testid={`shelf-arriving-${a.transferId}`} style={rowStyle}>
           <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
             {t("stores.shelf.arriving")}: {a.lines.map((l) => `${l.name} ${String(l.qty)}`).join(", ")}
           </span>
           {view.may.work && (
-            <button type="button" style={btn} onClick={() => {
-              receiveTransfer(view.shelf.id, a.transferId)
-                .then(() => { setNotice(t("stores.shelf.received")); return refresh(); })
-                .catch((e: unknown) => setNotice(storesErrorCode(e) === "not_permitted" ? t("stores.shelf.notYours") : t("stores.shelf.failed")));
-            }}>{t("stores.shelf.receive")}</button>
+            <Link to="/stores/receive" search={{ transfer: a.transferId }} className="stores-btn">{t("stores.shelf.receive")}</Link>
           )}
         </div>
       ))}
@@ -95,9 +107,12 @@ export function StoresShelf({ shelfId }: { shelfId: string }): React.ReactElemen
             : <button type="button" style={btn} disabled={i.onHand <= 0} onClick={() => { setNotice(null); setMode({ kind: "used", item: i }); }}>{t("stores.shelf.used")}</button>)}
         </div>
       ))}
-      {view.may.work && view.items.length > 0 && (
-        <button type="button" style={{ ...btn, alignSelf: "flex-start" }} onClick={() => setMode({ kind: "check" })}>{t("stores.shelf.checkShelf")}</button>
-      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {view.may.work && view.items.length > 0 && (
+          <button type="button" style={btn} onClick={() => setMode({ kind: "check" })}>{t("stores.shelf.checkShelf")}</button>
+        )}
+        <button type="button" style={btn} onClick={() => setMode({ kind: "tickets" })}>{t("stores.ux.myTickets")}</button>
+      </div>
       {mode.kind === "used" && <UsedSheet view={view} item={mode.item} onClose={() => { setMode({ kind: "list" }); void refresh(); }} />}
     </div>
   );
@@ -116,7 +131,7 @@ function UsedSheet({ view, item, onClose }: { view: WireShelfView; item: WireShe
       : code === "not_permitted" ? t("stores.shelf.notYours") : t("stores.shelf.failed"));
   };
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "flex-end", zIndex: 20 }}>
+    <div className="stores-ui" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "flex-end", zIndex: 20 }}>
       <div
         data-testid="shelf-used-sheet" role="dialog" aria-label={item.name}
         style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "100%", boxSizing: "border-box", padding: "16px 16px 24px", background: "var(--paper, #fff)", borderRadius: "12px 12px 0 0" }}
@@ -158,7 +173,7 @@ function CheckScreen({ view, onDone, onBack }: { view: WireShelfView; onDone: (n
   const [error, setError] = useState<string | null>(null);
   const items = view.items.filter((i) => i.trackMode !== "expensed");
   return (
-    <div data-testid="stores-shelf" style={page}>
+    <div data-testid="stores-shelf" className="stores-ui" style={page}>
       <h2 style={{ margin: 0, fontSize: 18 }}>{t("stores.shelf.checkShelf")}</h2>
       {items.map((i) => (
         <label key={i.itemId} style={rowStyle}>
@@ -185,7 +200,32 @@ function CheckScreen({ view, onDone, onBack }: { view: WireShelfView; onDone: (n
   );
 }
 
-function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (notice: string) => void; onBack: () => void }): React.ReactElement {
+/** UX pass (walk finding 5) — "My tickets": the shelf's newest tickets, each number a link to its timeline. */
+function TicketsScreen({ shelfId, onBack }: { shelfId: string; onBack: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["stores", "shelf-tickets", shelfId], queryFn: () => shelfTickets(shelfId), retry: false });
+  const tickets = q.data?.tickets ?? [];
+  return (
+    <div data-testid="stores-shelf" className="stores-ui" style={page}>
+      <h2 style={{ margin: 0, fontSize: 18 }}>{t("stores.ux.myTickets")}</h2>
+      {q.isError && <p role="status" style={{ margin: 0 }}>{t("stores.shelf.notYours")}</p>}
+      {q.data !== undefined && tickets.length === 0 && <p style={{ margin: 0 }}>{t("stores.ux.noTickets")}</p>}
+      <div data-testid="shelf-tickets" style={{ display: "flex", flexDirection: "column" }}>
+        {tickets.map((tk) => (
+          <div key={tk.id} style={rowStyle}>
+            <TicketNo id={tk.id} no={tk.indentNo} />
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{tk.lines.map((l) => l.itemName).join(", ")}</span>
+            <span style={{ flexShrink: 0, fontWeight: 700 }}>{t(`stores.ticket.stage.${tk.stage}`)}</span>
+            <span style={{ flexShrink: 0, minWidth: 36, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{ageOf(tk.requestedAt, Date.now())}</span>
+          </div>
+        ))}
+      </div>
+      <button type="button" style={{ ...btn, alignSelf: "flex-start" }} onClick={onBack}>{t("stores.shelf.back")}</button>
+    </div>
+  );
+}
+
+function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (notice: Notice) => void; onBack: () => void }): React.ReactElement {
   const { t } = useTranslation();
   const draft = useQuery({ queryKey: ["stores", "reorder", shelfId], queryFn: () => reorderDraft(shelfId), retry: false });
   const [extra, setExtra] = useState<WireReorderLine[]>([]);
@@ -202,7 +242,7 @@ function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (
   const lines = [...(draft.data?.lines ?? []), ...extra];
   const fail = (e: unknown): void => setNotice(storesErrorCode(e) === "not_permitted" ? t("stores.shelf.notYours") : t("stores.shelf.failed"));
   return (
-    <div data-testid="stores-shelf" style={page}>
+    <div data-testid="stores-shelf" className="stores-ui" style={page}>
       <h2 style={{ margin: 0, fontSize: 18 }}>{t("stores.shelf.reorder")}</h2>
       {draft.isError && <p role="status" style={{ margin: 0 }}>{t("stores.shelf.notYours")}</p>}
       {draft.data !== undefined && lines.length === 0 && <p style={{ margin: 0 }}>{t("stores.shelf.nothingToReorder")}</p>}
@@ -242,13 +282,26 @@ function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (
           style={{ minHeight: 40, width: "100%", boxSizing: "border-box" }} />
       )}
       {notice !== null && <p role="status" style={{ margin: 0 }}>{notice}</p>}
+      {/* UX pass (walk finding 15): a ticket still waiting for its HOD is said once, plainly, with adding to it as the primary. */}
+      {openTicket !== null && (
+        <div data-testid="reorder-open-ticket" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", borderTop: "1px solid var(--rule, #e3e3e3)", paddingTop: 8 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>{t("stores.ux.waitsForHod", { no: openTicket.indentNo.slice(-4) })}</span>
+          <button type="button" style={primary} data-primary="true" disabled={lines.length === 0} onClick={() => {
+            const out = lines.map((l) => ({ itemId: l.itemId, qtyBase: Number(qty[l.itemId] ?? String(l.proposed)) })).filter((l) => l.qtyBase > 0);
+            if (out.length === 0) return;
+            addToOpenTicket(openTicket.id, out)
+              .then((r) => onDone({ text: r.alreadyOn.length > 0 ? `${t("stores.ticket.added")} · ${t("stores.ticket.alreadyOn")}` : t("stores.ticket.added"), ticket: { id: openTicket.id, indentNo: openTicket.indentNo } }))
+              .catch((e: unknown) => (storesErrorCode(e) === "already_on_ticket" ? setNotice(t("stores.ticket.alreadyOn")) : fail(e)));
+          }}>{t("stores.ux.addToIt")}</button>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" style={primary} disabled={lines.length === 0} onClick={() => {
+        <button type="button" style={openTicket === null ? primary : btn} data-primary={openTicket === null ? "true" : undefined} disabled={lines.length === 0} onClick={() => {
           const out = lines.map((l) => ({ itemId: l.itemId, qtyBase: Number(qty[l.itemId] ?? String(l.proposed)) })).filter((l) => l.qtyBase > 0);
           if (out.length === 0) return;
           if (priority === "emergency" && reason.trim() === "") { setNotice(t("stores.ticket.reasonNeeded")); return; }
           raiseTicket(shelfId, { lines: out, priority, emergencyReason: priority === "emergency" ? reason : null })
-            .then(() => onDone(t("stores.ticket.sent")))
+            .then((tk) => onDone({ text: t("stores.ticket.sent"), ticket: { id: tk.id, indentNo: tk.indentNo } }))
             .catch((e: unknown) => {
               const code = storesErrorCode(e);
               if (code === "reason_required") setNotice(t("stores.ticket.reasonNeeded"));
@@ -256,18 +309,9 @@ function ReorderScreen({ shelfId, onDone, onBack }: { shelfId: string; onDone: (
               else fail(e);
             });
         }}>{t("stores.ticket.send")}</button>
-        {openTicket !== null && (
-          <button type="button" style={btn} disabled={lines.length === 0} onClick={() => {
-            const out = lines.map((l) => ({ itemId: l.itemId, qtyBase: Number(qty[l.itemId] ?? String(l.proposed)) })).filter((l) => l.qtyBase > 0);
-            if (out.length === 0) return;
-            addToOpenTicket(openTicket.id, out)
-              .then((r) => onDone(r.alreadyOn.length > 0 ? `${t("stores.ticket.added")} · ${t("stores.ticket.alreadyOn")}` : t("stores.ticket.added")))
-              .catch((e: unknown) => (storesErrorCode(e) === "already_on_ticket" ? setNotice(t("stores.ticket.alreadyOn")) : fail(e)));
-          }}>{`${t("stores.ticket.addToOpen")} ${openTicket.indentNo.slice(-4)}`}</button>
-        )}
         <button type="button" style={btn} disabled={lines.length === 0} onClick={() => {
           const out = lines.map((l) => ({ itemId: l.itemId, qty: Number(qty[l.itemId] ?? String(l.proposed)) })).filter((l) => l.qty > 0);
-          saveReorder(shelfId, out).then(() => onDone(t("stores.shelf.draftSaved"))).catch(fail);
+          saveReorder(shelfId, out).then(() => onDone({ text: t("stores.shelf.draftSaved") })).catch(fail);
         }}>{t("stores.shelf.saveDraft")}</button>
         <button type="button" style={btn} onClick={onBack}>{t("stores.shelf.back")}</button>
       </div>

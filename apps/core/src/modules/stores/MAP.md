@@ -163,6 +163,14 @@ department shelves every department (housekeeping included) receives from. Pharm
 - The issue voucher (`voucher.ts`, document `stores_issue_voucher`, destination `stores_a4`) is queued in
   `issueTicket`'s transaction; renderer registered in `StoresModule.onModuleInit`.
 
+## 9a. UX pass from the browser walk (2026-11-19)
+- `shelfTickets` (`GET shelves/:shelfId/tickets`, the shelf's read grant) backs the shelf's "My tickets"; newest 20.
+- `whoToAsk` (`GET who-to-ask?shelfId=|indentId=`) names the department's approvers (else shelf in-charges, else the
+  hospital stand-ins) for a refused reader; any signed-in user may read it (names only), so a refusal is never a dead end.
+- Web: every Stores root wears `stores-ui` (`apps/web/src/screens/stores.css`: bordered fields, focus ring, faded
+  disabled buttons). The `/stores` nav row also shows for a grant held at ANY scope (`heldAnywhere`, `anyScope`).
+  Notices with `refType = store_indent` open the timeline (alerts-bell `DEEP_LINKS`).
+
 ## 10. Gate passes (S2c #1119, `gate-pass.ts`, `gate-pass-print.ts`)
 - The pass (`stores_gate_passes` + `stores_gate_pass_lines`) is written ONCE at raise; its life is the gate log
   `stores_gate_pass_scans` (kinds `exit`, `entry`, `close`). All three tables are append-only in the database
