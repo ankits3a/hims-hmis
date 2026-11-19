@@ -1,4 +1,7 @@
 import { STORES_DESK_PROVIDERS } from "./desk";
+import { storesCopilotIntents } from "./copilot-intents";
+import { storesCopilotReadTools } from "./copilot-tools";
+import { reorderTool } from "./copilot-acts";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -33,6 +36,11 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * and in. Each has its own menu row: the guard's Gate (`/stores/gate`, the only screen a guard has) and the store's
  * Passes (`/stores/passes`).
  *
+ * S3 (#1113, decisions 5, 15) adds two: `stores.tower.read` (hospital; the materials head, the storekeeper, the medical
+ * superintendent, the duty manager, the owner) reads the control tower (`/stores/tower`, its own menu row), its owner's
+ * one line and the "Stuck" Now card; `stores.spend.read` (hospital; the owner, the materials head, the medical
+ * superintendent) adds the month's spend per department to the tower. Never a doctor (decision 0058).
+ *
  * The first menu entry: `/stores`, the materials head's desk. The phone shelf (`/stores/shelf/$shelfId`) is
  * reached from it and from a department's own link; it is not a menu row because a department-scoped
  * holder sees no hospital-scope menu.
@@ -44,6 +52,7 @@ export const storesManifest: ModuleManifest = {
     { label: "Stores", path: "/stores", permission: "stores.masters.manage" },
     { label: "Gate passes", path: "/stores/passes", permission: "stores.gatepass.raise" },
     { label: "Gate", path: "/stores/gate", permission: "stores.gatepass.scan" },
+    { label: "Control tower", path: "/stores/tower", permission: "stores.tower.read" },
   ],
   permissions: [
     "stores.masters.manage",
@@ -55,8 +64,16 @@ export const storesManifest: ModuleManifest = {
     "stores.carry",
     "stores.gatepass.raise",
     "stores.gatepass.scan",
+    "stores.tower.read",
+    "stores.spend.read",
   ],
   subscriptions: [],
-  /** S2a (#1112, decision 12) — the three Now cards: "Indents to approve", "To pick", "To receive" (`desk.ts`). */
+  /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */
   desk: [...STORES_DESK_PROVIDERS],
+  /**
+   * S3 (#1113, decision 8) — the concierge: six reads and one act (`stores.reorder`, propose → confirm), routed by
+   * the phrasebook alone (no menu entries: the frozen eval set's recordings are untouched).
+   */
+  copilotTools: [...storesCopilotReadTools, reorderTool],
+  copilotIntents: storesCopilotIntents,
 };

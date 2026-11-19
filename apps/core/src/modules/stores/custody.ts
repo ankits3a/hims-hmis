@@ -131,10 +131,10 @@ async function ticketByCode(db: Db | Tx, code: string, fits: (t: InTransit) => b
 }
 
 /** The source keepers who confirm a late or future-dated scan (the custodian roles of the supplying store). */
-async function sourceKeepers(tx: Tx, storeId: string): Promise<string[]> {
+export async function sourceKeepers(tx: Db | Tx, storeId: string): Promise<string[]> {
   const store = await storesStoreRow(tx, storeId);
   const out = new Set<string>();
-  for (const role of store.custodianRoles) for (const u of await usersHoldingRole(tx, role)) out.add(u);
+  for (const role of store.custodianRoles) for (const u of await usersHoldingRole(tx as Tx, role)) out.add(u);
   return [...out].sort();
 }
 

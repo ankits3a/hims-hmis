@@ -1729,6 +1729,17 @@ can change. `stores.gatepass.raise` is held by `storekeeper` and `materials_head
 new role `security_guard`, which holds nothing else here and is assigned by no seed. The person who raised a pass
 is refused as its scanner.
 
+**Stores control tower (decision 0099, S3 #1113, 2026-11-19).** One board shows every open ticket in one of six
+lanes (requested, approved, picking, in transit, delivered today, stuck), the clock that broke for a stuck one,
+red cards, each department's shelf word under its floor, and the day's numbers; nothing on it is stored, it is read
+from the tickets and the ledger each time. `stores.tower.read` is held by `materials_head`, `storekeeper`,
+`medical_superintendent`, `duty_manager` and `owner`, and also gives the "Stuck" card on the home screen and the
+owner's one line on the phone ("3 stuck · 4B, OT"). `stores.spend.read` adds the month's spend per department at
+cost and is held by `owner`, `materials_head` and `medical_superintendent` only; a doctor never holds it. A minute
+sweep nudges inside the hospital, once per ticket per step: the approvers at 45 minutes, the store when a pick is
+late, the porter and the store when a leg passes 30 minutes. The copilot answers "where is my ticket" and six other
+Stores questions by keyword, and its one act, a shelf's reorder, raises a ticket only after the person taps Send.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

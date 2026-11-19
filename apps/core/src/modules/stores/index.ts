@@ -28,7 +28,7 @@ export {
 } from "./tickets";
 export { ticketTimeline } from "./timeline";
 export { storesAuditPack } from "./audit-pack";
-export { STORES_DESK_PROVIDERS, storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk } from "./desk";
+export { STORES_DESK_PROVIDERS, storesApproveDesk, storesPickDesk, storesReceiveDesk, storesStuckDesk, storesTakeBackDesk } from "./desk";
 export {
   LATE_SCAN_MS, STORES_CARRY, acceptReturn, confirmLateScan, deliverTicket, handOver, lateScansToConfirm, myCustody, postTransitLoss, raiseReturn,
   receiveReturn, resolveShort, returnUndelivered, returnsToReceive, scanClock, takeCustody, takeOverCustody, custodyLookup, ticketsComingBack,
@@ -41,3 +41,9 @@ export {
   overdueGatePasses, raiseGatePass, scanGatePass,
 } from "./gate-pass";
 export { renderGatePass } from "./gate-pass-print";
+// S3 (#1113): the control tower, the owner's one line, the Stuck Now card, the chaser, the concierge.
+export { CLOCKS, RED_CARD_LIMIT, STORES_SPEND_READ, STORES_TOWER_READ, boardCards, departmentSpendByMonth, towerSummary, towerView } from "./tower";
+export { APPROVAL_NUDGE_MIN, CHASER_WORDS, runStoresChaser } from "./chaser";
+export { storesCopilotIntents } from "./copilot-intents";
+export { indentNoOf, storesCopilotReadTools } from "./copilot-tools";
+export { reorderTool } from "./copilot-acts";

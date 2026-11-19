@@ -282,7 +282,7 @@ describe("Stores S3: the control tower, Now cards, concierge and chaser (spec #1
   it("spec #1113 D3: in the floor map a department with a shelf item at 0 shows 'Out' under its floor; one with every item above reorder shows 'OK'", async () => {
     await setShelfPar(db, head.actor, { shelfId: shelfA, itemId: mop, minBase: 5, reorderBase: 10, maxBase: 40 });
     await setShelfPar(db, head.actor, { shelfId: shelfB, itemId: gloves, minBase: 2, reorderBase: 5, maxBase: 60 });
-    await openShelf(db, head.actor, shelfB, [{ itemId: gloves, qty: 50 }], at(0));
+    await openShelf(db, inB.actor, shelfB, [{ itemId: gloves, qty: 50 }], at(0));
     const v = await towerView(db, head.actor, at(1));
     const f1 = v.floors.find((f) => f.code === "F1")!;
     const f2 = v.floors.find((f) => f.code === "F2")!;
@@ -380,7 +380,7 @@ describe("Stores S3: the control tower, Now cards, concierge and chaser (spec #1
     for (const p of PHRASES) {
       const { masked, slots } = maskQuestion(p.q);
       const routed = await routeQuestion(masked, slots, null, null);
-      if (routed?.intent !== p.want || routed.route !== "phrasebook") missed.push(`${p.q} -> ${String(routed?.intent)} (${String(routed?.route)})`);
+      if (routed?.intent !== p.want || routed.via !== "phrasebook") missed.push(`${p.q} -> ${String(routed?.intent)} (${String(routed?.via)})`);
     }
     expect(missed).toEqual([]);
   });

@@ -31,6 +31,8 @@ export const STORES_ACTS = [
   "reask_ticket", "raise_return", "receive_return", "confirm_late_scan", "add_to_ticket",
   // S2c (#1119): a gate pass's raise, the guard's exit and entry scans, and the close of a pass that never left (refId = the pass).
   "raise_gate_pass", "gate_pass_out", "gate_pass_in", "close_gate_pass",
+  // S3 (#1113): a reorder the copilot proposed and the person confirmed (refId = the ticket; after names the confirm).
+  "copilot_reorder",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 
