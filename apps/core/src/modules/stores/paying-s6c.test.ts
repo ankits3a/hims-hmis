@@ -256,7 +256,9 @@ describe("Stores S6c: the auditor's other rules, its night and halt; the reversi
     expect(told.every((t) => t.ref_id === soonBill)).toBe(true);
     expect(told.map((t) => t.user_id)).toEqual(expect.arrayContaining([acct.id, head.id]));
     expect(told[0]!.body).not.toContain("MICROCO");
-    expect(await storesMsmeDueDesk.waiting!({ db, actor: acct.actor, now: at(1) } as never)).toEqual([expect.objectContaining({ kind: "stores.msmeDueSoon", count: 1 })]);
+    expect(storesMsmeDueDesk.waiting).toBeUndefined();
+    const [soonNo] = ((await db.execute(sql`select bill_no from supplier_bills where id = ${soonBill}`)).rows as { bill_no: string }[]).map((r) => r.bill_no);
+    expect((await storesMsmeDueDesk.load({ db, actor: acct.actor, now: at(1) } as never))[0]!.rows!.map((r) => r.title)).toEqual([soonNo]);
 
     const report = await msmeDuesReport(db, acct.actor, msmeHalfOf(at(0)), at(0));
     expect(report.half).toBe("2026-H2");

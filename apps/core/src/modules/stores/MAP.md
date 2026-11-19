@@ -533,7 +533,7 @@ department shelves every department (housekeeping included) receives from. Pharm
   AT the department that confirmed the PO's last sheet (DECIDED: a service PO names no department, so a first month is not
   announced); "MSME bill due soon" (MSME, accepted, unpaid, due within 5 days) to `materials.payments.prepare` holders and
   accounts officers, plus a kept hold's keeper and the owner (edge 11). Waiting kinds `stores.servicesToConfirm`,
-  `stores.msmeDueSoon`, `stores.flagsToReview` (web + mobile words).
+  `stores.flagsToReview` (web + mobile words); MSME due soon is a Now card only (a payment is never a waiting kind: me-waiting done-means 5).
 - Reversing SES (`reverseServiceEntry`): header-only row naming the first (`reverses_id`), reason in `note`; refused on a billed
   sheet (`ses_already_billed`: the supplier's credit note corrects it), on a reversal (`not_reversible`), twice (`already_reversed`).
 - MSME dues report (`msmeDuesReport`, FY halves `YYYY-H1` Apr–Sep / `YYYY-H2` Oct–Mar): micro/small bills accepted > 45 days

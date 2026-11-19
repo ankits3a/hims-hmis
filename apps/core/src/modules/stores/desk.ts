@@ -2,7 +2,6 @@ import { waitingItem } from "../../kernel/desk/waiting";
 import { STORES_AUDIT_READ, STORES_AWARD_SIGN, STORES_INDENTS_APPROVE, STORES_SES_CONFIRM, STORES_SHELF_WORK } from "./access";
 import { flagsToReview } from "./auditor-agent";
 import { msmeBillsDueSoon, servicesDueFor } from "./paying-notices";
-import { hasPermission } from "../../kernel/auth/permissions";
 import { listAwards } from "./awards";
 import { purchaseRequestsToApprove } from "./purchase-requests";
 import { lateScansToConfirm, returnsToReceive, ticketsComingBack } from "./custody";
@@ -231,7 +230,10 @@ export const storesServicesDesk: DeskProvider = {
   waitingSelfGated: true,
 };
 
-/** S6c (#1116) — "MSME bill due soon / MSME बिल जल्द देय": the payment preparers' card and line (bill numbers only, no supplier, no amount). */
+/**
+ * S6c (#1116) — "MSME bill due soon / MSME बिल जल्द देय": the payment preparers' Now card (bill numbers only, no supplier, no
+ * amount). A payment is never a waiting line (`GET /me/waiting` done-means 5: no kind is money), so it has none.
+ */
 export const storesMsmeDueDesk: DeskProvider = {
   key: "stores.msmeDue", permission: "materials.payments.prepare",
   load: async (ctx) => {
@@ -243,13 +245,6 @@ export const storesMsmeDueDesk: DeskProvider = {
       rows: rows.slice(0, MAX_ROWS).map((b) => ({ id: b.id, badge: "!", title: b.billNo, subtitle: b.dueDate, action: "Open", href: "/stores/pay?tab=due", severity: "hot" as const })),
     }];
   },
-  waiting: async (ctx) => {
-    if (ctx.actor.type !== "user" || !(await hasPermission(ctx.db, ctx.actor.id, "materials.payments.prepare", "hospital"))) return [];
-    const rows = await msmeBillsDueSoon(ctx.db, ctx.now);
-    const item = waitingItem("stores.msmeDueSoon", rows.length, null);
-    return item === null ? [] : [item];
-  },
-  waitingSelfGated: true,
 };
 
 /**

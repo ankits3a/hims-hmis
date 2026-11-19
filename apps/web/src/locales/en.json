@@ -16949,7 +16949,7 @@
         "today_one": "reminder still today",
         "today_other": "reminders still today"
       },
-      "stores": {"indentsToApprove_one": "indent to approve", "indentsToApprove_other": "indents to approve", "toPick_one": "ticket to pick", "toPick_other": "tickets to pick", "toReceive_one": "delivery to receive", "toReceive_other": "deliveries to receive", "condemnToSign_one": "condemnation to sign", "condemnToSign_other": "condemnations to sign", "purchaseToApprove_one": "purchase to approve", "purchaseToApprove_other": "purchases to approve", "awardToSign_one": "award to sign", "awardToSign_other": "awards to sign", "servicesToConfirm_one": "service to confirm", "servicesToConfirm_other": "services to confirm", "msmeDueSoon_one": "MSME bill due soon", "msmeDueSoon_other": "MSME bills due soon", "flagsToReview_one": "flag to review", "flagsToReview_other": "flags to review"},
+      "stores": {"indentsToApprove_one": "indent to approve", "indentsToApprove_other": "indents to approve", "toPick_one": "ticket to pick", "toPick_other": "tickets to pick", "toReceive_one": "delivery to receive", "toReceive_other": "deliveries to receive", "condemnToSign_one": "condemnation to sign", "condemnToSign_other": "condemnations to sign", "purchaseToApprove_one": "purchase to approve", "purchaseToApprove_other": "purchases to approve", "awardToSign_one": "award to sign", "awardToSign_other": "awards to sign", "servicesToConfirm_one": "service to confirm", "servicesToConfirm_other": "services to confirm", "flagsToReview_one": "flag to review", "flagsToReview_other": "flags to review"},
       "roster": {
         "leaveToDecide_one": "leave to decide",
         "leaveToDecide_other": "leaves to decide",
