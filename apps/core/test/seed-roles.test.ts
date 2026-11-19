@@ -961,7 +961,7 @@ const STORES_TOWER_PAIRS: readonly string[] = [
   "storekeeper/stores.tower.read",
 ];
 
-/** The README prose line authorising the asset passport grants (#1114 S4a, decisions 0099 Q3, 0100). Quoted, not paraphrased. */
+/** The README prose line authorising the asset passport grants (#1114 S4a, decisions 0099 Q3, 0101). Quoted, not paraphrased. */
 const STORES_ASSETS_README_PROSE =
   "`stores.assets.manage` is held by `biomedical_engineer` and `materials_head`; `stores.assets.read` by\n`materials_head`, `biomedical_engineer`, `medical_superintendent`, `stores_auditor` and `owner`;\n`stores.assets.export` by the new role `accounts_officer`, which holds nothing else here and is assigned by no seed.";
 
