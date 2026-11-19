@@ -15,7 +15,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  * "n of m received" and carries no supplier and no line. Unsealed, per supplier (its newest version) per line: rate,
  * discount, taxable (quantity × the net rate, the PO's own rounding), GST half up per line, freight and other charges
  * spread over its lines by value, landed = taxable + GST + freight + other. The landed total INCLUDES GST because Stores
- * input GST is not credited by default (ruling 0100 Q2); the total before GST is shown beside it.
+ * input GST is not credited by default (ruling 0101 Q2); the total before GST is shown beside it.
  *
  * Ranks: L1/L2/L3 per line among the suppliers that quoted it, and on the whole among those that quoted every line. Out
  * of the ranks: a late quote not admitted by the materials head, and for equipment any supplier whose technical

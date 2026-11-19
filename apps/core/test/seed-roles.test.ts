@@ -994,7 +994,7 @@ const STORES_BUYING_README_PROSE =
   "`stores.purchase.request` is held by `department_store_incharge` and `department_head` (at their department);\n`stores.buying.manage` by `materials_head` and `purchase_officer`; `stores.budget.manage` by `accounts_officer` and\n`owner`; `stores.grn.qc` by `materials_head`, `biomedical_engineer` and `department_head` (at its department).";
 
 /** STORES S5a (#1115) — asking to buy, the buying desk, budgets and the non-drug QC. */
-/** The README prose line authorising the committee seats' signature (#1115 S5b, decision 0100 Q3). Quoted, not paraphrased. */
+/** The README prose line authorising the committee seats' signature (#1115 S5b, decision 0101 Q3). Quoted, not paraphrased. */
 const STORES_AWARD_README_PROSE =
   "`stores.award.sign` is held by `materials_head`, `accounts_officer`, `medical_superintendent`, `biomedical_engineer` and\n`department_head` (at its department, the user HOD's seat).";
 

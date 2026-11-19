@@ -29,7 +29,7 @@ import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
- * STORES S5b (#1115, decisions 4, 9, 10, 11; ruling 0100 Q3) — THE AWARD, THE COMMITTEE, AND THE PO MADE FROM AN AWARD.
+ * STORES S5b (#1115, decisions 4, 9, 10, 11; ruling 0101 Q3) — THE AWARD, THE COMMITTEE, AND THE PO MADE FROM AN AWARD.
  *
  * Band A: `makePoFromGroup` — every line on a live rate contract orders against it with no quote; every other line
  * needs the group's one quote (`quote_needed`), judged against the last price by materials' own `judgePrice` (more than
@@ -93,7 +93,7 @@ export async function awardStatus(db: Db | Tx, awardId: string): Promise<StoresA
 
 // ═══════════════════════════════ the committee's seats ═══════════════════════════════
 
-/** Ruling 0100 Q3: the owner or the materials head sets who sits in a seat, from when (to when). Every change a row and an act. */
+/** Ruling 0101 Q3: the owner or the materials head sets who sits in a seat, from when (to when). Every change a row and an act. */
 export async function setCommitteeSeat(
   db: Db, actor: Actor, input: { seat: string; userId: string; from: Date; to?: Date | null }, now: Date = new Date(),
 ): Promise<void> {

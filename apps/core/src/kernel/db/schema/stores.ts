@@ -1090,7 +1090,7 @@ export const storesAwardSignatures = pgTable(
 );
 
 /**
- * STORES S5b (#1115, decision 9; ruling 0100 Q3) — WHO SITS IN A COMMITTEE SEAT, from when (to when): set by the owner
+ * STORES S5b (#1115, decision 9; ruling 0101 Q3) — WHO SITS IN A COMMITTEE SEAT, from when (to when): set by the owner
  * or the materials head, each change a new row. The user HOD's seat is not a row: it is the department's HOD.
  * APPEND-ONLY (0245).
  */

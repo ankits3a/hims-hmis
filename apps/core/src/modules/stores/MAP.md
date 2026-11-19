@@ -368,7 +368,7 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Web `/stores/buy` (`apps/web/src/screens/stores-buy.tsx`): tabs by grant (Ask, To approve, My requests, Hand over, Budgets, Suppliers, QC);
   notices `stores_purchase_request` open it with `?pr=`.
 
-## 10e. The buying desk by hand (S5b #1115; ruling 0100 Q3, Q4, Q7)
+## 10e. The buying desk by hand (S5b #1115; ruling 0101 Q3, Q4, Q7)
 - Groups (`buy-groups.ts`, migration 0245): `stores_buy_groups` + `stores_buy_group_moves` (newest move per request line =
   its group; null = out). The band is DERIVED: highest of its requests' `bandOf` (split check, lifts) and of its own sum;
   FROZEN on the RFQ. A group with an RFQ or an award is locked (`group_locked`). "Buy now" = approved urgent/emergency
@@ -408,4 +408,4 @@ staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulat
 SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5a/S5b leave: the nightly central shortfall →
 PR job, the agent and the scorecard (S5c), the owner's monthly over-budget list, a Now card / waiting kind for "Purchase to
 approve" and "Award to sign" (notices open the screens), Stores PO value in a department's spent figure, splitting one
-request line across groups, a single-source certificate path and the emergency one-quote path (ruling 0100 Q4), advances.
+request line across groups, a single-source certificate path and the emergency one-quote path (ruling 0101 Q4), advances.

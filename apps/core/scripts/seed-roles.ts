@@ -977,7 +977,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.tower.read", "stores.spend.read",
       // STORES S4a (#1114, decision 16) — the asset register and every unit's passport.
       "stores.assets.read",
-      // STORES S5b (#1115, decision 9; ruling 0100 Q3) — the medical superintendent's seat of the purchase committee.
+      // STORES S5b (#1115, decision 9; ruling 0101 Q3) — the medical superintendent's seat of the purchase committee.
       "stores.award.sign",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
@@ -1252,7 +1252,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.assets.condemn",
       // STORES S5a (#1115, decision 14) — signs a non-drug GRN's QC (technical items), no pharmacist needed.
       "stores.grn.qc",
-      // STORES S5b (#1115, decision 9; ruling 0100 Q3) — the biomedical seat of the purchase committee (medical equipment).
+      // STORES S5b (#1115, decision 9; ruling 0101 Q3) — the biomedical seat of the purchase committee (medical equipment).
       "stores.award.sign",
     ],
   },

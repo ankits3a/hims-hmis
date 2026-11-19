@@ -1770,7 +1770,7 @@ with its papers, a bank account past cooling-off and the category approved.
 `stores.buying.manage` by `materials_head` and `purchase_officer`; `stores.budget.manage` by `accounts_officer` and
 `owner`; `stores.grn.qc` by `materials_head`, `biomedical_engineer` and `department_head` (at its department).
 
-**Stores buying desk, by hand (decision 0100, S5b #1115, 2026-11-19).** The buyer groups approved requests, takes one
+**Stores buying desk, by hand (decision 0101, S5b #1115, 2026-11-19).** The buyer groups approved requests, takes one
 quote up to ₹25,000 (checked against the last price) or sends an RFQ to at least three suppliers, a tap that records
 who sent it and hands over one PDF per supplier: HMIS mails nothing. Quotes stay sealed until the reply-by date or until
 all are in; the comparative ranks landed cost with GST; an award that is not the lowest needs a reason, and only a
