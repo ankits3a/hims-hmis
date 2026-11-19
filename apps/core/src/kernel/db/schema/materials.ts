@@ -1009,10 +1009,18 @@ export const purchaseOrders = pgTable(
     cancelledBy: text("cancelled_by"),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
+    /**
+     * STORES S5b (#1115, decision 10) — the Stores award this order was made from; null for every pharmacy order (and
+     * for any order made by hand). Plain text (the `approval_id` precedent): materials knows no Stores table. When set,
+     * `submitPurchaseOrder` asks the registered award check (`registerAwardPoGuard`) and refuses a PO that differs from
+     * its award; a null leaves every existing path exactly as it was.
+     */
+    awardId: text("award_id"),
     ...auditColumns,
   },
   (t) => [
     uniqueIndex("purchase_orders_po_no_ux").on(t.poNo),
+    index("purchase_orders_award_idx").on(t.awardId),
     index("purchase_orders_vendor_idx").on(t.vendorId, t.status),
     index("purchase_orders_status_idx").on(t.status, t.expectedDate),
     check("purchase_orders_status_ck", sql`${t.status} in ('draft', 'pending_approval', 'approved', 'sent', 'part_received', 'received', 'cancelled')`),

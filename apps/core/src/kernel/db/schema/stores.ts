@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { grnLines, itemCategories, items, stockBatches, storeIndents, transferLines, transfers, vendors } from "./materials";
+import { grnLines, grns, itemCategories, items, stockBatches, storeIndents, transferLines, transfers, vendors } from "./materials";
 import { orgDepartments } from "./org";
 import { resources } from "./resources";
 
@@ -789,10 +789,13 @@ export const storesDelegations = pgTable(
     toAt: timestamp("to_at", { withTimezone: true }).notNull(),
     reason: text("reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    /** S5b (#1115, decision 11): the committee seat handed over (scope `committee_seat`); null for an HOD's approval. */
+    seat: text("seat"),
   },
   (t) => [
     index("stores_delegations_to_idx").on(t.toUserId, t.toAt),
-    check("stores_delegations_scope_ck", sql`${t.scope} in ('hod_approval')`),
+    check("stores_delegations_scope_ck", sql`${t.scope} in ('hod_approval', 'committee_seat')`),
+    check("stores_delegations_seat_ck", sql`(${t.scope} = 'committee_seat') = (${t.seat} is not null)`),
     check("stores_delegations_window_ck", sql`${t.toAt} > ${t.fromAt} and ${t.toAt} <= ${t.fromAt} + interval '30 days'`),
     check("stores_delegations_self_ck", sql`${t.fromUserId} <> ${t.toUserId}`),
     check("stores_delegations_dept_ck", sql`${t.scope} <> 'hod_approval' or ${t.departmentId} is not null`),
@@ -813,4 +816,317 @@ export const storesVendorCategoryApprovals = pgTable(
     at: timestamp("at", { withTimezone: true }).notNull(),
   },
   (t) => [uniqueIndex("stores_vendor_category_approvals_ux").on(t.vendorId, t.categoryId)],
+);
+
+/* ═══════════════════════════════ STORES S5b (#1115): the buying desk by hand ═══════════════════════════════ */
+
+/**
+ * STORES S5b (#1115, decision 5 by hand) — THE BUYER'S OWN GROUP of approved request lines (by category and likely
+ * supplier). Written once; which group a line sits in is the newest `stores_buy_group_moves` row for it (null = out).
+ * The band is derived on read (the highest of its lines, and of its sum); it is frozen on the RFQ. APPEND-ONLY (0245).
+ */
+export const storesBuyGroups = pgTable(
+  "stores_buy_groups",
+  {
+    id: text("id").primaryKey(),
+    label: text("label"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+);
+
+/** STORES S5b (#1115) — a request line put into (or taken out of, `group_id` null) a group. APPEND-ONLY (0245). */
+export const storesBuyGroupMoves = pgTable(
+  "stores_buy_group_moves",
+  {
+    id: text("id").primaryKey(),
+    prId: text("pr_id").notNull().references(() => storesPurchaseRequests.id),
+    lineIdx: integer("line_idx").notNull(),
+    groupId: text("group_id").references(() => storesBuyGroups.id),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("stores_buy_group_moves_line_idx").on(t.prId, t.lineIdx, t.at), index("stores_buy_group_moves_group_idx").on(t.groupId)],
+);
+
+/**
+ * STORES S5b (#1115, decision 6) — A REQUEST FOR QUOTATION (`RFQ` + yymmdd + 4 digits) for one group: the band frozen at
+ * its making, the reply-by instant, the delivery place and date. Its life (sent, reply-by moved, closed) is
+ * `stores_rfq_steps`; status is derived. APPEND-ONLY (0245).
+ */
+export const storesRfqs = pgTable(
+  "stores_rfqs",
+  {
+    id: text("id").primaryKey(),
+    rfqNo: text("rfq_no").notNull(),
+    groupId: text("group_id").notNull().references(() => storesBuyGroups.id),
+    band: text("band").notNull(),
+    equipment: boolean("equipment").notNull().default(false),
+    replyBy: timestamp("reply_by", { withTimezone: true }).notNull(),
+    deliveryStoreId: text("delivery_store_id").notNull().references(() => resources.id),
+    deliveryDate: date("delivery_date", { mode: "string" }),
+    note: text("note"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_rfqs_no_ux").on(t.rfqNo),
+    index("stores_rfqs_group_idx").on(t.groupId),
+    check("stores_rfqs_band_ck", sql`${t.band} in ('A', 'B', 'C')`),
+  ],
+);
+
+/** STORES S5b (#1115) — one item of an RFQ (the group's lines summed by item). APPEND-ONLY (0245). */
+export const storesRfqLines = pgTable(
+  "stores_rfq_lines",
+  {
+    id: text("id").primaryKey(),
+    rfqId: text("rfq_id").notNull().references(() => storesRfqs.id),
+    lineIdx: integer("line_idx").notNull(),
+    itemId: text("item_id").notNull().references(() => items.id),
+    qtyBase: integer("qty_base").notNull(),
+  },
+  (t) => [uniqueIndex("stores_rfq_lines_ux").on(t.rfqId, t.itemId), check("stores_rfq_lines_qty_ck", sql`${t.qtyBase} > 0`)],
+);
+
+/** STORES S5b (#1115, decisions 6, 12) — a supplier invited to an RFQ ("can quote" at the invitation). APPEND-ONLY (0245). */
+export const storesRfqInvitees = pgTable(
+  "stores_rfq_invitees",
+  {
+    id: text("id").primaryKey(),
+    rfqId: text("rfq_id").notNull().references(() => storesRfqs.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    addedBy: text("added_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("stores_rfq_invitees_ux").on(t.rfqId, t.vendorId)],
+);
+
+/**
+ * STORES S5b (#1115, decision 6) — AN RFQ'S LIFE: `sent` (who, when, how, to whom: a person's tap, never the agent),
+ * `reply_by_moved` (once, before it passed, with a reason), `closed` (the others were told). APPEND-ONLY (0245).
+ */
+export const storesRfqSteps = pgTable(
+  "stores_rfq_steps",
+  {
+    id: text("id").primaryKey(),
+    rfqId: text("rfq_id").notNull().references(() => storesRfqs.id),
+    kind: text("kind").notNull(),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    channel: text("channel"),
+    vendorIds: jsonb("vendor_ids").$type<string[]>(),
+    replyBy: timestamp("reply_by", { withTimezone: true }),
+    reason: text("reason"),
+  },
+  (t) => [
+    index("stores_rfq_steps_rfq_idx").on(t.rfqId, t.at),
+    uniqueIndex("stores_rfq_steps_once_ux").on(t.rfqId, t.kind).where(sql`${t.kind} in ('reply_by_moved', 'closed')`),
+    check("stores_rfq_steps_kind_ck", sql`${t.kind} in ('sent', 'reply_by_moved', 'closed')`),
+    check("stores_rfq_steps_channel_ck", sql`${t.kind} <> 'sent' or ${t.channel} in ('email', 'print', 'hand')`),
+    check("stores_rfq_steps_move_ck", sql`${t.kind} <> 'reply_by_moved' or (${t.replyBy} is not null and ${t.reason} is not null)`),
+  ],
+);
+
+/**
+ * STORES S5b (#1115, decision 7) — A QUOTE, APPEND-ONLY: a revision is a new version (`revised` before unsealing,
+ * `negotiated` after it, L1 only and downward). An RFQ's quote names the RFQ; band A's one quote names only the group.
+ * `late` = entered after the reply-by instant (a materials-head admission row lets it rank). APPEND-ONLY (0245).
+ */
+export const storesQuotes = pgTable(
+  "stores_quotes",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id").notNull().references(() => storesBuyGroups.id),
+    rfqId: text("rfq_id").references(() => storesRfqs.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    version: integer("version").notNull(),
+    kind: text("kind").notNull(),
+    supplierRef: text("supplier_ref"),
+    freightPaise: bigint("freight_paise", { mode: "number" }).notNull().default(0),
+    otherPaise: bigint("other_paise", { mode: "number" }).notNull().default(0),
+    paymentTermsDays: integer("payment_terms_days"),
+    deliveryDays: integer("delivery_days"),
+    warrantyMonths: integer("warranty_months"),
+    documentKey: text("document_key"),
+    late: boolean("late").notNull().default(false),
+    enteredBy: text("entered_by").notNull(),
+    enteredAt: timestamp("entered_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_quotes_version_ux").on(t.groupId, t.vendorId, t.version),
+    index("stores_quotes_rfq_idx").on(t.rfqId),
+    check("stores_quotes_kind_ck", sql`${t.kind} in ('quote', 'revised', 'negotiated')`),
+    check("stores_quotes_money_ck", sql`${t.freightPaise} >= 0 and ${t.otherPaise} >= 0 and ${t.version} >= 1`),
+  ],
+);
+
+/** STORES S5b (#1115, decision 7) — one line of a quote: rate per base unit before GST, discount, GST rate; confirmed by a person. APPEND-ONLY (0245). */
+export const storesQuoteLines = pgTable(
+  "stores_quote_lines",
+  {
+    id: text("id").primaryKey(),
+    quoteId: text("quote_id").notNull().references(() => storesQuotes.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    qtyBase: integer("qty_base").notNull(),
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    discountBps: integer("discount_bps").notNull().default(0),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+    confirmedBy: text("confirmed_by").notNull(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_quote_lines_ux").on(t.quoteId, t.itemId),
+    check("stores_quote_lines_ck", sql`${t.qtyBase} > 0 and ${t.ratePaise} >= 0 and ${t.discountBps} between 0 and 10000 and ${t.gstRateBps} between 0 and 2800`),
+  ],
+);
+
+/** STORES S5b (#1115, decision 7) — the materials head admits a late quote to the ranks, with a reason. APPEND-ONLY (0245). */
+export const storesQuoteAdmissions = pgTable(
+  "stores_quote_admissions",
+  {
+    id: text("id").primaryKey(),
+    quoteId: text("quote_id").notNull().references(() => storesQuotes.id),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    reason: text("reason").notNull(),
+  },
+  (t) => [uniqueIndex("stores_quote_admissions_ux").on(t.quoteId)],
+);
+
+/**
+ * STORES S5b (#1115, flow 7) — TECHNICAL COMPLIANCE of a supplier's offer for equipment, marked by the user HOD and by
+ * biomedical: Yes, or No with a reason. Once per (RFQ, supplier, role). APPEND-ONLY (0245).
+ */
+export const storesQuoteTechnical = pgTable(
+  "stores_quote_technical",
+  {
+    id: text("id").primaryKey(),
+    rfqId: text("rfq_id").notNull().references(() => storesRfqs.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    role: text("role").notNull(),
+    compliant: boolean("compliant").notNull(),
+    reason: text("reason"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_quote_technical_ux").on(t.rfqId, t.vendorId, t.role),
+    check("stores_quote_technical_role_ck", sql`${t.role} in ('hod', 'biomedical')`),
+    check("stores_quote_technical_reason_ck", sql`${t.compliant} or ${t.reason} is not null`),
+  ],
+);
+
+/**
+ * STORES S5b (#1115, decision 9) — AN AWARD PROPOSAL, written once: whole or split by line, the reason when not L1,
+ * the band (re-checked on its total) and the committee's seats frozen on the row. Status is derived from
+ * `stores_award_signatures`. A proposal sent back stays; a fresh one is a new row naming it. APPEND-ONLY (0245).
+ */
+export const storesAwards = pgTable(
+  "stores_awards",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id").notNull().references(() => storesBuyGroups.id),
+    rfqId: text("rfq_id").references(() => storesRfqs.id),
+    band: text("band").notNull(),
+    equipment: boolean("equipment").notNull().default(false),
+    reason: text("reason"),
+    totalPaise: bigint("total_paise", { mode: "number" }).notNull(),
+    seats: jsonb("seats").$type<{ seat: string; userIds: string[] }[]>().notNull(),
+    replacesId: text("replaces_id"),
+    proposedBy: text("proposed_by").notNull(),
+    proposedAt: timestamp("proposed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("stores_awards_group_idx").on(t.groupId), index("stores_awards_rfq_idx").on(t.rfqId), check("stores_awards_band_ck", sql`${t.band} in ('A', 'B', 'C')`)],
+);
+
+/** STORES S5b (#1115, decisions 4, 9) — what is awarded to whom at what rate: a quote's line or a rate contract's. APPEND-ONLY (0245). */
+export const storesAwardLines = pgTable(
+  "stores_award_lines",
+  {
+    id: text("id").primaryKey(),
+    awardId: text("award_id").notNull().references(() => storesAwards.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    quoteId: text("quote_id").references(() => storesQuotes.id),
+    rateId: text("rate_id"),
+    qtyBase: integer("qty_base").notNull(),
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    discountBps: integer("discount_bps").notNull().default(0),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+    rank: integer("rank"),
+  },
+  (t) => [
+    uniqueIndex("stores_award_lines_ux").on(t.awardId, t.itemId),
+    check("stores_award_lines_source_ck", sql`(${t.quoteId} is null) <> (${t.rateId} is null)`),
+    check("stores_award_lines_qty_ck", sql`${t.qtyBase} > 0 and ${t.ratePaise} >= 0`),
+  ],
+);
+
+/**
+ * STORES S5b (#1115, decisions 9, 11) — A SIGNATURE ON AN AWARD: `approve` (band A the buyer, band B the materials head),
+ * `sign` (a committee seat, the owner last) or `object` (with a reason: the award goes back to the buyer). One act per
+ * seat; a delegate's names the seat holder it acts for. WRITE-ONCE IN THE DATABASE (0245).
+ */
+export const storesAwardSignatures = pgTable(
+  "stores_award_signatures",
+  {
+    id: text("id").primaryKey(),
+    awardId: text("award_id").notNull().references(() => storesAwards.id),
+    seat: text("seat").notNull(),
+    kind: text("kind").notNull(),
+    by: text("by").notNull(),
+    onBehalfOf: text("on_behalf_of"),
+    delegationId: text("delegation_id"),
+    reason: text("reason"),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_award_signatures_seat_ux").on(t.awardId, t.seat),
+    check("stores_award_signatures_kind_ck", sql`${t.kind} in ('approve', 'sign', 'object')`),
+    check("stores_award_signatures_seat_ck", sql`${t.seat} in ('buyer', 'materials_head', 'accounts_head', 'medical_superintendent', 'user_hod', 'biomedical', 'owner')`),
+    check("stores_award_signatures_reason_ck", sql`${t.kind} <> 'object' or ${t.reason} is not null`),
+  ],
+);
+
+/**
+ * STORES S5b (#1115, decision 9; ruling 0100 Q3) — WHO SITS IN A COMMITTEE SEAT, from when (to when): set by the owner
+ * or the materials head, each change a new row. The user HOD's seat is not a row: it is the department's HOD.
+ * APPEND-ONLY (0245).
+ */
+export const storesCommitteeSeats = pgTable(
+  "stores_committee_seats",
+  {
+    id: text("id").primaryKey(),
+    seat: text("seat").notNull(),
+    userId: text("user_id").notNull(),
+    fromAt: timestamp("from_at", { withTimezone: true }).notNull(),
+    toAt: timestamp("to_at", { withTimezone: true }),
+    setBy: text("set_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_committee_seats_seat_idx").on(t.seat, t.at),
+    check("stores_committee_seats_seat_ck", sql`${t.seat} in ('materials_head', 'accounts_head', 'medical_superintendent', 'biomedical')`),
+    check("stores_committee_seats_window_ck", sql`${t.toAt} is null or ${t.toAt} > ${t.fromAt}`),
+  ],
+);
+
+/**
+ * STORES S5b (#1115, decision 10) — A DELIVERY TICKET RAISED FROM A DEPARTMENT REQUEST when its goods passed QC and
+ * were posted: which GRN, which ticket, how many of the line. The sum per line is what was ticketed; a second GRN
+ * tickets only the rest. APPEND-ONLY (0245).
+ */
+export const storesPrDeliveries = pgTable(
+  "stores_pr_deliveries",
+  {
+    id: text("id").primaryKey(),
+    prId: text("pr_id").notNull().references(() => storesPurchaseRequests.id),
+    lineIdx: integer("line_idx").notNull(),
+    grnId: text("grn_id").notNull().references(() => grns.id),
+    indentId: text("indent_id").notNull().references(() => storeIndents.id),
+    qtyBase: integer("qty_base").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("stores_pr_deliveries_pr_idx").on(t.prId, t.lineIdx), check("stores_pr_deliveries_qty_ck", sql`${t.qtyBase} > 0`)],
 );

@@ -146,7 +146,7 @@ const CENSUS: Record<string, string[]> = {
     "id", "item_id", "max_base", "min_base", "reorder_base", "store_resource_id", "updated_at", "updated_by",
   ],
   purchase_orders: [
-    "approval_id", "approval_tier", "approved_at", "approved_by", "cancel_reason", "cancelled_at", "cancelled_by",
+    "approval_id", "approval_tier", "approved_at", "approved_by", "award_id", "cancel_reason", "cancelled_at", "cancelled_by",
     "created_at", "created_by", "expected_date", "gst_paise", "id", "note", "po_no", "rejection_note", "sent_at",
     "sent_by", "source", "status", "store_resource_id", "submitted_at", "submitted_by", "subtotal_paise", "terms",
     "total_paise", "updated_at", "updated_by", "vendor_id",
