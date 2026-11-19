@@ -14,7 +14,7 @@ import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
- * STORES S5c (#1115, edge cases 1 and 9; ruling 0100 Q4) — BUYING OUTSIDE THE QUOTE BANDS, WITH A STAMP FIRST
+ * STORES S5c (#1115, edge cases 1 and 9; ruling 0101 Q4) — BUYING OUTSIDE THE QUOTE BANDS, WITH A STAMP FIRST
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * SINGLE SOURCE (a proprietary spare: only one maker supplies it). The buyer names the group, the one supplier and the

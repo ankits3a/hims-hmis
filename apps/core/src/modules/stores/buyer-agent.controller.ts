@@ -141,7 +141,7 @@ export class StoresBuyerAgentController {
     try { return await supplierScorecard(this.db, actor, parsed(id, vendorId), qq); } catch (e) { toHttp(e); }
   }
 
-  /* ─────────────── single source and emergency (ruling 0100 Q4) ─────────────── */
+  /* ─────────────── single source and emergency (ruling 0101 Q4) ─────────────── */
 
   @Post("buying/exceptions")
   @RequirePermission(STORES_BUYING_MANAGE, "hospital")
@@ -168,7 +168,7 @@ export class StoresBuyerAgentController {
     try { return await refuseBuyException(this.db, actor, parsed(id, exceptionId), b.reason); } catch (e) { toHttp(e); }
   }
 
-  /* ─────────────── equipment advances (ruling 0100 Q7) ─────────────── */
+  /* ─────────────── equipment advances (ruling 0101 Q7) ─────────────── */
 
   @Post("buying/pos/:poId/advance")
   @RequirePermission(STORES_BUYING_MANAGE, "hospital")

@@ -62,7 +62,7 @@ export async function enterQuote(db: Db, actor: Actor, input: EnterQuoteInput, n
     groupId = (await requireGroup(db, input.groupId)).id;
     const lines = await groupLines(db, groupId);
     if ((await bandOfLines(db, lines, now)).band !== "A") {
-      // S5c (ruling 0100 Q4): an approved single-source or emergency purchase takes its named supplier's one quote.
+      // S5c (ruling 0101 Q4): an approved single-source or emergency purchase takes its named supplier's one quote.
       const exc = await approvedExceptionFor(db, groupId, now);
       if (exc === null || exc.vendorId !== input.vendorId) throw new StoresError("rfq_needed", "three quotes are needed: make an RFQ");
     }

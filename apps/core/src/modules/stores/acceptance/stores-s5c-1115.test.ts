@@ -28,7 +28,7 @@ import type { DocumentStore } from "../../../kernel/documents/store";
 import type { InferenceClient } from "../../../kernel/inference/types";
 
 /**
- * ACCEPTANCE — issue #1115, spec docs/specs/1115-stores-buying-desk.md (owner APPROVED 2026-11-19, decision 0100):
+ * ACCEPTANCE — issue #1115, spec docs/specs/1115-stores-buying-desk.md (owner APPROVED 2026-11-19, decision 0101):
  * Stores S5c, the buyer agent and the scorecard. D21 (the nightly grouping preview: no urgent or emergency request, no
  * RFQ, PO or award written, at most three open proposals per department), D22 (agent drafts wait for a person: the RFQ
  * until `sendRfq`, a quote read from a PDF until each line is confirmed — text in the PDF changes nothing — and an agent's

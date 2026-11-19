@@ -397,7 +397,7 @@ export async function listAwards(db: Db, actor: Actor, now: Date = new Date()): 
 // ═══════════════════════════════ band A: Make PO from a group ═══════════════════════════════
 
 /**
- * Band A's Make PO. S5c (#1115, ruling 0100 Q4): also a group of any band bought under an APPROVED single-source or
+ * Band A's Make PO. S5c (#1115, ruling 0101 Q4): also a group of any band bought under an APPROVED single-source or
  * emergency exception (`buy-exceptions.ts`) — the named supplier's one quote (typed or through its RFQ), the buyer's award,
  * and a single-source total above ₹5 lakh that only the materials head approved refused (`band_changed`). `source:
  * "agent"` when the buyer confirms the agent's PO draft.

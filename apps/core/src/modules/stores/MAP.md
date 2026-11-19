@@ -402,7 +402,7 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Web `/stores/buying` (`apps/web/src/screens/stores-buying.tsx`): the desk's one read `GET buying/desk`; notices
   `stores_award` / `stores_po` open the phone sheet (`?award=`, `?po=`).
 
-## 10f. The buyer agent, the scorecard and the rest of the desk (S5c #1115; ruling 0100 Q4, Q7)
+## 10f. The buyer agent, the scorecard and the rest of the desk (S5c #1115; ruling 0101 Q4, Q7)
 - Drafts (`buyer-agent.ts`, migration 0246): `stores_agent_proposals` (kind `grouping` | `rfq_draft` | `quote_read` |
   `po_draft`, payload, `department_ids` for the cap) + `stores_agent_proposal_steps` (`confirmed` | `dismissed` |
   `superseded`, one per draft by a partial unique index; `line_confirmed` | `line_dropped`, one per line). Status derived.

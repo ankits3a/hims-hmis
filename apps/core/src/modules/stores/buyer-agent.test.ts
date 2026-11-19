@@ -31,7 +31,7 @@ import type { DocumentStore } from "../../kernel/documents/store";
 import type { InferenceClient } from "../../kernel/inference/types";
 
 /**
- * #1115 (S5c) — beyond the done-means: what decision 0100 Q4 and Q7, decision 15 and the spec's "Notices" ask of the
+ * #1115 (S5c) — beyond the done-means: what decision 0101 Q4 and Q7, decision 15 and the spec's "Notices" ask of the
  * buying desk that S5a and S5b left open. Every intent is handed its clock; a PO's approval instant comes from the
  * approvals kernel's own clock, so the budget month is read back from the row, never pinned.
  */
@@ -269,7 +269,7 @@ describe("Stores S5c: the gaps S5a/S5b left — the night clock and shortfall, t
     expect(await refusal(readQuotePdf(db, { store: store(), inference: null }, buyer.actor, { rfqId: rfq.id, vendorId: v1, pdf }, at(15)))).toBe("agent_paused");
   });
 
-  it("single source (ruling 0100 Q4): a reason, the user HOD's certificate, the materials head's approval up to ₹5 lakh; then the one supplier's quote and Make PO, no other supplier", async () => {
+  it("single source (ruling 0101 Q4): a reason, the user HOD's certificate, the materials head's approval up to ₹5 lakh; then the one supplier's quote and Make PO, no other supplier", async () => {
     const pr = await deptPr([{ itemId: printer, qtyBase: 2, estimatePaise: 1_500_000 }], 0);
     const g = await groupRequests(db, buyer.actor, { lines: allLines(pr) }, at(5));
     expect(g.band).toBe("B");
@@ -296,7 +296,7 @@ describe("Stores S5c: the gaps S5a/S5b left — the night clock and shortfall, t
     expect((await refuseBuyException(db, hodA.actor, e2.id, "Two makers supply it", at(33))).status).toBe("refused");
   });
 
-  it("emergency one quote (ruling 0100 Q4): only an emergency request; the superintendent approves, the owner confirms within 72 hours (past it: overdue)", async () => {
+  it("emergency one quote (ruling 0101 Q4): only an emergency request; the superintendent approves, the owner confirms within 72 hours (past it: overdue)", async () => {
     const routine = await deptPr([{ itemId: printer, qtyBase: 2, estimatePaise: 1_500_000 }], 0);
     const gr = await groupRequests(db, buyer.actor, { lines: allLines(routine) }, at(2));
     expect(await refusal(requestBuyException(db, buyer.actor, { kind: "emergency", groupId: gr.id, vendorId: v1, reason: "Ventilator down" }, at(3)))).toBe("not_emergency");
@@ -314,7 +314,7 @@ describe("Stores S5c: the gaps S5a/S5b left — the night clock and shortfall, t
     expect((await advanceBuyException(db, owner.actor, e.id, at(15 + 73 * 60))).status).toBe("confirmed");
   });
 
-  it("advances (ruling 0100 Q7): only on an equipment PO, at most 30 %, against a bank guarantee that covers it, approved by the owner; every other PO is pay after GRN", async () => {
+  it("advances (ruling 0101 Q7): only on an equipment PO, at most 30 %, against a bank guarantee that covers it, approved by the owner; every other PO is pay after GRN", async () => {
     const pr = await deptPr([{ itemId: monitor, qtyBase: 1, estimatePaise: 900_000, equipment: ANSWERS }], 0);
     const g = await groupRequests(db, buyer.actor, { lines: allLines(pr) }, at(5));
     const e = await requestBuyException(db, buyer.actor, { kind: "single_source", groupId: g.id, vendorId: v1, reason: "Maker's own module" }, at(6));

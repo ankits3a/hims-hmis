@@ -120,7 +120,7 @@ export async function departmentBudget(db: Db | Tx, departmentId: string, month:
 /**
  * S5c (#1115, decision 15) — "plus Stores POs for that department's non-stock PRs at PO value when ordered". For each
  * Stores PO APPROVED in the IST month (approved, sent or received; an award links it to its group), the department's own
- * request lines on it, priced at the award's rate with GST (Stores input GST is a cost, ruling 0100 Q2), for the
+ * request lines on it, priced at the award's rate with GST (Stores input GST is a cost, ruling 0101 Q2), for the
  * quantity NOT YET DELIVERED to the department (`stores_pr_deliveries`): once delivered, the shelf's receipt is counted
  * by S3's rule instead, so nothing is counted twice. Equipment lines never count (they are "Equipment", apart).
  * DECIDED: a delivery ticket raised but not yet received counts in neither, for those hours.

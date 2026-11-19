@@ -1194,7 +1194,7 @@ export const storesAgentProposalSteps = pgTable(
 );
 
 /**
- * STORES S5c (#1115, edge cases 1 and 9; ruling 0100 Q4) — A PURCHASE OUTSIDE THE QUOTE BANDS. `single_source`: one
+ * STORES S5c (#1115, edge cases 1 and 9; ruling 0101 Q4) — A PURCHASE OUTSIDE THE QUOTE BANDS. `single_source`: one
  * maker supplies it; a typed reason, the user HOD's certificate (`certified`), then the materials head's approval up to
  * ₹5 lakh or the owner's above (`approved`). `emergency`: an emergency request's one quote, approved by the medical
  * superintendent (`approved`), confirmed by the owner within 72 hours (`confirmed`). Either: `refused` ends it. The
@@ -1240,7 +1240,7 @@ export const storesBuyExceptionSteps = pgTable(
 );
 
 /**
- * STORES S5c (#1115, decision 11; ruling 0100 Q7) — AN ADVANCE ON AN EQUIPMENT PO: at most 30 % of the PO, against the
+ * STORES S5c (#1115, decision 11; ruling 0101 Q7) — AN ADVANCE ON AN EQUIPMENT PO: at most 30 % of the PO, against the
  * supplier's bank guarantee (number, bank, valid to, amount), approved by the owner (`stores_po_advance_steps`
  * `approved` | `refused`). Every PO with an award is "Pay after GRN" unless an APPROVED row names it. Paying the advance is
  * S6's (#1116); this row is what S6 reads. `po_id` is plain text (the `award_id` precedent). APPEND-ONLY (0246).

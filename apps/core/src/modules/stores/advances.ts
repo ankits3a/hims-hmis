@@ -13,7 +13,7 @@ import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
- * STORES S5c (#1115, decision 11; ruling 0100 Q7) — "PAY AFTER GRN", AND THE ONE EXCEPTION: AN ADVANCE ON EQUIPMENT
+ * STORES S5c (#1115, decision 11; ruling 0101 Q7) — "PAY AFTER GRN", AND THE ONE EXCEPTION: AN ADVANCE ON EQUIPMENT
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * Every Stores PO (one made from an award) is pay after GRN — DERIVED, never stored (`payTermsOf`). The only exception:
@@ -23,7 +23,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  * this row is what S6 reads. A pharmacy PO (no award) never has an advance here (`not_stores_po`).
  *
  * A yearly contract billed at the start by its own terms (AMC, a licence, insurance) is NOT an advance: S6 pays it when
- * the department confirms the term has started (ruling 0100 Q7), so nothing here applies to it.
+ * the department confirms the term has started (ruling 0101 Q7), so nothing here applies to it.
  */
 export const ADVANCE_MAX_BPS = 3_000;
 export const ADVANCE_WORDS = { toApprove: ["Advance to approve", "अग्रिम मंज़ूरी बाकी"] } as const;
@@ -59,7 +59,7 @@ export async function requestPoAdvance(
   if (po === undefined) throw new StoresError("unknown_po", "no such PO", { poId });
   if (po.awardId === null) throw new StoresError("not_stores_po", "advances are for Stores POs only");
   if (["cancelled", "received"].includes(po.status)) throw new StoresError("advance_not_allowed", "this PO is closed");
-  if (!(await isEquipmentPo(db, po))) throw new StoresError("advance_not_allowed", "no advances, except for equipment (ruling 0100 Q7)");
+  if (!(await isEquipmentPo(db, po))) throw new StoresError("advance_not_allowed", "no advances, except for equipment (ruling 0101 Q7)");
   if (!Number.isInteger(input.pctBps) || input.pctBps <= 0 || input.pctBps > ADVANCE_MAX_BPS) throw new StoresError("advance_over_limit", "at most 30 % of the PO", { maxBps: ADVANCE_MAX_BPS });
   const amount = Math.round((po.totalPaise * input.pctBps) / 10_000);
   if (!Number.isSafeInteger(input.guaranteePaise) || input.guaranteePaise < amount) throw new StoresError("guarantee_short", "the bank guarantee covers less than the advance", { amountPaise: amount });
