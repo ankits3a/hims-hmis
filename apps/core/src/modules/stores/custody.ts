@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
@@ -42,9 +42,11 @@ import type { Db, Tx } from "../../kernel/db/client";
  * source or the quarantine store (materials `returnInTransit`). A short that is "lost" is an adjustment request
  * to the stock-adjustment approver and posts nothing until it is granted.
  *
- * Scans carry the phone's time and a client idempotency key (decision 14): a key seen before records nothing; a
- * scan more than 12 h old is accepted and flagged for the source keeper; one from the future is stored at the
- * server's time and flagged. Every act appends one `stores.act_recorded` in its own transaction.
+ * Scans carry the phone's time and a client idempotency key (decision 14): a key seen before records nothing. The
+ * phone's time is the act's time only when it is at most 12 h old AND not before the transfer's issue or its last
+ * hand-off; otherwise the act is dated at the server's time and flagged for the source keeper (`late`, or `future`
+ * for a phone ahead of the server). The phone's time is always kept as evidence. Every act appends one
+ * `stores.act_recorded` in its own transaction.
  */
 
 /** Decision 7 — the porter's grant. */
@@ -56,13 +58,29 @@ const cleanText = (s: string | null | undefined): string | null => (s == null ||
 
 // ═══════════════════════════════ the scan's clock and key ═══════════════════════════════
 
-/** The scan time as stored: the phone's, unless it is in the future (then the server's). Both are kept. */
-export function scanClock(scannedAt: string | Date | null | undefined, now: Date): { phoneAt: Date | null; occurredAt: Date; flag: ScanFlag | null } {
+/**
+ * The scan time as stored. The phone's time dates the act only inside the window [floor, now] and at most
+ * `LATE_SCAN_MS` behind the server; anything else is dated at the server's time and flagged (`future` ahead of the
+ * server, `late` otherwise). `floor` is the earliest the act can have happened: the transfer's issue or its last
+ * hand-off (a gate scan: the pass's raise or its exit). The phone's time is kept either way.
+ */
+export function scanClock(
+  scannedAt: string | Date | null | undefined, now: Date, floor: Date | null = null,
+): { phoneAt: Date | null; occurredAt: Date; flag: ScanFlag | null } {
   if (scannedAt === null || scannedAt === undefined || scannedAt === "") return { phoneAt: null, occurredAt: now, flag: null };
   const phoneAt = scannedAt instanceof Date ? scannedAt : new Date(scannedAt);
   if (Number.isNaN(phoneAt.getTime())) throw new StoresError("bad_window", "the scan time is not a time");
   if (phoneAt.getTime() > now.getTime()) return { phoneAt, occurredAt: now, flag: "future" };
-  return { phoneAt, occurredAt: phoneAt, flag: now.getTime() - phoneAt.getTime() > LATE_SCAN_MS ? "late" : null };
+  if (now.getTime() - phoneAt.getTime() > LATE_SCAN_MS) return { phoneAt, occurredAt: now, flag: "late" };
+  if (floor !== null && phoneAt.getTime() < floor.getTime()) return { phoneAt, occurredAt: now, flag: "late" };
+  return { phoneAt, occurredAt: phoneAt, flag: null };
+}
+
+/** The earliest a scan on this ticket can be: the transfer's issue, or its newest hand-off. */
+function scanFloor(row: { transfer: { issuedAt: Date }; chain: Chain }): Date {
+  let t = row.transfer.issuedAt.getTime();
+  for (const h of row.chain.handoffs) t = Math.max(t, h.occurredAt.getTime());
+  return new Date(t);
 }
 
 /** The ticket a key already recorded for this person, or null. */
@@ -168,7 +186,7 @@ export async function takeCustody(db: Db, actor: Actor, scan: ScanInput, now: Da
   const seen = await seenKey(db, actor, scan.clientKey);
   if (seen !== null) return duplicateOf(db, seen, now);
   await requireCarrier(db, actor);
-  const clock = scanClock(scan.scannedAt, now);
+  let clock = scanClock(scan.scannedAt, now);
   // At the store: nobody carried it yet, or the last hand was a take-over (back with the keeper or the head).
   const { row, method } = await ticketByCode(db, scan.code, (t) => t.chain.handoffs.length === 0 || t.chain.handoffs.at(-1)!.kind === "take_over");
   const from = holderOf(row.transfer.issuedBy, row.chain);
@@ -177,6 +195,7 @@ export async function takeCustody(db: Db, actor: Actor, scan: ScanInput, now: Da
     const locked = await inTransitRow(tx, row.indent.id, true);
     if (holderOf(locked.transfer.issuedBy, locked.chain) !== from) throw new StoresError("not_in_your_hands", "someone else took it first");
     if (!(await claimKey(tx, actor, scan.clientKey, "take_custody", row.indent.id, now))) return true;
+    clock = scanClock(scan.scannedAt, now, scanFloor(locked));
     await writeHandoff(tx, locked, { kind: "take", from, to: actor.id, method, clock }, now);
     await recordAct(tx, actor, now, { act: "take_custody", storeId: row.indent.toResourceId, refId: row.indent.id, before: from, after: actor.id, reason: clock.flag });
     return false;
@@ -193,12 +212,13 @@ export async function handOver(db: Db, actor: Actor, scan: ScanInput & { fromUse
   if (seen !== null) return duplicateOf(db, seen, now);
   await requireCarrier(db, actor);
   if (scan.fromUserId === actor.id) throw new StoresError("not_in_your_hands", "it is already in your hands");
-  const clock = scanClock(scan.scannedAt, now);
+  let clock = scanClock(scan.scannedAt, now);
   const { row, method } = await ticketByCode(db, scan.code, (t) => holderOf(t.transfer.issuedBy, t.chain) === scan.fromUserId);
   const dup = await withTx(db, async (tx) => {
     const locked = await inTransitRow(tx, row.indent.id, true);
     if (holderOf(locked.transfer.issuedBy, locked.chain) !== scan.fromUserId) throw new StoresError("not_in_your_hands", "not in their hands");
     if (!(await claimKey(tx, actor, scan.clientKey, "hand_over", row.indent.id, now))) return true;
+    clock = scanClock(scan.scannedAt, now, scanFloor(locked));
     await writeHandoff(tx, locked, { kind: "hand_over", from: scan.fromUserId, to: actor.id, method, clock }, now);
     await recordAct(tx, actor, now, { act: "hand_over", storeId: row.indent.toResourceId, refId: row.indent.id, before: scan.fromUserId, after: actor.id, reason: clock.flag });
     return false;
@@ -319,18 +339,27 @@ export async function deliverTicket(db: Db, actor: Actor, indentId: string, inpu
   if (carriersOf(row.chain).has(actor.id)) throw new StoresError("you_carried_it", "you carried it: someone in the department receives it");
   const shelf = await requireShelf(db, row.details.shelfId);
   await requireShelfAct(db, actor, shelf, "work");
-  const { occurredAt } = scanClock(input.scannedAt, now);
+  let clock = scanClock(input.scannedAt, now);
   const atCounter = row.chain.handoffs.length === 0;
   const dup = await withTx(db, async (tx) => {
     const locked = await inTransitRow(tx, indentId, true);
     if (!(await claimKey(tx, actor, input.clientKey, "deliver_ticket", indentId, now))) return true;
+    // The receipt is dated (and charged) no earlier than the issue or the last hand-off, and never months back.
+    clock = scanClock(input.scannedAt, now, scanFloor(locked));
+    const occurredAt = clock.occurredAt;
     const plan = await planDelivery(tx, locked, input);
     const quarantine = plan.some((p) => p.damaged > 0) ? await ensureQuarantineStore(tx) : null;
     await receiveAtShelf(tx as unknown as Db, actor, locked.transfer.id, occurredAt, plan.map((p) => ({ lineId: p.transferLineId, qtyReceived: p.accepted })), shelf.id);
     await tx.insert(storesDeliveryLines).values(plan.map((p) => ({
       transferLineId: p.transferLineId, transferId: locked.transfer.id, indentId, lineIdx: p.lineIdx, itemId: p.itemId,
       accepted: p.accepted, short: p.short, wrong: p.wrong, damaged: p.damaged, receivedBy: actor.id, receivedAt: occurredAt, atCounter,
+      phoneAt: clock.phoneAt, flag: clock.flag,
     })));
+    if (clock.flag !== null) {
+      for (const u of await sourceKeepers(tx, locked.indent.toResourceId)) {
+        await notify(tx, u, WORDS.lateScan, locked.indent, `late-scan:${locked.transfer.id}`, now);
+      }
+    }
     const back = plan.flatMap((p) => [
       ...(p.wrong > 0 ? [{ p, qty: p.wrong, to: locked.indent.toResourceId }] : []),
       ...(p.damaged > 0 ? [{ p, qty: p.damaged, to: quarantine! }] : []),
@@ -345,14 +374,15 @@ export async function deliverTicket(db: Db, actor: Actor, indentId: string, inpu
     const short = plan.reduce((a, p) => a + p.short, 0);
     const sentBack = back.reduce((a, b) => a + b.qty, 0);
     await recordAct(tx, actor, now, {
-      act: "deliver_ticket", storeId: shelf.id, refId: indentId, after: { atCounter, short, sentBack, lastCustodian: lastCustodianOf(locked.transfer.issuedBy, locked.chain) },
+      act: "deliver_ticket", storeId: shelf.id, refId: indentId, reason: clock.flag,
+      after: { atCounter, short, sentBack, lastCustodian: lastCustodianOf(locked.transfer.issuedBy, locked.chain), phoneAt: clock.phoneAt?.toISOString() ?? null },
       lines: plan.map((p) => ({ itemId: p.itemId, batchId: p.batchId, accepted: p.accepted, short: p.short, wrong: p.wrong, damaged: p.damaged })),
     });
     const words = sentBack > 0 ? deliveredSentBack(sentBack) : short > 0 ? deliveredShort(short) : WORDS.delivered;
     await notify(tx, locked.indent.requestedBy, words, locked.indent, "delivered", now);
     return false;
   });
-  return { ticket: (await getTicket(db, indentId, now))!, duplicate: dup, flag: null };
+  return { ticket: (await getTicket(db, indentId, now))!, duplicate: dup, flag: dup ? null : clock.flag };
 }
 
 // ═══════════════════════════════ undelivered, and taking goods back ═══════════════════════════════
@@ -363,9 +393,10 @@ export async function returnUndelivered(
 ): Promise<CustodyResult> {
   const seen = await seenKey(db, actor, input.clientKey);
   if (seen !== null) return duplicateOf(db, seen, now);
-  const { occurredAt } = scanClock(input.scannedAt, now);
+  scanClock(input.scannedAt, now); // a bad time is refused before anything is locked
   const dup = await withTx(db, async (tx) => {
     const row = await inTransitRow(tx, indentId, true);
+    const { occurredAt } = scanClock(input.scannedAt, now, scanFloor(row));
     if (returningUndelivered(row.chain)) throw new StoresError("not_in_transit", "it is already on its way back");
     if (holderOf(row.transfer.issuedBy, row.chain) !== actor.id || row.chain.handoffs.length === 0) throw new StoresError("not_in_your_hands", "not in your hands");
     if (!(await claimKey(tx, actor, input.clientKey, "return_undelivered", indentId, now))) return true;
@@ -666,6 +697,24 @@ export async function lateScansToConfirm(db: Db, actor: Actor): Promise<LateScan
     .orderBy(asc(storesCustodyHandoffs.recordedAt));
   const kept = new Map<string, boolean>();
   const out: LateScan[] = [];
+  // A delivery's late or future scan is confirmed like a hand-off's; its id is the transfer's (one receipt per transfer).
+  const deliveries = await db.selectDistinctOn([storesDeliveryLines.transferId], {
+    d: storesDeliveryLines, no: storeIndents.indentNo, source: storeIndents.toResourceId, n: users.fullName,
+  }).from(storesDeliveryLines)
+    .innerJoin(storeIndents, eq(storeIndents.id, storesDeliveryLines.indentId))
+    .leftJoin(users, eq(users.id, storesDeliveryLines.receivedBy))
+    .leftJoin(storesScanConfirmations, eq(storesScanConfirmations.handoffId, storesDeliveryLines.transferId))
+    .where(and(isNull(storesScanConfirmations.handoffId), isNotNull(storesDeliveryLines.flag)))
+    .orderBy(asc(storesDeliveryLines.transferId));
+  for (const r of deliveries) {
+    if (r.d.flag === null || r.d.phoneAt === null) continue;
+    if (!kept.has(r.source)) kept.set(r.source, await keepsStore(db, actor, await storesStoreRow(db, r.source)));
+    if (kept.get(r.source) !== true) continue;
+    out.push({
+      handoffId: r.d.transferId, indentId: r.d.indentId, indentNo: r.no, kind: "deliver", by: { id: r.d.receivedBy, name: r.n ?? r.d.receivedBy },
+      phoneAt: r.d.phoneAt.toISOString(), recordedAt: r.d.receivedAt.toISOString(), flag: r.d.flag as ScanFlag,
+    });
+  }
   for (const r of rows) {
     if (r.h.flag === null || r.h.phoneAt === null) continue;
     if (!kept.has(r.source)) kept.set(r.source, await keepsStore(db, actor, await storesStoreRow(db, r.source)));
@@ -675,12 +724,17 @@ export async function lateScansToConfirm(db: Db, actor: Actor): Promise<LateScan
       phoneAt: r.h.phoneAt.toISOString(), recordedAt: r.h.recordedAt.toISOString(), flag: r.h.flag as ScanFlag,
     });
   }
-  return out;
+  return out.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
 }
 
 export async function confirmLateScan(db: Db, actor: Actor, handoffId: string, now: Date = new Date()): Promise<{ ok: true }> {
-  const [h] = await db.select({ h: storesCustodyHandoffs, source: storeIndents.toResourceId }).from(storesCustodyHandoffs)
+  const [handoff] = await db.select({ h: { indentId: storesCustodyHandoffs.indentId, flag: storesCustodyHandoffs.flag }, source: storeIndents.toResourceId })
+    .from(storesCustodyHandoffs)
     .innerJoin(storeIndents, eq(storeIndents.id, storesCustodyHandoffs.indentId)).where(eq(storesCustodyHandoffs.id, handoffId));
+  const [delivery] = handoff !== undefined ? [] : await db.select({ h: { indentId: storesDeliveryLines.indentId, flag: storesDeliveryLines.flag }, source: storeIndents.toResourceId })
+    .from(storesDeliveryLines)
+    .innerJoin(storeIndents, eq(storeIndents.id, storesDeliveryLines.indentId)).where(eq(storesDeliveryLines.transferId, handoffId)).limit(1);
+  const h = handoff ?? delivery;
   if (h === undefined || h.h.flag === null) throw new StoresError("unknown_scan", "no late scan with that id");
   if (!(await keepsStore(db, actor, await storesStoreRow(db, h.source)))) throw new StoresError("not_permitted", "the source store's keeper confirms a late scan");
   await withTx(db, async (tx) => {

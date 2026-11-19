@@ -151,6 +151,7 @@ export async function gatePassViews(db: Db | Tx, passes: PassRow[], now: Date): 
       raisedBy: person(p.raisedBy), raisedAt: p.raisedAt.toISOString(),
       scans: mine.map((s) => ({
         kind: s.kind as "exit" | "entry" | "close", by: person(s.actorId), at: s.occurredAt.toISOString(), recordedAt: s.recordedAt.toISOString(),
+        phoneAt: s.phoneAt?.toISOString() ?? null,
         flag: (s.flag ?? null) as ScanFlag | null, reason: s.reason,
         lines: Object.values(s.lines.reduce<Record<string, { itemId: string; qty: number }>>((acc, l) => {
           acc[l.itemId] = { itemId: l.itemId, qty: (acc[l.itemId]?.qty ?? 0) + l.qty };
@@ -373,13 +374,17 @@ export async function scanGatePass(db: Db, actor: Actor, input: GatePassScanInpu
   const seen = await seenKey(db, actor, input.clientKey);
   if (seen !== null) return { pass: (await getGatePass(db, seen, now))!, duplicate: true, flag: null };
   await requireGuard(db, actor);
-  const clock = scanClock(input.scannedAt, now);
+  let clock = scanClock(input.scannedAt, now);
   const { row, method } = await passByCode(db, input.code, now);
 
   const dup = await withTx(db, async (tx) => {
     await tx.select({ id: storesGatePasses.id }).from(storesGatePasses).where(eq(storesGatePasses.id, row.id)).for("update");
     const view = (await gatePassViews(tx, [row], now))[0]!;
     const act = nextAct(actor, row, view);
+    // The phone's time dates the crossing only after the pass was raised and after its last scan (an entry follows
+    // its exit), and at most 12 h back; otherwise it is the server's time, flagged (pre-merge review M1).
+    const floor = Math.max(row.raisedAt.getTime(), ...view.scans.map((s) => Date.parse(s.at)));
+    clock = scanClock(input.scannedAt, now, new Date(floor));
     if (input.act === "exit" && act !== "exit") throw new StoresError("already_out", "this pass has already gone out");
     if (input.act === "entry" && act !== "entry") {
       throw new StoresError(row.kind === "non_returnable" ? "pass_not_valid" : "not_out", row.kind === "non_returnable" ? "nothing comes back on this pass" : "it has not gone out yet");
