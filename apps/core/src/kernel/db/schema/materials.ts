@@ -800,7 +800,9 @@ export const transfers = pgTable(
   (t) => [
     index("transfers_from_idx").on(t.fromResourceId, t.status),
     index("transfers_to_idx").on(t.toResourceId, t.status),
-    check("transfers_status_ck", sql`${t.status} in ('in_transit', 'received', 'discrepancy')`),
+    // STORES S2b (#1112, decision 8) — `returned`: brought back undelivered, the whole of it IN-TRANSIT → source,
+    // signed by the source's keeper (`returnInTransit`). No pharmacy path writes it.
+    check("transfers_status_ck", sql`${t.status} in ('in_transit', 'received', 'discrepancy', 'returned')`),
   ],
 );
 

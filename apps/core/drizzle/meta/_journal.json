@@ -1667,6 +1667,13 @@
       "when": 1795040536949,
       "tag": "0238_stores_s2a",
       "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1795045262421,
+      "tag": "0239_stores_s2b",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@ import { createResource, updateResource } from "../../kernel/resources/registry"
 import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { resources } from "../../kernel/db/schema";
 import { MATERIALS_RESOURCE_KINDS } from "./kinds";
-import { TRANSIT_STORE_CODE } from "./config";
+import { QUARANTINE_STORE_CODE, TRANSIT_STORE_CODE } from "./config";
 import { MaterialsError } from "./errors";
 import { ResourceError } from "../../kernel/resources/errors";
 import type { Actor } from "@hmis/contracts";
@@ -97,6 +97,28 @@ export async function setStoreCustodianRoles(tx: Tx, actor: Actor, storeId: stri
  * `INSERT … ON CONFLICT DO NOTHING` cold-start shape from `nextEpisodeNo`, expressed against a
  * function that does more than an insert.
  */
+/**
+ * STORES S2b (#1112) — the quarantine store, created on first use in a savepoint exactly as `ensureTransitStore`
+ * is (a concurrent first create rolls back to the savepoint and the re-read finds the winner). It names no
+ * keepers: whoever moves stock into it has been asked their own grant by the calling intent.
+ */
+export async function ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string> {
+  const found = await findStoreByCode(tx, QUARANTINE_STORE_CODE, siteId);
+  if (found !== undefined) return found.id;
+  try {
+    const { resourceId } = await tx.transaction(async (sp) =>
+      createStore(sp, { type: "system", id: "materials-quarantine" }, {
+        code: QUARANTINE_STORE_CODE, name: "Quarantine", siteId,
+        attributes: { system: true, reason: "damaged or defective goods awaiting a supplier return" },
+      }));
+    return resourceId;
+  } catch (e) {
+    const again = await findStoreByCode(tx, QUARANTINE_STORE_CODE, siteId);
+    if (again !== undefined) return again.id;
+    throw e;
+  }
+}
+
 export async function ensureTransitStore(tx: Tx, siteId = "main"): Promise<string> {
   const found = await findStoreByCode(tx, TRANSIT_STORE_CODE, siteId);
   if (found !== undefined) return found.id;

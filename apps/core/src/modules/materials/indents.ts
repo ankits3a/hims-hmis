@@ -171,6 +171,29 @@ async function insertIndent(
 }
 
 /**
+ * STORES S2b (#1112, the raise sheet's "Add to open ticket?") — new lines on an indent still `requested`, in the
+ * CALLER's transaction; caller-authorised like `raiseIndentScoped` (the Stores intent asked the shelf grant). Only
+ * new items: an item is once on an indent, and a line already there is never changed (0155's line guard). The
+ * indent row itself is untouched, so no guard transition is needed.
+ */
+export async function addIndentLinesScoped(tx: Tx, indentId: string, lines: IndentLineInput[]): Promise<void> {
+  const indent = await lockRequested(tx, indentId);
+  const existing = await tx.select({ itemId: storeIndentLines.itemId, lineIdx: storeIndentLines.lineIdx }).from(storeIndentLines)
+    .where(eq(storeIndentLines.indentId, indent.id));
+  const seen = new Set(existing.map((l) => l.itemId));
+  for (const l of lines) {
+    if (!Number.isSafeInteger(l.qtyBase) || l.qtyBase <= 0) bad("each quantity is a whole number above zero, in base units", { itemId: l.itemId });
+    if (seen.has(l.itemId)) bad("an item appears once on an indent — add the quantities together", { itemId: l.itemId });
+    seen.add(l.itemId);
+  }
+  await assertNotMerged(tx, lines.map((l) => l.itemId), "indenting");
+  const next = existing.reduce((m, l) => Math.max(m, l.lineIdx), -1) + 1;
+  await tx.insert(storeIndentLines).values(lines.map((l, k) => ({
+    id: newId(), indentId: indent.id, lineIdx: next + k, itemId: l.itemId, qtyBase: l.qtyBase, qtyIssued: null,
+  })));
+}
+
+/**
  * The supplying store issues the indent as ONE transfer to the requesting store. Each line goes at the
  * quantity given, or by default at the asked quantity capped at what the shelf has now; a line may go
  * short or at 0, the indent as a whole carries at least one unit. More than the shelf has is the
