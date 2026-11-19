@@ -106,7 +106,9 @@ Source: `apps/core/src/modules/opd/`
   - `copilotDraftProseSet`
   - `dangerFlagSchema`
   - `dayReportPatientsListed`
+  - `doctorCreated`
   - `doctorLeaveScheduled`
+  - `doctorProfileChanged`
   - `doctorSecondaryDepartmentEnded`
   - `doctorSecondaryDepartmentSet`
   - `flowFindingDismissed`

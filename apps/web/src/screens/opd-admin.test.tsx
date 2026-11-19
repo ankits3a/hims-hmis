@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { setToken } from "../lib/api";
@@ -30,10 +30,14 @@ const SCHEDULED_LEAVE = {
   status: "scheduled", createdBy: "u-1", createdAt: NOW_ISO, cancelledBy: null, cancelledAt: null,
 };
 
+/** #1127 — the Doctors tab reads its own list: the doctor row plus login, Doctor ID and this week's schedule. */
+const ADMIN_DOCTORS = DOCTORS.map((d) => ({ ...d, code: "DR-0001", username: "meera", scheduledThisWeek: true, secondary: null }));
+
 const MASTERS = {
   "GET /api/opd/departments": { items: DEPARTMENTS },
   "GET /api/opd/rooms": { items: ROOMS },
   "GET /api/opd/doctors": { items: DOCTORS },
+  "GET /api/opd/doctors/admin": { items: ADMIN_DOCTORS },
 };
 
 function fetchCalls(): { url: string; method: string; body: string }[] {
@@ -208,7 +212,7 @@ describe("OpdAdmin", () => {
     expect(bodyOf("POST", "/api/opd/departments")).toEqual({ code: "ORT", name: "Orthopaedics" });
   });
 
-  it("the doctors tab posts the doctor body and renders the server's unknown_user refusal inline", async () => {
+  it("the doctors tab posts the picked staff member and renders the server's unknown_user refusal in the panel", async () => {
     // stubFetch always answers 200 and so cannot produce the 404 this case is about — the direct
     // stub is the only way to see a real non-2xx in this harness (the approvals-inbox precedent).
     vi.stubGlobal(
@@ -224,81 +228,138 @@ describe("OpdAdmin", () => {
         if (path === "/api/opd/departments") return json({ items: DEPARTMENTS }, 200);
         if (path === "/api/opd/rooms") return json({ items: ROOMS }, 200);
         if (path === "/api/opd/doctors") return json({ items: DOCTORS }, 200);
+        if (path === "/api/opd/doctors/admin") return json({ items: ADMIN_DOCTORS }, 200);
+        if (path === "/api/opd/doctors/candidates") {
+          return json({ items: [{ userId: "u-12", username: "dr.ramesh", fullName: "Ramesh Iyer", staffCode: "EMP-0012", isDoctorRole: true }] }, 200);
+        }
         return new Response("{}", { status: 404 });
       }),
     );
     renderWithProviders(<OpdAdmin />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Doctors" }));
+    await user.click(await screen.findByTestId("doctors-new"));
+    const panel = await screen.findByTestId("doctor-new-panel");
 
-    await user.type(await screen.findByLabelText("Username"), "dr.ramesh");
-    await user.type(screen.getByLabelText("Display name"), "Dr Ramesh Iyer");
-    await user.type(screen.getByLabelText("Registration number"), "NMC-9002");
-    await user.selectOptions(screen.getByLabelText("Department"), "dep-2");
-    await user.type(screen.getByLabelText("Specialty"), "Paediatrics");
-    await user.click(screen.getByRole("button", { name: "Add doctor" }));
+    await user.type(within(panel).getByTestId("doctor-new-search"), "ram");
+    await user.click(await within(panel).findByTestId("doctor-candidate-dr.ramesh"));
+    await user.type(within(panel).getByLabelText("Registration number"), "NMC-9002");
+    await user.selectOptions(within(panel).getByLabelText("Department"), "dep-2");
+    await user.type(within(panel).getByLabelText("Specialty"), "Paediatrics");
+    await user.click(within(panel).getByRole("button", { name: "Add doctor" }));
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/doctors")).toHaveLength(1));
     expect(bodyOf("POST", "/api/opd/doctors")).toEqual({
-      username: "dr.ramesh", displayName: "Dr Ramesh Iyer", registrationNo: "NMC-9002",
+      username: "dr.ramesh", displayName: "Dr. Ramesh Iyer", registrationNo: "NMC-9002",
       departmentId: "dep-2", specialty: "Paediatrics",
     });
-    // The server's own words, inline — no client-side guess at what went wrong.
-    expect(await screen.findByRole("alert")).toHaveTextContent('no user named "dr.ramesh"');
+    // The server's own words, in the panel where the admin is looking — no client-side guess.
+    expect(await within(panel).findByRole("alert")).toHaveTextContent('no user named "dr.ramesh"');
   });
 
-  it("2026-10-04 — the doctors tab sends a Designation with a new doctor, and edits one in the list (blank clears it)", async () => {
-    stubFetch({ ...MASTERS, "POST /api/opd/doctors": { doctorId: "doc-9", userId: "u-9" }, "PATCH /api/opd/doctors/doc-1": { ok: true } });
+  it("2026-10-04 — the doctors tab sends a Designation with a new doctor, and edits one in the panel (blank clears it)", async () => {
+    stubFetch({
+      ...MASTERS,
+      "GET /api/opd/doctors/candidates": { items: [{ userId: "u-30", username: "raza", fullName: "S.I Raza", staffCode: "EMP-0030", isDoctorRole: true }] },
+      "POST /api/opd/doctors": { doctorId: "doc-9", userId: "u-30" },
+      "PATCH /api/opd/doctors/doc-1": { ok: true, needsRebooking: [], waitingToday: 0 },
+    });
     renderWithProviders(<OpdAdmin />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Doctors" }));
-    await user.type(await screen.findByLabelText("Username"), "raza");
-    await user.type(screen.getByLabelText("Display name"), "Dr. S.I Raza");
-    await user.selectOptions(screen.getByLabelText("Department"), "dep-2");
-    await user.type(screen.getByLabelText("Designation"), "Guest Faculty");
-    await user.click(screen.getByRole("button", { name: "Add doctor" }));
+    await user.click(await screen.findByTestId("doctors-new"));
+    const fresh = await screen.findByTestId("doctor-new-panel");
+    await user.type(within(fresh).getByTestId("doctor-new-search"), "raza");
+    await user.click(await within(fresh).findByTestId("doctor-candidate-raza"));
+    await user.selectOptions(within(fresh).getByLabelText("Department"), "dep-2");
+    await user.type(within(fresh).getByLabelText("Designation"), "Guest Faculty");
+    await user.click(within(fresh).getByTestId("doctor-new-submit"));
     await waitFor(() => expect(callsTo("POST", "/api/opd/doctors")).toHaveLength(1));
     expect(bodyOf("POST", "/api/opd/doctors")).toMatchObject({ displayName: "Dr. S.I Raza", designation: "Guest Faculty" });
 
-    const box = screen.getByTestId("designation-doc-1");
+    await user.click(await screen.findByTestId("doctor-open-doc-1"));
+    const panel = await screen.findByTestId("doctor-panel");
+    const box = within(panel).getByLabelText("Designation");
     await user.type(box, "Senior Resident");
-    await user.tab();
+    await user.click(within(panel).getByTestId("doctor-save"));
     await waitFor(() => expect(callsTo("PATCH", "/api/opd/doctors/doc-1")).toHaveLength(1));
     expect(bodyOf("PATCH", "/api/opd/doctors/doc-1")).toEqual({ designation: "Senior Resident" });
   });
 
-  it("#914 — the doctors tab gives a doctor a second department, and ends it", async () => {
+  it("2026-10-04 — a designation cleared in the panel is sent as null", async () => {
+    const titled = [{ ...ADMIN_DOCTORS[0]!, designation: "Guest Faculty" }];
+    stubFetch({ ...MASTERS, "GET /api/opd/doctors/admin": { items: titled }, "PATCH /api/opd/doctors/doc-1": { ok: true, needsRebooking: [], waitingToday: 0 } });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Doctors" }));
+    await user.click(await screen.findByTestId("doctor-open-doc-1"));
+    const panel = await screen.findByTestId("doctor-panel");
+    await user.clear(within(panel).getByLabelText("Designation"));
+    await user.click(within(panel).getByTestId("doctor-save"));
+    await waitFor(() => expect(callsTo("PATCH", "/api/opd/doctors/doc-1")).toHaveLength(1));
+    expect(bodyOf("PATCH", "/api/opd/doctors/doc-1")).toEqual({ designation: null });
+  });
+
+  it("#914 — the doctors panel gives a doctor a second department", async () => {
     stubFetch({ ...MASTERS, "PUT /api/opd/doctors/doc-1/secondary-department": { id: "sec-1" } });
     renderWithProviders(<OpdAdmin />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Doctors" }));
-    const pick = await screen.findByLabelText("Second department — Dr Meera Rao");
+    await user.click(await screen.findByTestId("doctor-open-doc-1"));
+    const panel = await screen.findByTestId("doctor-panel");
+    const pick = within(panel).getByTestId("doctor-secondary-pick");
     // The primary is not offered as the second department.
     expect([...(pick as HTMLSelectElement).options].map((o) => o.value)).toEqual(["", "dep-2"]);
     await user.selectOptions(pick, "dep-2");
+    await user.click(within(panel).getByTestId("doctor-secondary-start"));
     await waitFor(() => expect(callsTo("PUT", "/api/opd/doctors/doc-1/secondary-department")).toHaveLength(1));
     expect(bodyOf("PUT", "/api/opd/doctors/doc-1/secondary-department")).toEqual({ departmentId: "dep-2" });
   });
 
   it("#914 — a covering doctor's second department shows with its day, and End asks before it ends", async () => {
-    const covering = [{ ...DOCTORS[0]!, secondary: { departmentId: "dep-2", fromDate: "2026-10-17", toDate: null } }];
+    const covering = [{ ...ADMIN_DOCTORS[0]!, secondary: { departmentId: "dep-2", fromDate: "2026-10-17", toDate: null } }];
     stubFetch({
-      ...MASTERS, "GET /api/opd/doctors": { items: covering },
+      ...MASTERS, "GET /api/opd/doctors/admin": { items: covering },
       "POST /api/opd/doctors/doc-1/secondary-department/end": { secondary: {}, affectedAppointmentIds: ["a-1", "a-2"] },
     });
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     renderWithProviders(<OpdAdmin />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Doctors" }));
-    expect(await screen.findByText("since 2026-10-17")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Second department — Dr Meera Rao")).toBeNull(); // no picker while one runs
+    await user.click(await screen.findByTestId("doctor-open-doc-1"));
+    const panel = await screen.findByTestId("doctor-panel");
+    expect(within(panel).getByText(/since .*17 Oct/)).toBeInTheDocument();
+    expect(within(panel).queryByTestId("doctor-secondary-pick")).toBeNull(); // no picker while one runs
 
-    await user.click(screen.getByRole("button", { name: "End" }));
+    await user.click(within(panel).getByTestId("doctor-secondary-end"));
     expect(callsTo("POST", "/api/opd/doctors/doc-1/secondary-department/end")).toHaveLength(0); // declined
-    await user.click(screen.getByRole("button", { name: "End" }));
+    await user.click(within(panel).getByTestId("doctor-secondary-end"));
     await waitFor(() => expect(callsTo("POST", "/api/opd/doctors/doc-1/secondary-department/end")).toHaveLength(1));
     expect(await screen.findByText("Ended. 2 bookings need rebooking.")).toBeInTheDocument();
     confirm.mockRestore();
+  });
+
+  /*
+    #1127 browser walk, 2026-11-19 — Escape on the deactivate check closed the PANEL behind it and left
+    the check open: the check's first button was disabled while it loaded, DeskModal's opening focus
+    failed on it, focus stayed on the panel, and the panel's Escape handler swallowed the key.
+  */
+  it("#1127 — Escape on the deactivate check closes the check and keeps the panel", async () => {
+    stubFetch({
+      ...MASTERS,
+      "GET /api/opd/doctors/doc-1/impact": { booked: 0, bookedByDate: [], waitingToday: 0 },
+    });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Doctors" }));
+    await user.click(await screen.findByTestId("doctor-open-doc-1"));
+    await user.click(within(await screen.findByTestId("doctor-panel")).getByTestId("doctor-deactivate"));
+    await screen.findByTestId("doctor-impact-ask");
+    await screen.findByTestId("doctor-impact-confirm");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("doctor-impact-ask")).toBeNull());
+    expect(screen.getByTestId("doctor-panel")).toBeInTheDocument();
+    expect(callsTo("PATCH", "/api/opd/doctors/doc-1")).toHaveLength(0);
   });
 
   it("#914 — a covering doctor's schedule row names the department the session serves", async () => {

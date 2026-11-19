@@ -1,0 +1,46 @@
+/*
+  #1127 (owner 2026-11-19) — OPD Admin → Doctors on the Users screen's pattern. `admin-users.css` gives
+  the search box, the tags, the rows and the drawer; this file adds only what a doctor row holds
+  (department, designation) and what sits inside a tab rather than at the top of a page.
+*/
+.au.od .od-grid { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.6fr) minmax(0, 1.5fr) 150px; gap: 12px; align-items: center; padding: 0 16px; }
+.au.od .au-list { max-height: calc(100vh - 330px); min-height: 220px; }
+.au.od .od-notes { display: flex; flex-direction: column; gap: 2px; }
+.au.od .od-dept, .au.od .od-desig { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13.5px; }
+.au.od .od-desig { align-items: flex-start; }
+.od .od-sub, .od-drawer .od-sub { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+.au.od .od-empty { margin: 0; padding: 16px; font-size: 12.5px; color: var(--dim); }
+.au.od .od-note {
+  margin: 0; padding: 9px 12px; border-radius: 6px; background: var(--gold-soft, #fffaf1); border: 1px solid var(--gold-line, #f0d9ae);
+  font-size: 12.5px; line-height: 20px;
+}
+.au.od .od-link { border: 0; background: transparent; padding: 0; font: inherit; font-weight: 600; color: var(--green); text-decoration: underline; cursor: pointer; text-align: left; }
+.od-drawer .od-lines { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.od-drawer .od-history li { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; border-bottom: 1px solid var(--wash); overflow-wrap: anywhere; }
+.od-drawer .od-warn { color: #7a4c08; font-weight: 600; }
+.od-drawer select.in, .od-drawer input.in { width: 100%; box-sizing: border-box; }
+
+/* The rail: an outcome follows the eye to wherever the list has been scrolled (the Users screen's rule). */
+.od .od-rail { position: fixed; left: 0; right: 0; bottom: 60px; z-index: 55; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0 16px; pointer-events: none; }
+.od .od-rail p { margin: 0; padding: 9px 14px; font-size: 12.5px; font-weight: 600; background: var(--paper); pointer-events: auto; box-shadow: 0 10px 30px rgba(19, 36, 32, .18); }
+.od .od-rail .od-rail-ok { color: var(--green); border-color: var(--green); }
+.od .od-rail .od-rail-err { color: var(--red); border-color: var(--red); }
+
+/* Wide screens: the list steps aside for the panel instead of sliding under it. */
+@media (min-width: 1200px) {
+  .pp:has(.od-drawer) { padding-right: 542px !important; }
+}
+@media (max-width: 640px) {
+  .au.od .au-list { max-height: none; }
+  /* `.au.od .od-grid` outranks admin-users.css's own phone rule, so the column heads are hidden here too. */
+  .au.od .au-colhead { display: none; }
+  .au.od .od-grid { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "w s" "d d" "g g" "n n"; row-gap: 2px; padding: 8px 12px; }
+  .au.od .au-row > :nth-child(1) { grid-area: w; }
+  .au.od .au-row > :nth-child(2) { grid-area: d; padding-left: 45px; flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .au.od .au-row > :nth-child(3) { grid-area: g; padding-left: 45px; flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  /* The pill stays beside the name; the warnings drop under the row, so neither cuts the name. */
+  .au.od .au-row .au-status { display: contents; }
+  .au.od .au-row .au-status > .au-pill { grid-area: s; align-self: start; margin-top: 6px; }
+  .au.od .au-row .od-notes { grid-area: n; padding-left: 45px; flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .au.od .od-desig:empty { display: none; }
+}
