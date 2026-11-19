@@ -989,7 +989,7 @@ const STORES_CONDEMN_PAIRS: readonly string[] = [
   "materials_head/stores.assets.condemn",
 ];
 
-/** The README prose line authorising the buying desk's front grants (#1115 S5a, decision 0100). Quoted, not paraphrased. */
+/** The README prose line authorising the buying desk's front grants (#1115 S5a, decision 0101). Quoted, not paraphrased. */
 const STORES_BUYING_README_PROSE =
   "`stores.purchase.request` is held by `department_store_incharge` and `department_head` (at their department);\n`stores.buying.manage` by `materials_head` and `purchase_officer`; `stores.budget.manage` by `accounts_officer` and\n`owner`; `stores.grn.qc` by `materials_head`, `biomedical_engineer` and `department_head` (at its department).";
 

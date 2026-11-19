@@ -333,7 +333,7 @@ department shelves every department (housekeeping included) receives from. Pharm
   phone shows "Not your department: ask <names>". A fault may carry a photo (document store key on the event).
 - Receive: a ticket line's `units` (still in transit) let the receiver scan what arrived; `unitIds` go with the line.
 
-## 10d. The buying desk's front (S5a #1115; ruling 0099 Q4, decision 0100)
+## 10d. The buying desk's front (S5a #1115; ruling 0099 Q4, decision 0101)
 - Purchase request (`purchase-requests.ts`, migration 0244): `stores_purchase_requests` + `_lines` written once; the
   decision is ONE `stores_purchase_request_stamps` row (unique per request: approved / declined / cancelled), so the stamp
   is write-once by the unique index and the append-only trigger. Status is derived. Number `MPR`+yymmdd+4 from

@@ -1759,7 +1759,7 @@ recycler, and the guard's exit scan ends the unit's life; a lost unit is written
 `stores.assets.condemn` is held by `department_head` (at its department), `accounts_officer`, `materials_head` and
 `biomedical_engineer`.
 
-**Stores buying desk, front (decision 0100, S5a #1115, 2026-11-19).** A department asks to buy a non-stock or capital
+**Stores buying desk, front (decision 0101, S5a #1115, 2026-11-19).** A department asks to buy a non-stock or capital
 item on the phone and its HOD approves it in two taps, as a Stores ticket is approved; the medical superintendent stands
 in, and an HOD may hand the approval to a colleague for at most 30 days. The request is banded by value (one quote up to
 ₹25,000, three quotes up to ₹5 lakh, the committee above that and for any medical equipment) and summed over 30 days so
