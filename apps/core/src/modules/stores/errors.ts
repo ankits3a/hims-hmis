@@ -92,6 +92,17 @@ export const STORES_ERROR_CODES = [
   "unknown_round",
   "round_closed",
   "unit_loss_needs_committee",
+  // S4b (#1114): condemnation, loss and disposal.
+  "committee_seat_empty",
+  "already_signed",
+  "not_a_seat",
+  "unknown_condemnation",
+  "already_proposed",
+  "condemnation_closed",
+  "wipe_certificate_needed",
+  "regulator_paper_needed",
+  "bids_required",
+  "not_written_off",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -189,6 +200,16 @@ const STATUS: Record<StoresErrorCode, number> = {
   unknown_round: 404,
   round_closed: 409,
   unit_loss_needs_committee: 409,
+  committee_seat_empty: 409,
+  already_signed: 409,
+  not_a_seat: 403,
+  unknown_condemnation: 404,
+  already_proposed: 409,
+  condemnation_closed: 409,
+  wipe_certificate_needed: 422,
+  regulator_paper_needed: 409,
+  bids_required: 422,
+  not_written_off: 409,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

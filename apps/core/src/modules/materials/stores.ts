@@ -3,7 +3,7 @@ import { createResource, updateResource } from "../../kernel/resources/registry"
 import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { resources } from "../../kernel/db/schema";
 import { MATERIALS_RESOURCE_KINDS } from "./kinds";
-import { OUT_ON_PASS_STORE_CODE, QUARANTINE_STORE_CODE, TRANSIT_STORE_CODE } from "./config";
+import { CONDEMNED_STORE_CODE, OUT_ON_PASS_STORE_CODE, QUARANTINE_STORE_CODE, TRANSIT_STORE_CODE } from "./config";
 import { MaterialsError } from "./errors";
 import { ResourceError } from "../../kernel/resources/errors";
 import type { Actor } from "@hmis/contracts";
@@ -16,7 +16,7 @@ export type StoreRow = typeof resources.$inferSelect;
  * `domain` (they are created by materials helpers) but are Stores places all the same: out of pharmacy's lists and
  * refused on the materials transfer route, like every `domain = 'stores'` row.
  */
-export const STORES_SYSTEM_STORE_CODES: readonly string[] = [QUARANTINE_STORE_CODE, OUT_ON_PASS_STORE_CODE];
+export const STORES_SYSTEM_STORE_CODES: readonly string[] = [QUARANTINE_STORE_CODE, OUT_ON_PASS_STORE_CODE, CONDEMNED_STORE_CODE];
 
 /** A Stores place: a `domain = 'stores'` row or one of the Stores system stores. */
 export function isStoresPlace(row: { code: string; attributes: unknown }): boolean {
@@ -149,6 +149,27 @@ export async function ensureOutOnPassStore(tx: Tx, siteId = "main"): Promise<str
     return resourceId;
   } catch (e) {
     const again = await findStoreByCode(tx, OUT_ON_PASS_STORE_CODE, siteId);
+    if (again !== undefined) return again.id;
+    throw e;
+  }
+}
+
+/**
+ * STORES S4b (#1114, edge case 10) — the per-site `CONDEMNED` hold store, created on first use in a savepoint exactly
+ * as `ensureOutOnPassStore` is. No keepers: only the Stores condemnation intents move a unit into or out of it.
+ */
+export async function ensureCondemnedStore(tx: Tx, siteId = "main"): Promise<string> {
+  const found = await findStoreByCode(tx, CONDEMNED_STORE_CODE, siteId);
+  if (found !== undefined) return found.id;
+  try {
+    const { resourceId } = await tx.transaction(async (sp) =>
+      createStore(sp, { type: "system", id: "materials-condemned" }, {
+        code: CONDEMNED_STORE_CODE, name: "Condemned", siteId,
+        attributes: { system: true, reason: "condemned or lost tagged units awaiting their write-off" },
+      }));
+    return resourceId;
+  } catch (e) {
+    const again = await findStoreByCode(tx, CONDEMNED_STORE_CODE, siteId);
     if (again !== undefined) return again.id;
     throw e;
   }

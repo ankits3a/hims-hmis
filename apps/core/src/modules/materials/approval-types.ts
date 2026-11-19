@@ -128,6 +128,20 @@ export const MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
     actFirstAllowed: false,
     closureSlaMinutes: 240,
   },
+  /**
+   * STORES S4b (#1114, ruling 0100 Q5) — a condemned or lost tagged unit whose original cost is above ₹50,000 or
+   * unknown: the OWNER approves it too, beside the medical superintendent's write-off approval
+   * (`materials_stock_adjustment`, unchanged). Asked by the Stores condemnation intent once every committee seat has
+   * signed. A day to decide: the unit waits in the CONDEMNED hold.
+   */
+  {
+    typeKey: "stores_condemnation_owner",
+    title: "Asset Condemnation (above ₹50,000 or cost unknown)",
+    approverRole: "owner",
+    urgencyClass: "routine",
+    actFirstAllowed: false,
+    closureSlaMinutes: 1440,
+  },
 ];
 
 /** The two type keys, for callers that must not retype a string the engine matches exactly. */
@@ -141,6 +155,8 @@ export const PO_OWNER_APPROVAL_TYPE = "materials_po_approval_owner";
 export const PAYMENT_RUN_APPROVAL_TYPE = "materials_payment_run_approval";
 /** #1047 — a batch's MRP revised by a GRN. */
 export const MRP_REVISION_APPROVAL_TYPE = "materials_mrp_revision";
+/** STORES S4b (#1114) — the owner's approval of a condemnation above the line. */
+export const CONDEMNATION_OWNER_APPROVAL_TYPE = "stores_condemnation_owner";
 
 /**
  * The DRAFTER half of each `approval_<typeKey>` definition. `createDraft` runs no actor-type check,

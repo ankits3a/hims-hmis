@@ -53,8 +53,13 @@ export { TAG_THRESHOLD_PAISE, categoryRules, tagDecisionFor, taggedBatchIds } fr
 export {
   ASSET_LABEL_DOCUMENT, ASSET_WORDS, STORES_ASSETS_EXPORT, STORES_ASSETS_MANAGE, STORES_ASSETS_READ, acceptUnitTransfer, addAssetDetails, assetPassport,
   assetRegister, closeRepair, fillUnitCost, grnLineTagging, linkDevice, myAssets, openRepair, openUnit, proposeUnitTransfer, reportFault, reportFoundHere,
-  retag, tagUnits, unitsToAccept, voidTag,
+  addRegulatorPaper, retag, returnToUse, setItemRegulation, tagUnits, unitsToAccept, voidTag, withdrawUnit,
 } from "./assets";
 export { assetAdditions, assetLedgerCheck, assetsCostUnknown, assetsDue, equipmentReceivedByMonth, runAssetReminders } from "./asset-reads";
 export { closeVerification, roundView, scanVerification, startVerification, verificationRounds } from "./verification";
 export { renderAssetLabel } from "./asset-label";
+// S4b (#1114): condemnation, loss, disposal.
+export {
+  CONDEMN_OWNER_LINE_PAISE, STORES_ASSETS_CONDEMN, assetRemovals, condemnationsToSign, disposeUnit, getCondemnation, listCondemnations, markFound,
+  objectCondemnation, proposeCondemnation, runLossProposals, settleCondemnations, signCondemnation, writeOffLoss,
+} from "./condemnation";

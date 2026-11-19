@@ -255,7 +255,7 @@ describe("Stores S4b: condemnation, loss and disposal (spec #1114)", () => {
 
   it("spec #1114 D12: a condemned unit is refused for issue, transfer, tag and returnable pass; an IT unit holding data is refused disposal without a wipe certificate; a regulated unit is refused disposal and a returnable pass without the regulator's paper", async () => {
     const accounts = await accountsSeat();
-    const [m1, m2] = await units(monitor, 2, 3_000_000);
+    const [m1, m2] = await units(monitor, 3, 3_000_000);
     await toIcu(monitor, [m2!], 0);
     // m1 sits in GEN-MAIN (no user department, so no HOD seat); m2 is ICU's.
     const c1 = await proposeCondemnation(db, bme.actor, { unitId: m1!, reason: "obsolete" }, at(10));

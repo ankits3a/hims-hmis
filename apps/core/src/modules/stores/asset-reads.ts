@@ -43,7 +43,10 @@ export async function assetLedgerCheck(db: Db, now: Date = new Date()): Promise<
        where e.kind in ('disposed', 'written_off', 'found') order by e.unit_id, e.seq desc
     ), entered as (
       select l.batch_id, sum(l.qty_delta)::int as n from stock_ledger l
-       where l.batch_id in (select batch_id from stores_asset_units) and (l.reason = 'grn' or l.ref_type = 'opening_balance') group by l.batch_id
+       where l.batch_id in (select batch_id from stores_asset_units) and (l.reason = 'grn' or l.ref_type = 'opening_balance')
+         -- S4b (#1114): a written-off unit found again re-enters on an opening row naming its write-off; that is not a new unit.
+         and not (l.ref_type = 'opening_balance' and l.ref_id in (select id from stock_write_offs))
+       group by l.batch_id
     ), made as (
       select batch_id, count(*)::int as n from stores_asset_units group by batch_id
     ), full_batches as (
@@ -52,6 +55,8 @@ export async function assetLedgerCheck(db: Db, now: Date = new Date()): Promise<
       select u.batch_id, p.store_id, count(*)::int as n from stores_asset_units u join places p on p.unit_id = u.id
        left join ended x on x.unit_id = u.id
        where u.batch_id in (select batch_id from full_batches) and (x.kind is null or x.kind = 'found')
+         -- S4b (#1114): a sold unit is off the books from its write-off until the guard's exit scan writes "Disposed".
+         and not exists (select 1 from stores_scrap_sales s where s.unit_id = u.id)
        group by u.batch_id, p.store_id
     ), led as (
       select b.batch_id, b.resource_id as store_id, b.qty_on_hand as n from stock_balances b

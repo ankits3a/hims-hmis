@@ -76,6 +76,9 @@ export { QUARANTINE_STORE_CODE } from "./config";
 // STORES S2c (#1119) — goods out on a returnable gate pass: a real store, created on first use (additive).
 export { OUT_ON_PASS_STORE_CODE } from "./config";
 export { ensureOutOnPassStore } from "./stores";
+// STORES S4b (#1114) — the hold for condemned and lost tagged units: a real store, created on first use (additive).
+export { CONDEMNED_STORE_CODE } from "./config";
+export { ensureCondemnedStore } from "./stores";
 export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
 // ── PHARMACY GAP A6b — indents: a sub-store asks, the supplying store answers with a transfer ──
 export { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";
@@ -105,7 +108,7 @@ export { expiringBatches, sweepBatchExpiry, thresholdToAnnounce } from "./expiry
 /** Plan 14c, second slice — booking a count's variance with a second key. */
 export { ADJUSTMENT_REASONS, listAdjustments, postAdjustments, requestCountAdjustment } from "./adjustments";
 export type { AdjustmentReason, AdjustmentView } from "./adjustments";
-export { STOCK_ADJUSTMENT_APPROVAL_TYPE } from "./approval-types";
+export { CONDEMNATION_OWNER_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE } from "./approval-types";
 export { cancelCount, closeCount, countSheet, countVariancesBetween, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
 export type { CountFlag, CountHeader, CountReview, CountReviewLine, CountSheet, CountSheetLine, CountStatus, SubmitCountInput } from "./counts";
 export type { ExpiringBatch } from "./expiry";

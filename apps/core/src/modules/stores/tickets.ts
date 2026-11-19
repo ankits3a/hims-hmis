@@ -13,7 +13,7 @@ import {
   addIndentLinesScoped, availableQtyByItem, issueIndent, issueIndentScoped, raiseIndentScoped, sellableBatchesByItem, stampIndentApproval, stampIndentReview,
 } from "../materials";
 import { taggedBatchIds } from "./asset-rules";
-import { requireUnitsAt, unitsIntoTransit } from "./assets";
+import { requireUnitsAt, unitsIntoTransit, unitsOnTransfers } from "./assets";
 import { chainsOf, holderOf, lastCustodianOf, legsOf, returningUndelivered } from "./chain";
 import {
   STORES_INDENTS_APPROVE, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_WORK, departmentOf, holds, isStoresStore, recordAct, requireShelf, requireShelfAct,
@@ -632,6 +632,8 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
   const transferIds = rows.map((r) => r.indent.transferId).filter((x): x is string => x !== null);
   const transferRows = new Map(transferIds.length === 0 ? [] : (await db.select({ id: transfers.id, status: transfers.status, issuedBy: transfers.issuedBy })
     .from(transfers).where(inArray(transfers.id, transferIds))).map((t) => [t.id, t] as const));
+  // S4b (#1114, edge case 1): the tagged units still on their way on each open transfer, so the receiver scans what arrived.
+  const onWay = await unitsOnTransfers(db, [...transferRows.values()].filter((t) => t.status === "in_transit").map((t) => t.id));
   const chains = await chainsOf(db, ids);
   const chainPeople = [...chains.values()].flatMap((c) => [...c.handoffs.flatMap((h) => [h.fromUserId, h.toUserId]), ...c.delivery.map((d) => d.receivedBy),
     ...c.resolutions.flatMap((r) => [r.requestedBy, r.postedBy])]);
@@ -684,6 +686,10 @@ export async function ticketViews(db: Db | Tx, rows: TicketRow[], now: Date): Pr
       lines: lines.filter((l) => l.line.indentId === i.id).map((l) => ({
         lineIdx: l.line.lineIdx, itemId: l.line.itemId, itemCode: l.itemCode, itemName: l.itemName, baseUom: l.baseUom,
         qtyBase: l.line.qtyBase, qtyApproved: l.line.qtyApproved, qtyIssued: l.line.qtyIssued,
+        ...(() => {
+          const u = i.transferId === null ? [] : (onWay.get(i.transferId) ?? []).filter((x) => x.itemId === l.line.itemId);
+          return u.length === 0 ? {} : { units: u.map((x) => ({ id: x.id, tagNo: x.tagNo })) };
+        })(),
       })),
       custody: issuedBy === null || lastCustodian === null ? null : {
         holder: closed ? null : person(holderOf(issuedBy, chain)), legs: legsOf(chain), lastCustodian,

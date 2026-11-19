@@ -15,6 +15,7 @@ import {
 import { STORES_MASTERS, holds, isStoresStore, recordAct, requireShelf, requireShelfAct, toStoresStore } from "./access";
 import { carriersOf, chainOf, holderOf, lastCustodianOf, returningUndelivered } from "./chain";
 import { StoresError } from "./errors";
+import { proposeLossInTx } from "./condemnation";
 import { requireStoresItem } from "./items";
 import {
   WORDS, deliveredSentBack, deliveredShort, getTicket, keepsStore, notify, requireTicketRow, storesStoreRow, ticketViews,
@@ -550,8 +551,19 @@ export async function resolveShort(
         { authorisedBy: "stores" });
       await followTransit(tx, actor, transferId, await batchMoves(tx, shorts.map((s) => ({ lineId: s.transferLineId, qty: s.short, to: t.indent.toResourceId }))), "moved", now, now);
     } else {
-      // S4 (#1114): a tagged unit lost in transit is a loss for the committee (S4b's loss proposal), never a transit adjustment.
-      if ((await unitsInTransitOn(tx, transferId)).length > 0) throw new StoresError("unit_loss_needs_committee", "a tagged unit's loss goes to the condemnation committee");
+      // S4 (#1114): a tagged unit lost in transit is a loss for the committee, never a transit adjustment (S4b: one loss
+      // proposal per unit still in transit on this line; the committee signs it like a condemnation, reason "lost").
+      const lineItems = new Set(shorts.map((x) => x.itemId));
+      const lostUnits = (await unitsInTransitOn(tx, transferId)).filter((u) => lineItems.has(u.unit.itemId));
+      if (lostUnits.length > 0) {
+        const proposals: string[] = [];
+        for (const u of lostUnits) proposals.push(await proposeLossInTx(tx, actor, u.unit.id, note, now));
+        await recordAct(tx, actor, now, {
+          act: "resolve_short", storeId: t.indent.toResourceId, refId: indentId, after: "lost_to_committee", reason: note,
+          lines: lostUnits.map((u, i) => ({ itemId: u.unit.itemId, unitId: u.unit.id, condemnationId: proposals[i] })),
+        });
+        return null;
+      }
       const qty = shorts.reduce((a, s) => a + s.short, 0);
       ({ approvalId: approval } = await requestApproval(tx, actor, {
         typeKey: STOCK_ADJUSTMENT_APPROVAL_TYPE, subject: { type: "stores_transit_loss", id: `${indentId}:${String(input.lineIdx)}` },

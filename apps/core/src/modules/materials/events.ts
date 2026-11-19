@@ -439,7 +439,7 @@ const writeOffHeader = { writeOffId: id, writeOffNo: z.string().min(1), storeRes
 
 /** A destruction write-off asked for: the approval filed (`materials_stock_adjustment`, the medical superintendent's). */
 export const stockWriteOffRequested = defineEvent("stock_write_off.requested", MODULE, z.object({
-  ...writeOffHeader, reason: z.enum(["expiry", "damage", "recall"]), approvalId: id, lines: z.number().int().positive(),
+  ...writeOffHeader, reason: z.enum(["expiry", "damage", "recall", "condemned"]), approvalId: id, lines: z.number().int().positive(),
 }));
 /** The approval refused: nothing moved. */
 export const stockWriteOffRefused = defineEvent("stock_write_off.refused", MODULE, z.object({ ...writeOffHeader, approvalId: id }));

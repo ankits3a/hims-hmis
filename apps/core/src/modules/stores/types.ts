@@ -179,7 +179,11 @@ export type TicketView = {
   /** Decision 6: the one picker, while the claim is live (30 idle minutes). */
   claim: { by: TicketPerson; at: string; lapsesAt: string } | null;
   transfer: { id: string; status: string } | null;
-  lines: { lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null }[];
+  lines: {
+    lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null;
+    /** S4b (#1114): the tagged units still on their way on this line (the receiver scans the ones that arrived). */
+    units?: { id: string; tagNo: string }[];
+  }[];
   /** S2b (decision 7): whose hands it is in, once issued. `holder` is null once the chain closed (delivered or returned). */
   custody: TicketCustody | null;
   /** S2b (decision 8): the receiver's per-line answer, once delivered. */
@@ -268,6 +272,8 @@ export type TicketTimeline = { indentId: string; indentNo: string; steps: Timeli
 
 export type AuditPackFilter = {
   ticketId?: string; itemId?: string; personId?: string; storeId?: string; from: Date; to: Date;
+  /** S4b (#1114): one tagged unit's life: its acts, its tickets, passes, GRN line and condemnations. */
+  unitId?: string;
   /** The next page: rows with `seq` above this (the previous pack's `nextAfterSeq`). */
   afterSeq?: number;
   /** Rows per pack, at most `AUDIT_PACK_MAX_ROWS`. */
@@ -288,14 +294,14 @@ export type AuditPackRow = {
   reason: string | null;
 };
 
-export type AuditPack = { filter: { ticketId: string | null; itemId: string | null; personId: string | null; storeId: string | null; from: string; to: string }; rows: AuditPackRow[]; csv: string;
+export type AuditPack = { filter: { ticketId: string | null; itemId: string | null; personId: string | null; storeId: string | null; unitId?: string; from: string; to: string }; rows: AuditPackRow[]; csv: string;
   /** More rows matched than one pack holds: ask again with `afterSeq = nextAfterSeq`. The CSV says so on its last line. */
   truncated: boolean; nextAfterSeq: number | null };
 
 // ── S2c (#1119): gate passes ──
 export type GatePassKind = "returnable" | "non_returnable";
 export type GatePassPurpose = "repair" | "calibration" | "refill" | "loan";
-export type GatePassRefType = "supplier_return" | "write_off";
+export type GatePassRefType = "supplier_return" | "write_off" | "scrap_sale";
 /** Derived from the gate log, never stored: not out yet, out, out past its due-back day, all back, or closed. */
 export type GatePassStatus = "raised" | "out" | "overdue" | "back" | "closed";
 
