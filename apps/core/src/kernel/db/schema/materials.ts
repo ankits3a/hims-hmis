@@ -183,17 +183,27 @@ export const itemCategories = pgTable(
     nameHi: text("name_hi"),
     parentId: text("parent_id").references((): AnyPgColumn => itemCategories.id),
     active: boolean("active").notNull().default(true),
+    /**
+     * STORES S4 (#1114, ruling 0099 Q3) — what gets a QR tag. `always` (medical equipment: every unit, at any
+     * value), `from_value` (IT, furniture: a GRN line at ₹5,000 or more per unit before GST is tagged, the rest
+     * counted), `never`. A sub-category inherits its top category's rule when its own is weaker
+     * (`stores/asset-rules.ts`). Pharmacy reads neither column.
+     */
+    tagRule: text("tag_rule").notNull().default("never"),
+    /** STORES S4 — measuring and therapeutic equipment carries a calibration due date (inherited like `tag_rule`). */
+    needsCalibration: boolean("needs_calibration").notNull().default(false),
     ...auditColumns,
   },
   (t) => [
     uniqueIndex("item_categories_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("item_categories_parent_idx").on(t.parentId),
     check("item_categories_not_own_parent_ck", sql`${t.parentId} is null or ${t.parentId} <> ${t.id}`),
+    check("item_categories_tag_rule_ck", sql`${t.tagRule} in ('always', 'from_value', 'never')`),
   ],
 );
 
-/** STORES S1 — how a Stores item is kept at a department (decision 4 of the spec). `tagged` arrives with S4. */
-export const ITEM_TRACK_MODE_VALUES = ["expensed", "shelf", "durable"] as const;
+/** STORES S1 — how a Stores item is kept at a department (decision 4 of the spec). S4 (#1114) adds `tagged`: one QR per unit. */
+export const ITEM_TRACK_MODE_VALUES = ["expensed", "shelf", "durable", "tagged"] as const;
 
 export const items = pgTable(
   "items",
@@ -274,11 +284,18 @@ export const items = pgTable(
     trackMode: text("track_mode"),
     searchAliases: text("search_aliases").array().notNull().default(sql`'{}'::text[]`),
     patientBillable: boolean("patient_billable").notNull().default(false),
+    /**
+     * STORES S4 (#1114, decision 18) — regulated equipment: `radiation` (X-ray, CT: the radiation regulator's
+     * approval before a transfer or disposal) or `ultrasound` (PC-PNDT: the district authority's intimation). Set
+     * by biomedical; null for everything else, pharmacy included.
+     */
+    regulatedBy: text("regulated_by"),
     ...auditColumns,
   },
   (t) => [
     index("items_category_idx").on(t.categoryId),
-    check("items_track_mode_ck", sql`${t.trackMode} is null or ${t.trackMode} in ('expensed', 'shelf', 'durable')`),
+    check("items_track_mode_ck", sql`${t.trackMode} is null or ${t.trackMode} in ('expensed', 'shelf', 'durable', 'tagged')`),
+    check("items_regulated_by_ck", sql`${t.regulatedBy} is null or ${t.regulatedBy} in ('radiation', 'ultrasound')`),
     /** A code is read off a label and case is not identity — the `formulary_salts_name_lower_ux` precedent. */
     uniqueIndex("items_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("items_class_active_idx").on(t.class, t.active),

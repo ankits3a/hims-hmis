@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { items, storeIndents, transferLines, transfers } from "./materials";
+import { bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { grnLines, items, stockBatches, storeIndents, transferLines, transfers, vendors } from "./materials";
 import { resources } from "./resources";
 
 /**
@@ -292,6 +292,8 @@ export const storesGatePassLines = pgTable(
     lineIdx: integer("line_idx").notNull(),
     itemId: text("item_id").notNull().references(() => items.id),
     qty: integer("qty").notNull(),
+    /** STORES S4 (#1114, decision 5) — the tagged units a returnable line names (one per base unit); null for an untagged line. */
+    unitIds: text("unit_ids").array(),
   },
   (t) => [
     primaryKey({ columns: [t.passId, t.lineIdx] }),
@@ -358,5 +360,129 @@ export const storesNudges = pgTable(
   (t) => [
     primaryKey({ columns: [t.indentId, t.step] }),
     check("stores_nudges_step_ck", sql`${t.step} in ('approval', 'pick') or ${t.step} ~ '^leg:[0-9]+$'`),
+  ],
+);
+
+/**
+ * STORES S4 (#1114, decision 1) — THE TAG DECISION, one row per GRN line of a Stores item under a tag rule: the
+ * rule, the unit cost before GST, the threshold it was judged against and the result (`tagged` or `counted`). Written
+ * once, the first time Stores reads the line (`asset-rules.ts` `tagDecisionFor`), so a later change of the threshold
+ * never rewrites the past. APPEND-ONLY IN THE DATABASE (migration 0242).
+ */
+export const STORES_TAG_RESULTS = ["tagged", "counted"] as const;
+
+export const storesTagDecisions = pgTable(
+  "stores_tag_decisions",
+  {
+    grnLineId: text("grn_line_id").primaryKey().references(() => grnLines.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    rule: text("rule").notNull(),
+    unitCostPaise: bigint("unit_cost_paise", { mode: "number" }).notNull(),
+    thresholdPaise: bigint("threshold_paise", { mode: "number" }).notNull(),
+    result: text("result").notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_tag_decisions_batch_ux").on(t.batchId),
+    check("stores_tag_decisions_rule_ck", sql`${t.rule} in ('always', 'from_value')`),
+    check("stores_tag_decisions_result_ck", sql`${t.result} in ('tagged', 'counted')`),
+  ],
+);
+
+/**
+ * STORES S4 (#1114, decisions 2, 3) — ONE ROW PER PHYSICAL UNIT, written once and never changed: the item, its first
+ * tag (`AST` + yymm + 6 digits; the QR carries it and nothing else), serial, make, model, where it came from (a GRN
+ * line or the go-live opening sweep), its batch (a tagged unit is one base unit of it in `stock_ledger`), the unit
+ * cost before GST (null = "Cost unknown", an opening unit) and the supplier. Every later fact is a unit event.
+ */
+export const storesAssetUnits = pgTable(
+  "stores_asset_units",
+  {
+    id: text("id").primaryKey(),
+    itemId: text("item_id").notNull().references(() => items.id),
+    tagNo: text("tag_no").notNull(),
+    serial: text("serial"),
+    make: text("make"),
+    model: text("model"),
+    origin: text("origin").notNull(),
+    grnLineId: text("grn_line_id").references(() => grnLines.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    unitCostPaise: bigint("unit_cost_paise", { mode: "number" }),
+    supplierId: text("supplier_id").references(() => vendors.id),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_asset_units_tag_ux").on(t.tagNo),
+    uniqueIndex("stores_asset_units_serial_ux").using("btree", t.itemId, sql`lower(${t.serial})`).where(sql`${t.serial} is not null`),
+    index("stores_asset_units_batch_idx").on(t.batchId),
+    index("stores_asset_units_item_idx").on(t.itemId),
+    check("stores_asset_units_origin_ck", sql`${t.origin} in ('grn', 'opening')`),
+    check("stores_asset_units_origin_shape_ck", sql`(${t.origin} = 'grn') = (${t.grnLineId} is not null)`),
+    check("stores_asset_units_cost_ck", sql`${t.unitCostPaise} is null or ${t.unitCostPaise} >= 0`),
+  ],
+);
+
+/**
+ * STORES S4 (#1114, decision 4) — EVERY FACT ABOUT A UNIT, in `seq` order. Place, holder, status and due dates are
+ * DERIVED from these rows, never stored (programme I4): the latest place-bearing row (`store_id` set) is where the
+ * unit is. `data` carries the kind's facts (a tag number, a date, a contract, a fault's line, before and after of a
+ * correction). APPEND-ONLY IN THE DATABASE (migration 0242); a correction is a new row naming the one it corrects.
+ * A tag number is bound once in the whole house: the unique index over `tagged` / `retagged` rows.
+ */
+export const STORES_UNIT_EVENT_KINDS = [
+  "tagged", "placed", "moved", "installed", "out_on_pass", "back", "fault_reported", "repair_opened", "repair_closed", "warranty_set",
+  "contract_set", "calibrated", "device_linked", "verified_seen", "tag_voided", "retagged", "condemn_proposed", "condemn_signed",
+  "condemn_objected", "condemned", "disposed", "corrected", "loss_proposed", "written_off", "found", "seen_elsewhere", "transfer_proposed",
+  "transferred", "regulator_paper",
+] as const;
+
+export const storesAssetUnitEvents = pgTable(
+  "stores_asset_unit_events",
+  {
+    seq: bigserial("seq", { mode: "number" }),
+    id: text("id").primaryKey(),
+    unitId: text("unit_id").notNull().references(() => storesAssetUnits.id),
+    kind: text("kind").notNull(),
+    /** Set on a place-bearing row only: where the unit is from this row on. */
+    storeId: text("store_id").references(() => resources.id),
+    refType: text("ref_type"),
+    refId: text("ref_id"),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    actorId: text("actor_id").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_asset_unit_events_unit_idx").on(t.unitId, t.seq),
+    index("stores_asset_unit_events_kind_idx").on(t.kind, t.occurredAt),
+    index("stores_asset_unit_events_ref_idx").on(t.refType, t.refId),
+    uniqueIndex("stores_asset_unit_events_tag_ux").using("btree", sql`(${t.data}->>'tagNo')`).where(sql`${t.kind} in ('tagged', 'retagged')`),
+    check("stores_asset_unit_events_kind_ck", sql`${t.kind} in (${sql.raw(STORES_UNIT_EVENT_KINDS.map((k) => `'${k}'`).join(", "))})`),
+  ],
+);
+
+/**
+ * STORES S4 (#1114, decision 12) — A VERIFICATION ROUND: a `start` row and, later, a `close` row naming the same round,
+ * with what the close found (`result`: not seen, wrong place). The scans are unit events (`verified_seen`, ref = the
+ * round). APPEND-ONLY IN THE DATABASE (migration 0242).
+ */
+export const storesAssetVerifications = pgTable(
+  "stores_asset_verifications",
+  {
+    id: text("id").primaryKey(),
+    roundId: text("round_id").notNull(),
+    kind: text("kind").notNull(),
+    departmentId: text("department_id").notNull(),
+    actorId: text("actor_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    result: jsonb("result").$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    uniqueIndex("stores_asset_verifications_round_kind_ux").on(t.roundId, t.kind),
+    index("stores_asset_verifications_dept_idx").on(t.departmentId, t.at),
+    check("stores_asset_verifications_kind_ck", sql`${t.kind} in ('start', 'close')`),
+    check("stores_asset_verifications_start_ck", sql`${t.kind} <> 'start' or ${t.roundId} = ${t.id}`),
   ],
 );

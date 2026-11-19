@@ -52,9 +52,12 @@ const CENSUS: Record<string, string[]> = {
     "shelf_life_days", "storage_class", "storage_max_c", "updated_at", "updated_by", "ved_class",
     // STORES S1 (#1111) — the non-drug Stores columns; nullable or defaulted, so every pharmacy row is unchanged.
     "category_id", "patient_billable", "search_aliases", "track_mode",
+    // STORES S4a (#1114, decision 18) — regulated equipment (radiation / ultrasound); null for everything else.
+    "regulated_by",
   ].sort(),
   /** STORES S1 (#1111) — the two-level non-drug category tree (`modules/stores/items.ts` is its only writer). */
-  item_categories: ["active", "code", "created_at", "created_by", "id", "name", "name_hi", "parent_id", "updated_at", "updated_by"],
+  // STORES S4a (#1114): `needs_calibration` and `tag_rule` (always / from_value / never), defaulted, so every row is unchanged.
+  item_categories: ["active", "code", "created_at", "created_by", "id", "name", "name_hi", "needs_calibration", "parent_id", "tag_rule", "updated_at", "updated_by"],
   /** PHARMACY P6 (hygiene) — one row per governed "merge item B into item A" (`modules/materials/item-merge.ts`). */
   item_merges: [
     "approval_id", "id", "merged_at", "merged_by", "merged_item_id", "moved", "reason", "refused_at", "requested_at", "requested_by",
