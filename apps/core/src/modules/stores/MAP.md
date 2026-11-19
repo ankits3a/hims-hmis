@@ -15,7 +15,7 @@ Hand-written notes: the WHY and the traps. Signatures, routes and tables are gen
 with a module name, `kernel/`, `packages/` or `apps/`. Citations name a file and a symbol, never a line number.
 Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials core), 0081 (done-means tests).
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
-`docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b).
+`docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -163,6 +163,43 @@ department shelves every department (housekeeping included) receives from. Pharm
 - The issue voucher (`voucher.ts`, document `stores_issue_voucher`, destination `stores_a4`) is queued in
   `issueTicket`'s transaction; renderer registered in `StoresModule.onModuleInit`.
 
-## 10. Not built here
-Gate passes (#1119); tower/concierge/"Stuck" and the end-of-shift red card (S3); an offline scan queue (native
+## 10. Gate passes (S2c #1119, `gate-pass.ts`, `gate-pass-print.ts`)
+- The pass (`stores_gate_passes` + `stores_gate_pass_lines`) is written ONCE at raise; its life is the gate log
+  `stores_gate_pass_scans` (kinds `exit`, `entry`, `close`). All three tables are append-only in the database
+  (migration 0240 triggers). Status (raised / out / overdue / back / closed) is DERIVED from the log and the ledger,
+  never stored.
+- Returnable (repair, calibration, refill, loan): the guard's exit scan FEFO-picks at the source store and posts
+  source − / `OUT-ON-PASS` + (`reason = 'issue'`, `ref_type = 'gate_pass'`, `ref_id` = pass); an entry scan posts the
+  reverse (`reason = 'receive'`) for what came back, per batch in the order it went out. What is still out is READ OFF
+  THE LEDGER at OUT-ON-PASS (`outstanding`), never stored. `OUT-ON-PASS` is materials `ensureOutOnPassStore`
+  (additive, the quarantine store's shape; no keepers; not a Stores store, so no Stores picker lists it). It is a
+  Stores system store (`materials/stores.ts` `STORES_SYSTEM_STORE_CODES`): out of pharmacy's `listStores` and refused
+  on `/materials/transfers`, like QUARANTINE.
+- Non-returnable: only against a supplier return that is dispatched (or later: credited, closed) or a posted
+  write-off; its lines and party are COPIED from that record; one live (unclosed) pass per record (advisory lock).
+  The exit scan posts no ledger row. S4's scrap sale joins `ref_type` later (a new CHECK value).
+- Who: `stores.gatepass.raise` (storekeeper, materials head) raises, prints, closes; `stores.gatepass.scan`
+  (`security_guard`, the IPD train's key and title) looks up and scans. The raiser is refused as scanner (`own_pass`)
+  even when they also hold the scan grant. Close is only before the exit (`already_out` after).
+- Scan: the QR carries `MGP…` only; typed = last four digits among passes still in play (`ambiguous_code` on two).
+  Idempotency is the scan row itself: unique `(actor_id, client_key)`; a key seen before answers `duplicate: true`.
+  `scanClock` (custody.ts) keeps the phone time and dates the crossing (ledger rows included) by it only within 12 h
+  and not before the pass's raise or its last scan (an entry after its exit); otherwise server time, flagged
+  `late` / `future`; the view's scan carries `phoneAt`. A late gate scan is NOT sent to a keeper
+  to confirm (no "Late scan to confirm" for passes: the guard's log is the record).
+- Audit: each act is one `stores.act_recorded` (`raise_gate_pass`, `gate_pass_out`, `gate_pass_in`, `close_gate_pass`)
+  with `storeId` = OUT-ON-PASS, `refId` = pass, and the SOURCE store on every line; `storesAuditPack`'s store filter
+  also matches `lines @> [{storeId}]`, so a pass is found by either store.
+- Overdue: `overdueGatePasses` (returnable, out, due-back day < today IST). The raiser's "Pass overdue" notice is sent
+  by `notifyOverdueGatePasses` (idempotent source key), called from the Passes list read; S3's sweep should call it
+  on a schedule. TRAP: until S3, nobody is told unless someone opens the Passes tab.
+- Print: `stores_gate_pass` → `stores_a4`, queued in the raise's transaction; the store's browser prints the same
+  render from `GET gate-passes/:id/print` (the kernel `print/jobs/:id/document` route needs `opd.paper.reprint`,
+  which a storekeeper does not hold). If a relay is ever installed at the store, "Print pass" on a counter set to
+  `relay` mode prints nothing in the browser.
+- Web: `/stores/gate` (guard, opens on the camera, typed last four beside it, one primary Let out / Let in, partial
+  return by lowering a line) and `/stores/passes` (rows overdue first; New pass is one screen; then Print pass).
+
+## 11. Not built here
+Tower/concierge/"Stuck" and the end-of-shift red card (S3); an offline scan queue (native
 staff app); choosing which porter to send; tagged units (S4); purchasing (S5).

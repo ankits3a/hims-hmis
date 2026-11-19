@@ -71,6 +71,7 @@ import { AttendanceLinks } from "./screens/attendance-links";
 import { StoresDesk } from "./screens/stores-desk";
 import { StoresShelf } from "./screens/stores-shelf";
 import { StoresApprove, StoresPick, StoresPorter, StoresReceive, StoresTicketTimeline } from "./screens/stores-tickets";
+import { StoresGate, StoresPasses } from "./screens/stores-gate";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -272,6 +273,9 @@ const NAV: readonly NavEntry[] = [
   // STORES S1 (#1111, decision 0099) — the non-drug Stores desk, `storesManifest.menu`'s entry. A department's
   // own shelf (`/stores/shelf/$shelfId`) is opened from it; its grants are department-scoped, so it is no menu row.
   { to: "/stores", label: "nav.stores", permission: "stores.masters.manage", group: "admin" },
+  // STORES S2c (#1119) — the store's gate passes and the guard's Gate (the only screen a guard has), `storesManifest.menu`'s two rows.
+  { to: "/stores/passes", label: "nav.storesPasses", permission: "stores.gatepass.raise", group: "admin" },
+  { to: "/stores/gate", label: "nav.storesGate", permission: "stores.gatepass.scan", group: "desk" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -1892,6 +1896,9 @@ const storesPickRoute = createRoute({ getParentRoute: () => authedRoute, path: "
 // STORES S2b (#1112) — the department's Receive and the porter's card, both phone screens reached from the Now cards.
 const storesReceiveRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/receive", component: StoresReceive });
 const storesPorterRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/porter", component: StoresPorter });
+// STORES S2c (#1119) — the guard's Gate (phone) and the store's Passes; each grant is asked by the server.
+const storesGateRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/gate", component: StoresGate });
+const storesPassesRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/passes", component: StoresPasses });
 const storesTicketRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/stores/tickets/$indentId",
@@ -2005,7 +2012,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesTicketRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTicketRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

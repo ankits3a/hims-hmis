@@ -2,7 +2,9 @@ import { ApiError, api } from "./api";
 import type {
   WireImportResult, WireItemRequest, WireOverBookCard, WireReorderLine, WireShelfView, WireStoresCategory, WireStoresItem, WireStoresPickers,
   WireStoresShelf, WireStoresStore, WireTicket, WireTicketTimeline, WireCustodyResult, WirePorterRow, WireCustodyLookup, WireReturnTicket, WireLateScan,
+  WireGatePass, WireGatePassForm, WireGatePassLookup, WireGatePassScanResult,
 } from "@hmis/contracts";
+import type { WireRenderedDocument } from "./print-api";
 
 /**
  * STORES S1 (#1111) — the client of `modules/stores/stores.controller.ts`. The wire shapes live in
@@ -98,3 +100,16 @@ export const confirmLateScan = (handoffId: string): Promise<{ ok: true }> => api
 export const openTicketFor = (shelfId: string): Promise<{ ticket: WireTicket | null }> => api("GET", `/stores/shelves/${enc(shelfId)}/open-ticket`);
 export const addToOpenTicket = (indentId: string, lines: { itemId: string; qtyBase: number }[]): Promise<{ ticket: WireTicket; added: string[]; alreadyOn: string[] }> =>
   api("POST", `/stores/tickets/${enc(indentId)}/add`, { lines });
+
+/* ── S2c (#1119): gate passes — the store raises, the guard scans ── */
+export type GatePassRaise =
+  | { kind: "returnable"; storeId: string; purpose: "repair" | "calibration" | "refill" | "loan"; party: string; dueBack: string; lines: { itemId: string; qty: number }[]; note?: string | null }
+  | { kind: "non_returnable"; refType: "supplier_return" | "write_off"; refId: string; note?: string | null };
+export const listGatePasses = (): Promise<{ passes: WireGatePass[] }> => api("GET", "/stores/gate-passes");
+export const gatePassForm = (): Promise<WireGatePassForm> => api("GET", "/stores/gate-passes/form");
+export const raiseGatePass = (input: GatePassRaise): Promise<WireGatePass> => api("POST", "/stores/gate-passes", input);
+export const closeGatePass = (passId: string, reason: string): Promise<WireGatePass> => api("POST", `/stores/gate-passes/${enc(passId)}/close`, { reason });
+export const gatePassPrint = (passId: string): Promise<WireRenderedDocument | null> => api("GET", `/stores/gate-passes/${enc(passId)}/print`);
+export const gatePassLookup = (code: string): Promise<WireGatePassLookup> => api("GET", `/stores/gate-passes/lookup?code=${enc(code)}`);
+export const scanGatePass = (code: string, act: "exit" | "entry", lines?: { itemId: string; qty: number }[]): Promise<WireGatePassScanResult> =>
+  api("POST", "/stores/gate-passes/scan", { code, act, ...(lines === undefined ? {} : { lines }), clientKey: clientKey(), scannedAt: new Date().toISOString() });

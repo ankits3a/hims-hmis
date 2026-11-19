@@ -65,6 +65,8 @@ export async function storesAuditPack(db: Db, actor: Actor, filter: AuditPackFil
     conds.push(or(
       sql`${events.payload}->>'storeId' = ${s}`, sql`${events.payload}->>'fromResourceId' = ${s}`,
       sql`${events.payload}->>'toResourceId' = ${s}`, sql`${events.payload}->>'resourceId' = ${s}`,
+      // S2c (#1119): a gate pass's act sits at OUT-ON-PASS and names its source store on each line.
+      sql`${events.payload}->'lines' @> ${JSON.stringify([{ storeId: s }])}::jsonb`,
     ));
   }
   const page = await db.select().from(events).where(and(...conds)).orderBy(asc(events.seq)).limit(limit + 1);

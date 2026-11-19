@@ -123,6 +123,8 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/staff` | `apps/web/src/screens/staff-reports` |
 | `/stores` | `apps/web/src/screens/stores-desk` |
 | `/stores/approve` | `apps/web/src/screens/stores-tickets` |
+| `/stores/gate` | `apps/web/src/screens/stores-gate` |
+| `/stores/passes` | `apps/web/src/screens/stores-gate` |
 | `/stores/pick` | `apps/web/src/screens/stores-tickets` |
 | `/stores/porter` | `apps/web/src/screens/stores-tickets` |
 | `/stores/receive` | `apps/web/src/screens/stores-tickets` |

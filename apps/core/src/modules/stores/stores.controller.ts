@@ -5,11 +5,13 @@ import {
   storesReorderBody, storesRequestBody, storesResolveBody, storesShelfBody, storesStoreBody, storesUndoBody, storesUseBody,
   storesApproveBody, storesAuditQuery, storesDeclineBody, storesIssueBody, storesReviewBody, storesTicketBody,
   storesAddLinesBody, storesDeliverBody, storesHandOverBody, storesResolveShortBody, storesReturnBody, storesScanBody, storesTakeOverBody,
-  storesUndeliveredBody,
+  storesUndeliveredBody, storesGatePassBody, storesGatePassCloseBody, storesGatePassScanBody,
 } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
-import { STORES_MASTERS } from "./access";
+import { STORES_GATEPASS_RAISE, STORES_GATEPASS_SCAN, STORES_MASTERS } from "./access";
+import { closeGatePass, gatePassForm, gatePassLookup, listGatePasses, raiseGatePass, scanGatePass } from "./gate-pass";
+import { renderGatePass } from "./gate-pass-print";
 import {
   createCategory, importStoresItems, listCategories, listNewItemRequests, listStoresItems, registerStoresItem, requestNewItem,
   resolveNewItemRequest, searchStoresItems, updateStoresItem,
@@ -432,5 +434,57 @@ export class StoresController {
       res.setHeader("Content-Disposition", 'attachment; filename="stores-audit-pack.csv"');
       return pack.csv;
     } catch (e) { toHttp(e); }
+  }
+
+  /* ─────────────── S2c (#1119): gate passes — the store raises, the guard scans ─────────────── */
+
+  @Get("gate-passes")
+  @RequirePermission(STORES_GATEPASS_RAISE, "hospital")
+  async gatePasses(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { passes: await listGatePasses(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  /** The "New pass" sheet: the stores a returnable pass may leave from and the records a non-returnable one may stand on. */
+  @Get("gate-passes/form")
+  @RequirePermission(STORES_GATEPASS_RAISE, "hospital")
+  async gatePassForm(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await gatePassForm(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  /** The guard's lookup: the pass's QR (or last four digits) → the pass and whether it goes out or comes in. */
+  @Get("gate-passes/lookup")
+  @RequirePermission(STORES_GATEPASS_SCAN, "hospital")
+  async gatePassLookup(@CurrentActor() actor: Actor, @Query("code") code: unknown): Promise<unknown> {
+    const c = parsed(storesGatePassScanBody.shape.code, code);
+    try { return await gatePassLookup(this.db, actor, c, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("gate-passes")
+  @RequirePermission(STORES_GATEPASS_RAISE, "hospital")
+  async raiseGatePass(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesGatePassBody, body);
+    try { return await raiseGatePass(this.db, actor, input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("gate-passes/scan")
+  @RequirePermission(STORES_GATEPASS_SCAN, "hospital")
+  async scanGatePass(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesGatePassScanBody, body);
+    try { return await scanGatePass(this.db, actor, input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("gate-passes/:passId/close")
+  @RequirePermission(STORES_GATEPASS_RAISE, "hospital")
+  async closeGatePass(@CurrentActor() actor: Actor, @Param("passId") passId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesGatePassCloseBody, body);
+    try { return await closeGatePass(this.db, actor, parsed(id, passId), input.reason, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Decision 6: the gate pass, rendered for the store's own browser to print (the relay prints the queued job). */
+  @Get("gate-passes/:passId/print")
+  @RequirePermission(STORES_GATEPASS_RAISE, "hospital")
+  @Header("Cache-Control", "no-store")
+  async printGatePass(@Param("passId") passId: string): Promise<unknown> {
+    try { return await renderGatePass(this.db, { passId: parsed(id, passId) }); } catch (e) { toHttp(e); }
   }
 }

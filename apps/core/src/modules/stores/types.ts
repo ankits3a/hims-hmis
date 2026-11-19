@@ -290,3 +290,39 @@ export type AuditPackRow = {
 export type AuditPack = { filter: { ticketId: string | null; itemId: string | null; personId: string | null; storeId: string | null; from: string; to: string }; rows: AuditPackRow[]; csv: string;
   /** More rows matched than one pack holds: ask again with `afterSeq = nextAfterSeq`. The CSV says so on its last line. */
   truncated: boolean; nextAfterSeq: number | null };
+
+// ── S2c (#1119): gate passes ──
+export type GatePassKind = "returnable" | "non_returnable";
+export type GatePassPurpose = "repair" | "calibration" | "refill" | "loan";
+export type GatePassRefType = "supplier_return" | "write_off";
+/** Derived from the gate log, never stored: not out yet, out, out past its due-back day, all back, or closed. */
+export type GatePassStatus = "raised" | "out" | "overdue" | "back" | "closed";
+
+export type RaiseGatePassInput =
+  | { kind: "returnable"; storeId: string; purpose: GatePassPurpose; party: string; dueBack: string; lines: { itemId: string; qty: number }[]; note?: string | null }
+  | { kind: "non_returnable"; refType?: GatePassRefType | null; refId?: string | null; note?: string | null };
+
+export type GatePassScanInput = {
+  code: string; act: "exit" | "entry"; lines?: { itemId: string; qty: number }[]; clientKey?: string | null; scannedAt?: string | null;
+};
+
+export type GatePassView = {
+  id: string; passNo: string; kind: GatePassKind; purpose: GatePassPurpose | null; party: string; dueBack: string | null;
+  status: GatePassStatus;
+  store: { id: string; code: string; name: string };
+  ref: { type: GatePassRefType; id: string; no: string } | null;
+  note: string | null;
+  /** `qty` on the pass; `out` still outside (read off the ledger at OUT-ON-PASS); `back` returned. */
+  lines: { itemId: string; itemCode: string; itemName: string; baseUom: string; qty: number; out: number; back: number }[];
+  raisedBy: TicketPerson; raisedAt: string;
+  scans: { kind: "exit" | "entry" | "close"; by: TicketPerson; at: string; recordedAt: string; phoneAt: string | null; flag: ScanFlag | null; reason: string | null; lines: { itemId: string; qty: number }[] }[];
+};
+
+export type GatePassLookup = { pass: GatePassView; act: "exit" | "entry" };
+export type GatePassScanResult = { pass: GatePassView; duplicate: boolean; flag: ScanFlag | null };
+
+/** A dispatched supplier return or a posted write-off with no live pass yet: what a non-returnable pass may stand on. */
+export type GatePassSource = {
+  type: GatePassRefType; id: string; no: string; party: string; store: { id: string; code: string; name: string }; at: string;
+  lines: { itemId: string; itemName: string; qty: number }[];
+};

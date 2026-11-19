@@ -62,6 +62,17 @@ export const STORES_ERROR_CODES = [
   "already_confirmed",
   "unknown_scan",
   "already_yours",
+  // ── S2c (#1119): gate passes and the guard's scan ──
+  "pass_not_valid",
+  "already_out",
+  "own_pass",
+  "ref_required",
+  "not_out",
+  "more_than_out",
+  "due_back_required",
+  "party_required",
+  "pass_closed",
+  "already_on_pass",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -131,6 +142,16 @@ const STATUS: Record<StoresErrorCode, number> = {
   already_confirmed: 409,
   unknown_scan: 404,
   already_yours: 409,
+  pass_not_valid: 404,
+  already_out: 409,
+  own_pass: 403,
+  ref_required: 422,
+  not_out: 409,
+  more_than_out: 422,
+  due_back_required: 422,
+  party_required: 422,
+  pass_closed: 409,
+  already_on_pass: 409,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

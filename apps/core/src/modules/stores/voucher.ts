@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { items, orgDepartments, resources, storeIndentLines, storeIndents, storesTicketDetails, users } from "../../kernel/db/schema";
 import { HOSPITAL, esc, registerDocumentRenderer } from "../../kernel/printing/document-kit";
 import { qrSvg } from "../../kernel/printing/qr";
+import { renderGatePass } from "./gate-pass-print";
 import type { RenderedDocument } from "../../kernel/printing/document-kit";
 import type { Db } from "../../kernel/db/client";
 
@@ -80,5 +81,8 @@ export async function renderIssueVoucher(db: Db, params: Record<string, unknown>
 
 /** Registered by `StoresModule.onModuleInit`; exported so a suite can register it without Nest. Returns the unregister. */
 export function registerStoresPrinting(): () => void {
-  return registerDocumentRenderer("stores_issue_voucher", (db, params) => renderIssueVoucher(db, params));
+  const offVoucher = registerDocumentRenderer("stores_issue_voucher", (db, params) => renderIssueVoucher(db, params));
+  // S2c (#1119, decision 6) — the gate pass with its QR.
+  const offPass = registerDocumentRenderer("stores_gate_pass", (db, params) => renderGatePass(db, params));
+  return () => { offVoucher(); offPass(); };
 }
