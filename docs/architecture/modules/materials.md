@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/materials/`
 
 - **Depends on modules:** `formulary`
-- **Used by modules:** `opd`, `ot`, `pharmacy`
+- **Used by modules:** `opd`, `ot`, `pharmacy`, `stores`
 - **Kernel used:** `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `consignmentDeployed`
 
@@ -53,10 +53,12 @@ Source: `apps/core/src/modules/materials/`
   - `NEAR_EXPIRY_RETURN_DAYS`
   - `NON_SUPPLIER_VENDOR_CODES`
   - `OPENING_STOCK_SOURCE`
+  - `OUT_ON_PASS_STORE_CODE`
   - `PAYMENT_RUN_HORIZON_DAYS`
   - `PO_HEAD_APPROVAL_LIMIT_PAISE`
   - `PO_RECEIPT_TOLERANCE_BPS`
   - `PRICE_CHECK_THRESHOLD_BPS`
+  - `QUARANTINE_STORE_CODE`
   - `TRANSIT_STORE_CODE`
   - types: `BlacklistReason`
 - `consumption.ts`
@@ -115,13 +117,18 @@ Source: `apps/core/src/modules/materials/`
   - `runGateQc(tx: Tx, actor: Actor, grnId: string): Promise<{ status: string; verdicts: { grnLineId: string; verdict: string; rule?: RuleCode }…`
   - types: `CaptureLine`, `GrnLineRow`, `GrnRow`, `GrnWithLines`
 - `indents.ts`
+  - `addIndentLinesScoped(tx: Tx, indentId: string, lines: IndentLineInput[]): Promise<void>`
   - `cancelIndent(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<IndentView>`
   - `getIndent(db: Db | Tx, indentId: string, now: Date = new Date()): Promise<IndentView | undefined>`
   - `issueIndent(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<IndentView>`
+  - `issueIndentScoped(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<IndentView>`
   - `listIndents(db: Db | Tx, filter: { storeId?: string; status?: IndentStatus } = {}, now: Date = new Date()): Promise<IndentView[]>`
   - `raiseIndent(db: Db, actor: Actor, input: RaiseIndentInput, now: Date = new Date()): Promise<IndentView>`
+  - `raiseIndentScoped(tx: Tx, actor: Actor, input: RaiseIndentInput, now: Date, approval: IndentApprovalInput | null = null): Promise<{ indentI…`
   - `rejectIndent(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<IndentView>`
-  - types: `IndentLineInput`, `IndentStatus`, `IndentView`, `IssueIndentInput`, `RaiseIndentInput`
+  - `stampIndentApproval(tx: Tx, indentId: string, stamp: { decision: "approved" | "declined"; by: string; at: Date; reason: string | null; forH…`
+  - `stampIndentReview(tx: Tx, indentId: string, stamp: { decision: "agree" | "query"; by: string; at: Date; note: string | null }): Promise<voi…`
+  - types: `IndentApprovalInput`, `IndentLineInput`, `IndentStatus`, `IndentView`, `IssueIndentInput`, `RaiseIndentInput`
 - `item-merge.ts`
   - `executeItemMerge(db: Db, actor: Actor, mergeId: string, hooks: ItemMergeHooks = {}, now: Date = new Date()): Promise<ItemMergeView>`
   - `findDuplicateItems(db: Db, actor: Actor, opts: { limit?: number } = {}): Promise<{ suggestions: DuplicateSuggestion[]; scanned: number }>`
@@ -186,6 +193,11 @@ Source: `apps/core/src/modules/materials/`
   - `class MaterialsController`
 - `materials.module.ts`
   - `class MaterialsModule`
+- `opening-balances.ts`
+  - `OPENING_BALANCE_REF_TYPE`
+  - `hasOpeningBalance(db: Db | Tx, resourceId: string): Promise<boolean>`
+  - `postOpeningBalances(tx: Tx, actor: Actor, input: { resourceId: string; refId: string; occurredAt: Date; lines: readonly OpeningLine[] }): P…`
+  - types: `OpeningLine`
 - `payments.ts`
   - `PAYMENT_MODES: readonly PaymentMode[]`
   - `assertNotRunAuthoriser(db: Db, actor: Actor, runId: string): Promise<void>`
@@ -235,6 +247,7 @@ Source: `apps/core/src/modules/materials/`
   - `stockLevelsAt(db: Db | Tx, storeResourceId: string, itemIds: readonly string[]): Promise<Map<string, StockLevel>>`
   - `submitPurchaseOrder(db: Db, actor: Actor, poId: string, now: Date = new Date()): Promise<PoView>`
   - `updatePurchaseOrder(db: Db, actor: Actor, poId: string, patch: Partial<PoInput>, now: Date = new Date()): Promise<PoView>`
+  - `writeStockLevel(tx: Tx, actor: Actor, input: { itemId: string; storeResourceId: string } & StockLevel, now: Date = new Date()): Promise<Sto…`
   - types: `LastPurchase`, `PoFilter`, `PoInput`, `PoLineInput`, `PoLineView`, `PoStatus`, `PoSummary`, `PoView`, `StockLevel`
 - `qc.ts`
   - `daysBetween(from: string, to: string): number`
@@ -279,9 +292,11 @@ Source: `apps/core/src/modules/materials/`
   - types: `CatalogueItem`, `LossBooking`, `StockInKind`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`
 - `stores.ts`
   - `createStore(tx: Tx, actor: Actor, input: { code: string; name: string; parentId?: string | null; siteId?: string; attributes?: Record<strin…`
+  - `ensureOutOnPassStore(tx: Tx, siteId = "main"): Promise<string>`
+  - `ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string>`
   - `ensureTransitStore(tx: Tx, siteId = "main"): Promise<string>`
   - `findStoreByCode(db: Db | Tx, code: string, siteId = "main"): Promise<StoreRow | undefined>`
-  - `listStores(db: Db | Tx, opts: { siteId?: string; includeTransit?: boolean } = {}): Promise<StoreRow[]>`
+  - `listStores(db: Db | Tx, opts: { siteId?: string; includeTransit?: boolean; includeStoresDomain?: boolean; } = {}): Promise<StoreRow[]>`
   - `requireStore(db: Db | Tx, resourceId: string): Promise<StoreRow>`
   - `setStoreCustodianRoles(tx: Tx, actor: Actor, storeId: string, roleKeys: readonly string[]): Promise<void>`
   - `storeCustodianRoles(store: Pick<StoreRow, "attributes">): string[]`
@@ -341,10 +356,13 @@ Source: `apps/core/src/modules/materials/`
   - types: `CreditInput`, `DestroyCandidate`, `ExpiryPreset`, `ExpiryReport`, `ExpiryReportRow`, `ExpirySupplierRow`, `ReturnFilter`, `ReturnInput`, `ReturnLineInput`, `ReturnLineReason`, `ReturnLineView`, `ReturnPlan`, `ReturnPlanGroup`, `ReturnPlanLine`, `ReturnSource`, `ReturnStatus`, `ReturnSummary`, `ReturnVerdict`, `ReturnView`, `StandaloneCreditInput`, `StandaloneCreditKind`, `StandaloneCreditView`, `SupplierKind`
 - `transfers.ts`
   - `getTransfer(db: Db | Tx, transferId: string): Promise<TransferWithLines | undefined>`
+  - `inTransitByLine(db: Db | Tx, transferId: string, siteId?: string): Promise<Map<string, number>>`
   - `issueStock(tx: Tx, actor: Actor, input: { fromResourceId: string; toResourceId: string; lines: IssueLine[]; note?: string | null; occurredA…`
   - `listDiscrepancies(db: Db | Tx): Promise<TransferWithLines[]>`
   - `listTransfers(db: Db | Tx, filter: { status?: string; fromResourceId?: string; toResourceId?: string } = {}): Promise<TransferRow[]>`
+  - `receiveLate(tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qty: number }[], occurredAt: Date, siteId?: string, opts: { …`
   - `receiveStock(tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qtyReceived: number }[], occurredAt: Date, siteId?: string,…`
+  - `returnInTransit(tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qty: number; toResourceId?: string }[], occurredAt: Date…`
   - `transferWorklist(db: Db | Tx, filter: { storeId?: string }): Promise<{ awaiting: TransferView[]; recent: TransferView[] }>`
   - types: `IssueLine`, `TransferLineRow`, `TransferRow`, `TransferView`, `TransferWithLines`
 - `uom.ts`
@@ -393,7 +411,7 @@ Source: `apps/core/src/modules/materials/`
 
 ## Tables (`kernel/db/schema/materials.ts`)
 
-`consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendor_item_rates`, `vendors`
+`consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_categories`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendor_item_rates`, `vendors`
 
 Foreign keys into: `formulary`, `resources`
 

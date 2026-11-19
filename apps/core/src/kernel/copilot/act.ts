@@ -4,7 +4,7 @@ import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import { copilotActs } from "../db/schema";
 import { withTx } from "../db/client";
-import { toolPermitted } from "./catalog";
+import { heldAtAnyScope, toolPermitted } from "./catalog";
 import { toolHalted } from "./halt";
 import type { PermissionCheck } from "./catalog";
 import type { CopilotHaltScope } from "../db/schema";
@@ -163,7 +163,7 @@ export async function confirmProposal(deps: ConfirmDeps, actor: Actor, p: Propos
   const act = tool.act;
 
   if (toolHalted(tool, deps.halts)) return said("halted", "copilot.answer.paused");
-  if (!(await toolPermitted(tool, deps.can))) return said("notPermitted", "copilot.answer.notPermitted");
+  if (!(await toolPermitted(tool, deps.can, (perm) => heldAtAnyScope(deps.db, actor, perm)))) return said("notPermitted", "copilot.answer.notPermitted");
 
   const args = act.args.safeParse(p.args);
   if (!args.success) return said("invalid", "copilot.answer.actInvalid");
@@ -172,7 +172,7 @@ export async function confirmProposal(deps: ConfirmDeps, actor: Actor, p: Propos
   const prior = await deps.db.select({ id: copilotActs.id }).from(copilotActs).where(eq(copilotActs.confirmId, confirmId));
   if (prior.length > 0) return said("alreadyDone", "copilot.answer.actAlreadyDone");
 
-  const ctx: CopilotActCtx = { actor, subject: p.subject };
+  const ctx: CopilotActCtx = { actor, subject: p.subject, confirmId };
   try {
     const { result, actId } = await withTx(deps.db, async (tx) => {
       const refusal = await act.recheck(tx, args.data, ctx);

@@ -108,7 +108,8 @@ describe("the order envelope's parity pins", () => {
     expect(EPISODE_SERIES.lab_order).toBe("L");
     expect(EPISODE_SERIES.radiology_order).toBe("R");
     expect(Object.keys(EPISODE_SERIES).sort()).toEqual([
-      "appointment", "daycare", "debit_note", "grn", "imaging_study", "lab_order", "lab_specimen",
+      // STORES S2c (#1119): + gate_pass (`MGP`), a stores document, not an order kind's letter.
+      "appointment", "daycare", "debit_note", "gate_pass", "grn", "imaging_study", "lab_order", "lab_specimen",
       "payment_run", "pharmacy_dispense", "purchase_order", "radiology_order", "stock_recall", "stock_write_off", "store_indent",
       "supplier_bill", "supplier_credit", "supplier_payment", "supplier_return", "visit",
     ]);

@@ -1696,6 +1696,50 @@ person sees their own days — as one word a day (Present, Absent, Leave, Off, P
 a day with a single punch), without times. A request to meet about a Confirm day goes to whoever
 holds `attendance_committee`; nobody is assigned to that role by any seed.
 
+**Non-drug Stores (decision 0099, S1 #1111, 2026-11-18).** One master register for every item the
+hospital keeps that is not a medicine, the central store `GEN-MAIN` and each department's shelves, on
+the same item table and ledger as the pharmacy. `stores.masters.manage` is held by `materials_head`; the new roles
+`department_store_incharge` (`stores.shelf.read`, `stores.shelf.work`) and `department_head`
+(`stores.shelf.read`) hold nothing else. Both are assigned AT a department, never hospital-wide, and
+every shelf act is asked at the shelf's department; nobody is assigned to either by any seed.
+
+**Stores tickets (decision 0099, S2a #1112, 2026-11-18).** A department asks its supplying store on a
+ticket (the materials indent), the head of department approves or declines it, the store's keeper
+claims and issues it, and every step is an event the audit pack lists. `stores.indents.approve` is held
+by `department_head` and `medical_superintendent`; `stores.nightstore.issue` by `duty_manager` and the new
+role `nursing_supervisor`; `stores.audit.read` by `materials_head`, `medical_superintendent`, `owner` and the
+new role `stores_auditor`, and the two new roles hold nothing else. The head approves AT its department;
+the superintendent holds it hospital-wide as the stand-in ("for HOD"). Nobody is assigned to either new
+role by any seed.
+
+**Stores custody (decision 0099, S2b #1112, 2026-11-19).** Once a ticket is issued, every pair of hands it
+passes through is a row nobody can change: the porter takes it by scanning the label on the issue voucher (or
+typing its last four digits), the next porter by their own scan, and the department signs per line, accepted,
+short, wrong or damaged. Wrong and damaged goods go back to the store and are never charged; a short waits in
+transit against the last person who held it until the materials head marks it found, returned or lost (a loss
+goes to the medical superintendent's approval). `stores.carry` is held by the new role `support_staff` (the
+porter), which holds nothing else here and is assigned by no seed.
+
+**Stores gate passes (decision 0099, S2c #1119, 2026-11-19).** Nothing leaves the hospital gate without a pass.
+A returnable pass (repair, calibration, refill, loan) names the items, who they go to and the day they are due
+back; the guard's scan moves the stock to an "out on pass" store and the scan on return brings it back, so it is
+always somewhere on the books. A non-returnable pass stands only on a dispatched supplier return or a posted
+write-off. The pass prints with a QR; the guard scans it or types its last four digits. Every scan is a row nobody
+can change. `stores.gatepass.raise` is held by `storekeeper` and `materials_head`; `stores.gatepass.scan` by the
+new role `security_guard`, which holds nothing else here and is assigned by no seed. The person who raised a pass
+is refused as its scanner.
+
+**Stores control tower (decision 0099, S3 #1113, 2026-11-19).** One board shows every open ticket in one of six
+lanes (requested, approved, picking, in transit, delivered today, stuck), the clock that broke for a stuck one,
+red cards, each department's shelf word under its floor, and the day's numbers; nothing on it is stored, it is read
+from the tickets and the ledger each time. `stores.tower.read` is held by `materials_head`, `storekeeper`,
+`medical_superintendent`, `duty_manager` and `owner`, and also gives the "Stuck" card on the home screen and the
+owner's one line on the phone ("3 stuck · 4B, OT"). `stores.spend.read` adds the month's spend per department at
+cost and is held by `owner`, `materials_head` and `medical_superintendent` only; a doctor never holds it. A minute
+sweep nudges inside the hospital, once per ticket per step: the approvers at 45 minutes, the store when a pick is
+late, the porter and the store when a leg passes 30 minutes. The copilot answers "where is my ticket" and six other
+Stores questions by keyword, and its one act, a shelf's reorder, raises a ticket only after the person taps Send.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

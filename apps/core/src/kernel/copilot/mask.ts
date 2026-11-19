@@ -43,6 +43,15 @@ export type MaskedQuestion = {
  */
 const IDENTIFIER_PATTERNS: RegExp[] = [
   /**
+   * #1113 — THE STORES INDENT NUMBER, `MIN` + `YYMMDD` + a four-digit serial (`kernel/episodes/series.ts`,
+   * `store_indent`), e.g. `MIN2611190007`, or read off a label as `MIN-261119-0007`. The DIGITS are the identifier
+   * and become the placeholder; the series prefix `MIN` stays in the text, because it identifies nobody (an indent
+   * carries no patient at all) and it is what tells the phrasebook the question is about a Stores ticket
+   * ("MIN<<P1>> kahan hai?", spec #1113 decision 11). The slot holds the digits as typed; the stores tool puts the
+   * prefix back. First, so the visit-number shape below never takes the whole label.
+   */
+  /(?<=\b[Mm][Ii][Nn][\s-]?)\d{6}[\s-]?\d{4}\b/g,
+  /**
    * #1082 — THE IMAGING ACCESSION, `X` + `YYMMDD` + a four-digit serial (`kernel/episodes/series.ts`,
    * `imaging_study`), e.g. `X2611140001`. Typed whole the visit-number shape below already takes it; this
    * is for the way it is read off a label at arm's length — `X-261114-0001`, `x 261114 0001` — where the

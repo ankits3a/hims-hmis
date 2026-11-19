@@ -3,13 +3,26 @@ import { createResource, updateResource } from "../../kernel/resources/registry"
 import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { resources } from "../../kernel/db/schema";
 import { MATERIALS_RESOURCE_KINDS } from "./kinds";
-import { TRANSIT_STORE_CODE } from "./config";
+import { OUT_ON_PASS_STORE_CODE, QUARANTINE_STORE_CODE, TRANSIT_STORE_CODE } from "./config";
 import { MaterialsError } from "./errors";
 import { ResourceError } from "../../kernel/resources/errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export type StoreRow = typeof resources.$inferSelect;
+
+/**
+ * STORES (pre-merge review S1) — the system stores only the Stores intents move stock through. They carry no
+ * `domain` (they are created by materials helpers) but are Stores places all the same: out of pharmacy's lists and
+ * refused on the materials transfer route, like every `domain = 'stores'` row.
+ */
+export const STORES_SYSTEM_STORE_CODES: readonly string[] = [QUARANTINE_STORE_CODE, OUT_ON_PASS_STORE_CODE];
+
+/** A Stores place: a `domain = 'stores'` row or one of the Stores system stores. */
+export function isStoresPlace(row: { code: string; attributes: unknown }): boolean {
+  return ((row.attributes ?? {}) as Record<string, unknown>).domain === "stores"
+    || STORES_SYSTEM_STORE_CODES.some((c) => c.toLowerCase() === row.code.toLowerCase());
+}
 
 /**
  * PLAN 14 T5 / DD2, DD9 — stock LOCATIONS, which are registry resources of kind `store`.
@@ -97,6 +110,50 @@ export async function setStoreCustodianRoles(tx: Tx, actor: Actor, storeId: stri
  * `INSERT … ON CONFLICT DO NOTHING` cold-start shape from `nextEpisodeNo`, expressed against a
  * function that does more than an insert.
  */
+/**
+ * STORES S2b (#1112) — the quarantine store, created on first use in a savepoint exactly as `ensureTransitStore`
+ * is (a concurrent first create rolls back to the savepoint and the re-read finds the winner). It names no
+ * keepers: whoever moves stock into it has been asked their own grant by the calling intent.
+ */
+export async function ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string> {
+  const found = await findStoreByCode(tx, QUARANTINE_STORE_CODE, siteId);
+  if (found !== undefined) return found.id;
+  try {
+    const { resourceId } = await tx.transaction(async (sp) =>
+      createStore(sp, { type: "system", id: "materials-quarantine" }, {
+        code: QUARANTINE_STORE_CODE, name: "Quarantine", siteId,
+        attributes: { system: true, reason: "damaged or defective goods awaiting a supplier return" },
+      }));
+    return resourceId;
+  } catch (e) {
+    const again = await findStoreByCode(tx, QUARANTINE_STORE_CODE, siteId);
+    if (again !== undefined) return again.id;
+    throw e;
+  }
+}
+
+/**
+ * STORES S2c (#1119, decision 1) — the per-site `OUT-ON-PASS` store, created on first use in a savepoint exactly as
+ * `ensureQuarantineStore` is. It names no keepers: only the guard's scan of a returnable gate pass moves stock into
+ * or out of it, and that intent has asked the guard's own grant.
+ */
+export async function ensureOutOnPassStore(tx: Tx, siteId = "main"): Promise<string> {
+  const found = await findStoreByCode(tx, OUT_ON_PASS_STORE_CODE, siteId);
+  if (found !== undefined) return found.id;
+  try {
+    const { resourceId } = await tx.transaction(async (sp) =>
+      createStore(sp, { type: "system", id: "materials-out-on-pass" }, {
+        code: OUT_ON_PASS_STORE_CODE, name: "Out on pass", siteId,
+        attributes: { system: true, reason: "goods out of the hospital on a returnable gate pass" },
+      }));
+    return resourceId;
+  } catch (e) {
+    const again = await findStoreByCode(tx, OUT_ON_PASS_STORE_CODE, siteId);
+    if (again !== undefined) return again.id;
+    throw e;
+  }
+}
+
 export async function ensureTransitStore(tx: Tx, siteId = "main"): Promise<string> {
   const found = await findStoreByCode(tx, TRANSIT_STORE_CODE, siteId);
   if (found !== undefined) return found.id;
@@ -204,12 +261,24 @@ export async function requireStore(db: Db | Tx, resourceId: string): Promise<Sto
  */
 export async function listStores(
   db: Db | Tx,
-  opts: { siteId?: string; includeTransit?: boolean } = {},
+  opts: {
+    siteId?: string; includeTransit?: boolean;
+    /**
+     * STORES (pre-merge review S1) — the non-drug Stores places (`attributes.domain = 'stores'`: the central and
+     * night stores and every department shelf) are NOT pharmacy places, so every pharmacy picker and list leaves
+     * them out by default. Only the Stores module asks for them.
+     */
+    includeStoresDomain?: boolean;
+  } = {},
 ): Promise<StoreRow[]> {
   const clauses = [eq(resources.kind, "store"), ne(resources.status, "retired")];
   if (opts.siteId !== undefined) clauses.push(eq(resources.siteId, opts.siteId));
   if (opts.includeTransit !== true) {
     clauses.push(sql`lower(${resources.code}) <> ${TRANSIT_STORE_CODE.toLowerCase()}`);
+  }
+  if (opts.includeStoresDomain !== true) {
+    clauses.push(sql`coalesce(${resources.attributes}->>'domain', '') <> 'stores'`);
+    clauses.push(sql`lower(${resources.code}) not in (${sql.join(STORES_SYSTEM_STORE_CODES.map((c) => sql`${c.toLowerCase()}`), sql`, `)})`);
   }
   return db.select().from(resources).where(and(...clauses)).orderBy(asc(resources.code));
 }

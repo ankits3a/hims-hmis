@@ -814,6 +814,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "owner",
     permissions: [
+      // STORES S2a (#1112, decision 16) — the owner reads the Stores audit pack (every movement and signature).
+      "stores.audit.read",
+      // STORES S3 (#1113, decisions 5, 15, 16) — the control tower (its phone line "3 stuck · 4B, OT") and its spend tile.
+      "stores.tower.read", "stores.spend.read",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -962,6 +966,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // STORES S2a (#1112, decision 3) — the HOD's STAND-IN for a ticket: held at hospital scope, so it approves for an
+      // HOD on leave or a requester who is the department's only approver; the timeline reads "for HOD". And the audit pack.
+      "stores.indents.approve", "stores.audit.read",
+      // STORES S3 (#1113, decisions 5, 15) — the control tower and its spend tile.
+      "stores.tower.read", "stores.spend.read",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1106,7 +1115,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // the owner, the MS and the copilot steward.
   {
     roleKey: "duty_manager",
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read"],
+    // STORES S2a (#1112, decision 5) — a keeper of the night store (`GEN-NIGHT` custodianRoles): issues an emergency
+    // ticket outside the central store's hours, through `issueIndentScoped`; no `materials.*` string.
+    // STORES S3 (#1113, decisions 13, 15) — the control tower and its "Stuck" Now card (an approval past 60 min is theirs).
+    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "stores.nightstore.issue", "stores.tower.read"],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1318,6 +1330,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D3 — the head of stores keeps the fridges' master (which store, what range) and closes
       // an excursion: release each held batch with its reason, or write it off. DEFAULT — owner may change.
       "pharmacy.coldchain.manage",
+      // STORES S1 (#1111, decision 0099) — the non-drug Stores masters: categories, items, stores, shelves,
+      // par and the new-item queue. The spec's own words: "The materials head holds stores.masters.manage."
+      "stores.masters.manage",
+      // STORES S2a (#1112, decision 16) — the audit pack.
+      "stores.audit.read",
+      // STORES S2c (#1119, decision 3) — raise, print and close a gate pass (never scan one: the guard does).
+      "stores.gatepass.raise",
+      // STORES S3 (#1113, decisions 5, 13, 15) — the control tower, its "Stuck" Now card, and the month's spend tile.
+      "stores.tower.read", "stores.spend.read",
     ],
   },
   {
@@ -1340,6 +1361,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D3 — the storekeeper reads the main store's fridge on the same schedule as the counter's.
       // DEFAULT — owner may change.
       "pharmacy.coldchain.record",
+      // STORES S2c (#1119, decision 3) — raise, print and close a gate pass for what leaves the store.
+      "stores.gatepass.raise",
+      // STORES S3 (#1113, decisions 13, 15) — the control tower and its "Stuck" Now card (a pick past its clock is the store's).
+      // NOT `stores.spend.read`: money is the owner's, the materials head's and the superintendent's (decision 5).
+      "stores.tower.read",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1992,6 +2018,39 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "pharmacology_reviewer",
     permissions: ["formulary.read", "formulary.crk.sign"],
   },
+  /**
+   * STORES S1 (#1111, decision 0099) — THE NON-DRUG STORES. Two new DEPARTMENT-SCOPED roles: a holder is
+   * assigned at an org department (`scope_type = 'department'`), and every shelf act is asked at the
+   * shelf's department, so the in-charge of Housekeeping cannot touch Laundry's shelf. Neither holds a
+   * `materials.*` string (the materials keeper check ignores scope). NOBODY is assigned by any seed.
+   *   · `department_store_incharge` — receives at, uses from, checks and drafts a reorder for the shelf.
+   *   · `department_head` — reads the shelf (and approves the department's tickets in S2).
+   * The materials head keeps the Stores masters (`stores.masters.manage`, in its own row above).
+   */
+  { roleKey: "department_store_incharge", permissions: ["stores.shelf.read", "stores.shelf.work"] },
+  { roleKey: "department_head", permissions: ["stores.shelf.read", "stores.indents.approve"] },
+  /**
+   * STORES S2a (#1112, decisions 3, 5, 16). `department_head` above approves its department's tickets
+   * (`stores.indents.approve`, asked AT the department). Two more roles, assigned by nobody:
+   *   · `nursing_supervisor` — the duty nursing supervisor, a keeper of the night store (`stores.nightstore.issue`).
+   *     The IPD train (#967) carries the same key and title; whichever lands second drops its copy at rebase.
+   *   · `stores_auditor` — the internal auditor's seat: reads the Stores audit pack and nothing else.
+   */
+  { roleKey: "nursing_supervisor", permissions: ["stores.nightstore.issue"] },
+  { roleKey: "stores_auditor", permissions: ["stores.audit.read"] },
+  /**
+   * STORES S2b (#1112, decision 7) — the porter: `support_staff`, the IPD train's (#967) key and title, whichever lands
+   * second merges its grants into this row at rebase. Here it holds only `stores.carry`: take custody of an issued
+   * ticket by scanning its label (or typing its last four digits), hand it on, bring it back undelivered. Assigned by nobody.
+   */
+  { roleKey: "support_staff", permissions: ["stores.carry"] },
+  /**
+   * STORES S2c (#1119, decision 3) — the guard at the hospital gate: `security_guard`, the IPD train's (#967) key and
+   * title, whichever lands second merges its grants into this row at rebase. Here it holds only `stores.gatepass.scan`:
+   * scan a gate pass out and in. It never raises one, and the person who raised a pass is refused as its scanner.
+   * Assigned by nobody.
+   */
+  { roleKey: "security_guard", permissions: ["stores.gatepass.scan"] },
 ];
 
 /**
@@ -2254,6 +2313,15 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
   admin: "Administrator",
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
+  // STORES S1 (#1111) — both assigned AT a department, never hospital-wide.
+  department_store_incharge: "Department Store In-charge (receives, uses and counts the department's own Stores shelf)",
+  department_head: "Head of Department (reads the department's Stores shelf; approves its requests from S2)",
+  nursing_supervisor: "Nursing Supervisor (shift in-charge: the ward's nurses, early-warning escalations, family callbacks)",
+  stores_auditor: "Stores Auditor (internal audit: reads the Stores audit pack, changes nothing)",
+  // STORES S2b (#1112) — the IPD train's exact key and title.
+  support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
+  // STORES S2c (#1119) — the IPD train's exact key and title.
+  security_guard: "Security Guard (scans attendant and visitor passes at the ward door)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

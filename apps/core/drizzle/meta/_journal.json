@@ -1653,6 +1653,41 @@
       "when": 1794746720530,
       "tag": "0236_imaging_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1795037139263,
+      "tag": "0237_stores_s1",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1795040536949,
+      "tag": "0238_stores_s2a",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1795045262421,
+      "tag": "0239_stores_s2b",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1795051925414,
+      "tag": "0240_stores_s2c",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1795058606528,
+      "tag": "0241_stores_s3",
+      "breakpoints": true
     }
   ]
 }

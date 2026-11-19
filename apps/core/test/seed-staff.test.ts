@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the forty-eight keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the fifty-two keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
@@ -153,6 +153,8 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "biomedical_engineer",
       "cashier",
       "daycare_coordinator",
+      "department_head",
+      "department_store_incharge",
       "display",
       "doctor",
       "duty_manager",
@@ -190,6 +192,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "modality_bridge", // PLAN 18b T1 — the machine account that pulls the modality worklist
       "mrd_officer",
       "nurse",
+      "nursing_supervisor", // STORES S2a (#1112) — a keeper of the night store (the IPD train's key and title)
       "opd_admin",
       "opd_scribe", // FD-30 — the OPD-door transcription seat (owner ruling 2026-09-12)
       "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
@@ -237,12 +240,15 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // 18-S RS8b — the resident, by the same derivation (ROLE_MODEL).
       "radiology_resident",
       "recovery_nurse",
+      "security_guard", // STORES S2c (#1119) — the guard at the gate (the IPD train's key and title)
       // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14) — `staff_auditor` joins by DERIVATION: this
       // list is `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`, sorted, so a new model role
       // arrives here for free and this census is where it announces itself. It is the FIFTH place a
       // role registration has to be admitted, and the one a file-scoped grep missed.
       "staff_auditor",
       "storekeeper",
+      "stores_auditor", // STORES S2a (#1112) — the internal auditor's seat: the Stores audit pack only
+      "support_staff", // STORES S2b (#1112) — the porter (the IPD train's key and title)
       "surgeon",
       // Group A, 2026-08-26 — three roles for permissions that had guarded live routes with no
       // holder at all. This list is DERIVED (ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS),
@@ -255,7 +261,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(48); // CRK FORMULARY (#618, decision 0053): 47 -> 48 with `pharmacology_reviewer`; COPILOT LEDGER E0.1: 46 -> 47 with `quality_manager`; STAFF ATTENDANCE (owner 2026-10-09): 45 -> 46 with `attendance_committee`; CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
+    expect(KNOWN_ROLE_KEYS).toHaveLength(54); // STORES S2c (#1119): 53 -> 54 with `security_guard`; STORES S2b (#1112): 52 -> 53 with `support_staff`; STORES S2a (#1112): 50 -> 52 with `nursing_supervisor` and `stores_auditor`; STORES S1 (#1111, decision 0099): 48 -> 50 with `department_head` and `department_store_incharge`; CRK FORMULARY (#618, decision 0053): 47 -> 48 with `pharmacology_reviewer`; COPILOT LEDGER E0.1: 46 -> 47 with `quality_manager`; STAFF ATTENDANCE (owner 2026-10-09): 45 -> 46 with `attendance_committee`; CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

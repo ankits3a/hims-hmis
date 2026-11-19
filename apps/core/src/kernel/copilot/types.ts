@@ -134,6 +134,15 @@ export type CopilotToolDecl = {
    * is null.
    */
   alsoAdmits?: readonly string[];
+  /**
+   * #1113 — THE GATE IS HELD AT SOME SCOPE, AND THE TOOL NARROWS IT. For a tool whose permission is granted AT A
+   * DEPARTMENT (a ward's in-charge holds `stores.shelf.read` at their department only, never hospital-wide), the
+   * hospital-scope gate above would refuse every rightful asker. With `scopedGate`, the runner admits an asker who
+   * holds `permission` (or an `alsoAdmits`) through ANY assignment — the desk's `waitingSelfGated` precedent
+   * (decision 0069) — and the tool itself answers only inside the departments that grant it. A holder at no scope
+   * at all is still refused before the tool runs.
+   */
+  scopedGate?: true;
   /** Whether the question must name somebody. See the type header. */
   needsSubject: boolean;
   /**
@@ -157,8 +166,12 @@ export type CopilotToolDecl = {
   act?: CopilotActSpec;
 };
 
-/** What an act's steps are handed at confirm: the confirming human and the signed subject. */
-export type CopilotActCtx = { actor: Actor; subject: string | null };
+/**
+ * What an act's steps are handed at confirm: the confirming human and the signed subject. #1113: and the confirm's
+ * id, the key of the `copilot_acts` row written beside the act, so a module's own audit event can name the ledger
+ * row it belongs to. Absent in older test contexts.
+ */
+export type CopilotActCtx = { actor: Actor; subject: string | null; confirmId?: string };
 
 /** What `apply` hands back: the answer for the clerk and where the write landed, for `copilot_acts`. */
 export type CopilotActResult = {

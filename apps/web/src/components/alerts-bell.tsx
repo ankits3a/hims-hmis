@@ -56,6 +56,9 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   lab_critical_call: () => ({ to: "/my-day", search: {} }),
   // Rungs 1–3 (unit head, duty RMO, HOD) are not the ordering doctor: the Doctor Desk shows the unit's criticals.
   lab_critical_call_unit: () => ({ to: "/doctor-desk", search: {} }),
+  // Stores UX pass (walk finding 5/6) — a Stores ticket notice (Approved, On the way, Delivered, To approve) opens the
+  // ticket's timeline, whose header links the step this reader can act on.
+  store_indent: (refId) => ({ to: `/stores/tickets/${encodeURIComponent(refId)}`, search: {} }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {

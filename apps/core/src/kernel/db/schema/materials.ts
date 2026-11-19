@@ -168,6 +168,33 @@ export const LEDGER_REASON_VALUES = ["grn", "issue", "receive", "consume", "retu
  * `shelf_life_days` is nullable and its absence is a FACT: a stationery item has no shelf life, and
  * DD8 rule 5's `min(6 months, 75% of shelf_life)` falls back to the six-month bound when it is null.
  */
+/**
+ * STORES S1 (#1111, decision 0099) — THE NON-DRUG CATEGORY TREE. Two levels: a top category (parent
+ * null) and its sub-categories. Every Stores item names one (`items.category_id`); pharmacy items name
+ * none, so the column is nullable and every pharmacy row is unchanged. The depth rule (a sub-category
+ * never has children) lives in `modules/stores/items.ts`, which is the only writer.
+ */
+export const itemCategories = pgTable(
+  "item_categories",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    nameHi: text("name_hi"),
+    parentId: text("parent_id").references((): AnyPgColumn => itemCategories.id),
+    active: boolean("active").notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("item_categories_code_lower_ux").using("btree", sql`lower(${t.code})`),
+    index("item_categories_parent_idx").on(t.parentId),
+    check("item_categories_not_own_parent_ck", sql`${t.parentId} is null or ${t.parentId} <> ${t.id}`),
+  ],
+);
+
+/** STORES S1 — how a Stores item is kept at a department (decision 4 of the spec). `tagged` arrives with S4. */
+export const ITEM_TRACK_MODE_VALUES = ["expensed", "shelf", "durable"] as const;
+
 export const items = pgTable(
   "items",
   {
@@ -236,9 +263,22 @@ export const items = pgTable(
      */
     mergedIntoItemId: text("merged_into_item_id").references((): AnyPgColumn => items.id),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
+    /**
+     * STORES S1 (#1111) — four columns, all nullable or defaulted so every pharmacy row is unchanged.
+     * `category_id` and `track_mode` are set on every Stores item and on no pharmacy item;
+     * `search_aliases` holds the Hindi, Hinglish and local names a request search matches
+     * ("kachra dabba"); `patient_billable` marks an item that can appear on a patient's bill, which
+     * Stores refuses (ruling 0099 Q1).
+     */
+    categoryId: text("category_id").references(() => itemCategories.id),
+    trackMode: text("track_mode"),
+    searchAliases: text("search_aliases").array().notNull().default(sql`'{}'::text[]`),
+    patientBillable: boolean("patient_billable").notNull().default(false),
     ...auditColumns,
   },
   (t) => [
+    index("items_category_idx").on(t.categoryId),
+    check("items_track_mode_ck", sql`${t.trackMode} is null or ${t.trackMode} in ('expensed', 'shelf', 'durable')`),
     /** A code is read off a label and case is not identity — the `formulary_salts_name_lower_ux` precedent. */
     uniqueIndex("items_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("items_class_active_idx").on(t.class, t.active),
@@ -760,7 +800,9 @@ export const transfers = pgTable(
   (t) => [
     index("transfers_from_idx").on(t.fromResourceId, t.status),
     index("transfers_to_idx").on(t.toResourceId, t.status),
-    check("transfers_status_ck", sql`${t.status} in ('in_transit', 'received', 'discrepancy')`),
+    // STORES S2b (#1112, decision 8) — `returned`: brought back undelivered, the whole of it IN-TRANSIT → source,
+    // signed by the source's keeper (`returnInTransit`). No pharmacy path writes it.
+    check("transfers_status_ck", sql`${t.status} in ('in_transit', 'received', 'discrepancy', 'returned')`),
   ],
 );
 
@@ -808,6 +850,26 @@ export const storeIndents = pgTable(
     rejectReason: text("reject_reason"),
     cancelReason: text("cancel_reason"),
     transferId: text("transfer_id").references(() => transfers.id),
+    /**
+     * STORES S2a (#1112, decision 1) — THE APPROVAL STAMPS, all nullable or defaulted false: a pharmacy indent
+     * carries none, and "no stamp" means "no approval needed", exactly as before S2. Fixed at raise:
+     * `approval_required` (a Stores ticket; the HOD answers it) and `issue_before_approval` (an emergency: the
+     * store may issue first, the HOD reviews afterwards). The decision (`approved` | `declined`), who, when, the
+     * decline's reason and whether the medical superintendent answered as the HOD's stand-in are WRITE-ONCE:
+     * the migration's trigger refuses changing or clearing them, and an indent is never deleted.
+     */
+    approvalRequired: boolean("approval_required").notNull().default(false),
+    issueBeforeApproval: boolean("issue_before_approval").notNull().default(false),
+    approvalDecision: text("approval_decision"),
+    approvalBy: text("approval_by"),
+    approvalAt: timestamp("approval_at", { withTimezone: true }),
+    approvalReason: text("approval_reason"),
+    approvalForHod: boolean("approval_for_hod"),
+    /** Decision 4: the HOD's look at an emergency the store issued first ("Agree" | "Query"). Write-once. */
+    reviewDecision: text("review_decision"),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewNote: text("review_note"),
   },
   (t) => [
     uniqueIndex("store_indents_indent_no_ux").on(t.indentNo),
@@ -819,6 +881,13 @@ export const storeIndents = pgTable(
     check("store_indents_rejected_ck", sql`${t.status} <> 'rejected' or ${t.rejectReason} is not null`),
     check("store_indents_cancelled_ck", sql`${t.status} <> 'cancelled' or ${t.cancelReason} is not null`),
     check("store_indents_decided_ck", sql`(${t.status} = 'requested') = (${t.decidedAt} is null) and (${t.decidedAt} is null) = (${t.decidedBy} is null)`),
+    check("store_indents_approval_ck", sql`(${t.approvalDecision} is null or (${t.approvalRequired} and ${t.approvalDecision} in ('approved', 'declined')))
+      and (${t.approvalDecision} is null) = (${t.approvalBy} is null) and (${t.approvalDecision} is null) = (${t.approvalAt} is null)
+      and (${t.approvalDecision} is null) = (${t.approvalForHod} is null)
+      and (${t.approvalDecision} is distinct from 'declined' or ${t.approvalReason} is not null)
+      and (not ${t.issueBeforeApproval} or ${t.approvalRequired})`),
+    check("store_indents_review_ck", sql`(${t.reviewDecision} is null or (${t.issueBeforeApproval} and ${t.reviewDecision} in ('agree', 'query')))
+      and (${t.reviewDecision} is null) = (${t.reviewedBy} is null) and (${t.reviewDecision} is null) = (${t.reviewedAt} is null)`),
   ],
 );
 
@@ -832,11 +901,14 @@ export const storeIndentLines = pgTable(
     itemId: text("item_id").notNull().references(() => items.id),
     qtyBase: integer("qty_base").notNull(),
     qtyIssued: integer("qty_issued"),
+    /** STORES S2a (#1112, decision 3) — the HOD may approve less than asked, never more. Null: approved as asked (or no approval). Write-once. */
+    qtyApproved: integer("qty_approved"),
   },
   (t) => [
     uniqueIndex("store_indent_lines_idx_ux").on(t.indentId, t.lineIdx),
     uniqueIndex("store_indent_lines_item_ux").on(t.indentId, t.itemId),
     check("store_indent_lines_qty_ck", sql`${t.qtyBase} > 0 and (${t.qtyIssued} is null or ${t.qtyIssued} >= 0)`),
+    check("store_indent_lines_approved_ck", sql`${t.qtyApproved} is null or (${t.qtyApproved} >= 0 and ${t.qtyApproved} <= ${t.qtyBase})`),
   ],
 );
 

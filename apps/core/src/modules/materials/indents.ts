@@ -110,6 +110,33 @@ const headerOf = (r: typeof storeIndents.$inferSelect): { indentId: string; inde
 /** The requesting store asks the supplying one. `from` asks, `to` supplies. */
 export async function raiseIndent(db: Db, actor: Actor, input: RaiseIndentInput, now: Date = new Date()): Promise<IndentView> {
   const userId = await requirePerm(db, actor, STOCK_RECEIVE, "raising an indent");
+  const { indentId } = await withTx(db, (tx) => insertIndent(tx, actor, userId, input, now, null));
+  return (await getIndent(db, indentId))!;
+}
+
+/**
+ * STORES S2a (#1112, decision 1) — what a Stores ticket fixes at raise: the HOD answers it, and an
+ * emergency may be issued before the answer (`issueBeforeApproval`).
+ */
+export type IndentApprovalInput = { issueBeforeApproval: boolean };
+
+/**
+ * STORES S2a (#1112) — THE CALLER-AUTHORISED TWIN OF `raiseIndent`: no `requirePerm`, because the Stores
+ * intent (`stores/tickets.ts` `raiseTicket`) has already asked the department-scoped shelf grant, and
+ * department roles hold no `materials.*` string. Everything else is `raiseIndent`'s (the requesting store's
+ * keepers, the items, the number, the event), run in the CALLER's transaction so the ticket's own row lands
+ * with it. `raiseIndent` itself is unchanged.
+ */
+export async function raiseIndentScoped(
+  tx: Tx, actor: Actor, input: RaiseIndentInput, now: Date, approval: IndentApprovalInput | null = null,
+): Promise<{ indentId: string; indentNo: string }> {
+  if (actor.type !== "user") throw new MaterialsError("permission_denied", "raising an indent needs a person");
+  return insertIndent(tx, actor, actor.id, input, now, approval);
+}
+
+async function insertIndent(
+  tx: Tx, actor: Actor, userId: string, input: RaiseIndentInput, now: Date, approval: IndentApprovalInput | null,
+): Promise<{ indentId: string; indentNo: string }> {
   if (input.lines.length === 0) bad("an indent asks for at least one item");
   if (input.fromResourceId === input.toResourceId) bad("a store cannot indent on itself");
   const seen = new Set<string>();
@@ -118,31 +145,52 @@ export async function raiseIndent(db: Db, actor: Actor, input: RaiseIndentInput,
     if (seen.has(l.itemId)) bad("an item appears once on an indent — add the quantities together", { itemId: l.itemId });
     seen.add(l.itemId);
   }
-  const id = await withTx(db, async (tx) => {
-    const from = await requireStore(tx, input.fromResourceId);
-    await requireStore(tx, input.toResourceId);
-    await requireKeeper(tx, userId, from, "raise its indents");
-    const known = await tx.select({ id: items.id }).from(items).where(inArray(items.id, [...seen]));
-    const missing = [...seen].filter((i) => !known.some((k) => k.id === i));
-    if (missing.length > 0) throw new MaterialsError("unknown_item", `no such item: ${missing.join(", ")}`, { itemIds: missing });
-    await assertNotMerged(tx, [...seen], "indenting");
+  const from = await requireStore(tx, input.fromResourceId);
+  await requireStore(tx, input.toResourceId);
+  await requireKeeper(tx, userId, from, "raise its indents");
+  const known = await tx.select({ id: items.id }).from(items).where(inArray(items.id, [...seen]));
+  const missing = [...seen].filter((i) => !known.some((k) => k.id === i));
+  if (missing.length > 0) throw new MaterialsError("unknown_item", `no such item: ${missing.join(", ")}`, { itemIds: missing });
+  await assertNotMerged(tx, [...seen], "indenting");
 
-    const indentId = newId();
-    const indentNo = await nextEpisodeNo(tx, "store_indent", istDay(now));
-    await tx.insert(storeIndents).values({
-      id: indentId, indentNo, fromResourceId: input.fromResourceId, toResourceId: input.toResourceId, status: "requested",
-      note: cleanText(input.note), requestedBy: userId, requestedAt: now,
-    });
-    await tx.insert(storeIndentLines).values(input.lines.map((l, lineIdx) => ({
-      id: newId(), indentId, lineIdx, itemId: l.itemId, qtyBase: l.qtyBase, qtyIssued: null,
-    })));
-    await appendEvent(tx, materialIndentRaised.make({
-      actor, occurredAt: now, correlationId: indentId,
-      payload: { indentId, indentNo, fromResourceId: input.fromResourceId, toResourceId: input.toResourceId, lines: input.lines.map((l) => ({ itemId: l.itemId, qtyBase: l.qtyBase })) },
-    }));
-    return indentId;
+  const indentId = newId();
+  const indentNo = await nextEpisodeNo(tx, "store_indent", istDay(now));
+  await tx.insert(storeIndents).values({
+    id: indentId, indentNo, fromResourceId: input.fromResourceId, toResourceId: input.toResourceId, status: "requested",
+    note: cleanText(input.note), requestedBy: userId, requestedAt: now,
+    ...(approval === null ? {} : { approvalRequired: true, issueBeforeApproval: approval.issueBeforeApproval }),
   });
-  return (await getIndent(db, id))!;
+  await tx.insert(storeIndentLines).values(input.lines.map((l, lineIdx) => ({
+    id: newId(), indentId, lineIdx, itemId: l.itemId, qtyBase: l.qtyBase, qtyIssued: null,
+  })));
+  await appendEvent(tx, materialIndentRaised.make({
+    actor, occurredAt: now, correlationId: indentId,
+    payload: { indentId, indentNo, fromResourceId: input.fromResourceId, toResourceId: input.toResourceId, lines: input.lines.map((l) => ({ itemId: l.itemId, qtyBase: l.qtyBase })) },
+  }));
+  return { indentId, indentNo };
+}
+
+/**
+ * STORES S2b (#1112, the raise sheet's "Add to open ticket?") — new lines on an indent still `requested`, in the
+ * CALLER's transaction; caller-authorised like `raiseIndentScoped` (the Stores intent asked the shelf grant). Only
+ * new items: an item is once on an indent, and a line already there is never changed (0155's line guard). The
+ * indent row itself is untouched, so no guard transition is needed.
+ */
+export async function addIndentLinesScoped(tx: Tx, indentId: string, lines: IndentLineInput[]): Promise<void> {
+  const indent = await lockRequested(tx, indentId);
+  const existing = await tx.select({ itemId: storeIndentLines.itemId, lineIdx: storeIndentLines.lineIdx }).from(storeIndentLines)
+    .where(eq(storeIndentLines.indentId, indent.id));
+  const seen = new Set(existing.map((l) => l.itemId));
+  for (const l of lines) {
+    if (!Number.isSafeInteger(l.qtyBase) || l.qtyBase <= 0) bad("each quantity is a whole number above zero, in base units", { itemId: l.itemId });
+    if (seen.has(l.itemId)) bad("an item appears once on an indent — add the quantities together", { itemId: l.itemId });
+    seen.add(l.itemId);
+  }
+  await assertNotMerged(tx, lines.map((l) => l.itemId), "indenting");
+  const next = existing.reduce((m, l) => Math.max(m, l.lineIdx), -1) + 1;
+  await tx.insert(storeIndentLines).values(lines.map((l, k) => ({
+    id: newId(), indentId: indent.id, lineIdx: next + k, itemId: l.itemId, qtyBase: l.qtyBase, qtyIssued: null,
+  })));
 }
 
 /**
@@ -155,43 +203,72 @@ export async function issueIndent(
   db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date(),
 ): Promise<IndentView> {
   const userId = await requirePerm(db, actor, STOCK_ISSUE, "issuing an indent");
-  await withTx(db, async (tx) => {
-    const indent = await lockRequested(tx, indentId);
-    await requireKeeper(tx, userId, await requireStore(tx, indent.toResourceId), "issue from it");
-    const lines = await tx.select().from(storeIndentLines).where(eq(storeIndentLines.indentId, indent.id)).orderBy(asc(storeIndentLines.lineIdx));
-
-    const given = new Map<number, number>();
-    for (const g of input.lines ?? []) {
-      const line = lines.find((l) => l.lineIdx === g.lineIdx);
-      if (line === undefined) bad(`indent ${indent.indentNo} has no line ${String(g.lineIdx)}`, { lineIdx: g.lineIdx });
-      if (given.has(g.lineIdx)) bad(`line ${String(g.lineIdx)} is given twice`, { lineIdx: g.lineIdx });
-      if (!Number.isSafeInteger(g.qtyBase) || g.qtyBase < 0) bad("a quantity issued is a whole number, zero or more", { lineIdx: g.lineIdx });
-      if (g.qtyBase > line.qtyBase) {
-        bad(`line ${String(g.lineIdx)} asked for ${String(line.qtyBase)} — an indent is issued up to what it asked`, { lineIdx: g.lineIdx, asked: line.qtyBase, qtyIssued: g.qtyBase });
-      }
-      given.set(g.lineIdx, g.qtyBase);
-    }
-    const available = await availableQtyByItem(tx, indent.toResourceId, lines.map((l) => l.itemId), now);
-    const plan = lines.map((l) => ({ line: l, qty: given.get(l.lineIdx) ?? Math.min(l.qtyBase, available.get(l.itemId) ?? 0) }));
-    if (plan.every((p) => p.qty === 0)) {
-      bad(`nothing to issue on ${indent.indentNo} — the supplying store has none of it available; reject it with the reason instead`);
-    }
-
-    const { transferId } = await issueStock(tx, actor, {
-      fromResourceId: indent.toResourceId, toResourceId: indent.fromResourceId,
-      lines: plan.filter((p) => p.qty > 0).map((p) => ({ itemId: p.line.itemId, qtyBase: p.qty })),
-      note: `indent ${indent.indentNo}`, occurredAt: now,
-    });
-    for (const p of plan) {
-      await tx.update(storeIndentLines).set({ qtyIssued: p.qty }).where(eq(storeIndentLines.id, p.line.id));
-    }
-    await tx.update(storeIndents).set({ status: "issued", decidedBy: userId, decidedAt: now, transferId }).where(eq(storeIndents.id, indent.id));
-    await appendEvent(tx, materialIndentIssued.make({
-      actor, occurredAt: now, correlationId: indent.id,
-      payload: { ...headerOf(indent), transferId, lines: plan.map((p) => ({ itemId: p.line.itemId, qtyBase: p.line.qtyBase, qtyIssued: p.qty })) },
-    }));
-  });
+  await withTx(db, (tx) => issueIndentIn(tx, actor, userId, indentId, input, now));
   return (await getIndent(db, indentId))!;
+}
+
+/**
+ * STORES S2a (#1112, decision 5) — THE CALLER-AUTHORISED TWIN OF `issueIndent`: no `requirePerm`, because the
+ * night store's keepers (the duty nursing supervisor, the duty manager) hold `stores.nightstore.issue`, which
+ * the Stores intent has already asked, and not `materials.stock.issue`. The supplying store's keeper check, the
+ * approval check, FEFO and the transfer are `issueIndent`'s own. `issueIndent` itself is unchanged.
+ */
+export async function issueIndentScoped(
+  db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date(),
+): Promise<IndentView> {
+  if (actor.type !== "user") throw new MaterialsError("permission_denied", "issuing an indent needs a person");
+  await withTx(db, (tx) => issueIndentIn(tx, actor, actor.id, indentId, input, now));
+  return (await getIndent(db, indentId))!;
+}
+
+/**
+ * STORES S2a (#1112) — an indent that waits for its approval is not issued. Only a Stores ticket carries
+ * `approval_required`; an emergency (`issue_before_approval`) may go first and is reviewed afterwards. A
+ * pharmacy indent has neither, so this never refuses one.
+ */
+function assertApproved(indent: typeof storeIndents.$inferSelect): void {
+  if (indent.approvalRequired && indent.approvalDecision === null && !indent.issueBeforeApproval) {
+    throw new MaterialsError("indent_not_approved", `indent ${indent.indentNo} waits for its approval`, { indentNo: indent.indentNo });
+  }
+}
+
+async function issueIndentIn(tx: Tx, actor: Actor, userId: string, indentId: string, input: IssueIndentInput, now: Date): Promise<void> {
+  const indent = await lockRequested(tx, indentId);
+  await requireKeeper(tx, userId, await requireStore(tx, indent.toResourceId), "issue from it");
+  assertApproved(indent);
+  const lines = await tx.select().from(storeIndentLines).where(eq(storeIndentLines.indentId, indent.id)).orderBy(asc(storeIndentLines.lineIdx));
+
+  const given = new Map<number, number>();
+  for (const g of input.lines ?? []) {
+    const line = lines.find((l) => l.lineIdx === g.lineIdx);
+    if (line === undefined) bad(`indent ${indent.indentNo} has no line ${String(g.lineIdx)}`, { lineIdx: g.lineIdx });
+    if (given.has(g.lineIdx)) bad(`line ${String(g.lineIdx)} is given twice`, { lineIdx: g.lineIdx });
+    if (!Number.isSafeInteger(g.qtyBase) || g.qtyBase < 0) bad("a quantity issued is a whole number, zero or more", { lineIdx: g.lineIdx });
+    // STORES S2a — up to what was approved, when the HOD approved less (null: what was asked).
+    if (g.qtyBase > (line.qtyApproved ?? line.qtyBase)) {
+      bad(`line ${String(g.lineIdx)} asked for ${String(line.qtyApproved ?? line.qtyBase)} — an indent is issued up to what it asked`, { lineIdx: g.lineIdx, asked: line.qtyApproved ?? line.qtyBase, qtyIssued: g.qtyBase });
+    }
+    given.set(g.lineIdx, g.qtyBase);
+  }
+  const available = await availableQtyByItem(tx, indent.toResourceId, lines.map((l) => l.itemId), now);
+  const plan = lines.map((l) => ({ line: l, qty: given.get(l.lineIdx) ?? Math.min(l.qtyApproved ?? l.qtyBase, available.get(l.itemId) ?? 0) }));
+  if (plan.every((p) => p.qty === 0)) {
+    bad(`nothing to issue on ${indent.indentNo} — the supplying store has none of it available; reject it with the reason instead`);
+  }
+
+  const { transferId } = await issueStock(tx, actor, {
+    fromResourceId: indent.toResourceId, toResourceId: indent.fromResourceId,
+    lines: plan.filter((p) => p.qty > 0).map((p) => ({ itemId: p.line.itemId, qtyBase: p.qty })),
+    note: `indent ${indent.indentNo}`, occurredAt: now,
+  });
+  for (const p of plan) {
+    await tx.update(storeIndentLines).set({ qtyIssued: p.qty }).where(eq(storeIndentLines.id, p.line.id));
+  }
+  await tx.update(storeIndents).set({ status: "issued", decidedBy: userId, decidedAt: now, transferId }).where(eq(storeIndents.id, indent.id));
+  await appendEvent(tx, materialIndentIssued.make({
+    actor, occurredAt: now, correlationId: indent.id,
+    payload: { ...headerOf(indent), transferId, lines: plan.map((p) => ({ itemId: p.line.itemId, qtyBase: p.line.qtyBase, qtyIssued: p.qty })) },
+  }));
 }
 
 /** The supplying store refuses the indent, with the reason. Nothing moves. */
@@ -220,6 +297,37 @@ export async function cancelIndent(db: Db, actor: Actor, indentId: string, reaso
     await appendEvent(tx, materialIndentCancelled.make({ actor, occurredAt: now, correlationId: indent.id, payload: { ...headerOf(indent), reason: why } }));
   });
   return (await getIndent(db, indentId))!;
+}
+
+// ═══════════════════════════ STORES S2a (#1112) — the write-once stamps ═══════════════════════════
+
+/**
+ * The HOD's answer, stamped on the indent: `approved` (with any line approved at less than asked) or
+ * `declined` (with its reason; the indent closes as `rejected` by the approver in the same update).
+ * CALLER-AUTHORISED and caller-checked: the Stores intent holds the row lock, has asked
+ * `stores.indents.approve` at the department and refused the requester and a second answer. The
+ * migration's trigger refuses changing or clearing a stamp, whoever calls.
+ */
+export async function stampIndentApproval(
+  tx: Tx, indentId: string,
+  stamp: { decision: "approved" | "declined"; by: string; at: Date; reason: string | null; forHod: boolean; lines?: { lineIdx: number; qtyApproved: number }[] },
+): Promise<void> {
+  const decision = { approvalDecision: stamp.decision, approvalBy: stamp.by, approvalAt: stamp.at, approvalReason: stamp.reason, approvalForHod: stamp.forHod };
+  await tx.update(storeIndents).set(stamp.decision === "approved" ? decision : {
+    ...decision, status: "rejected", decidedBy: stamp.by, decidedAt: stamp.at, rejectReason: stamp.reason,
+  }).where(eq(storeIndents.id, indentId));
+  for (const l of stamp.lines ?? []) {
+    await tx.update(storeIndentLines).set({ qtyApproved: l.qtyApproved })
+      .where(and(eq(storeIndentLines.indentId, indentId), eq(storeIndentLines.lineIdx, l.lineIdx)));
+  }
+}
+
+/** Decision 4: the HOD's look at an emergency issued first ("agree" | "query"). Caller-authorised, write-once. */
+export async function stampIndentReview(
+  tx: Tx, indentId: string, stamp: { decision: "agree" | "query"; by: string; at: Date; note: string | null },
+): Promise<void> {
+  await tx.update(storeIndents).set({ reviewDecision: stamp.decision, reviewedBy: stamp.by, reviewedAt: stamp.at, reviewNote: stamp.note })
+    .where(eq(storeIndents.id, indentId));
 }
 
 // ═══════════════════════════════════ reads ═══════════════════════════════════

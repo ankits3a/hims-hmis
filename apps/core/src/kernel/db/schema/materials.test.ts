@@ -50,7 +50,11 @@ const CENSUS: Record<string, string[]> = {
     "formulary_medicine_id", "gst_rate_bps", "high_alert", "hsn_code", "id", "lasa", "lasa_note", "lead_time_days", "manufacturer",
     "marketed_by", "merged_at", "merged_into_item_id", "mfg_licence_no", "name", "pharmacopoeia", "serial_tracked",
     "shelf_life_days", "storage_class", "storage_max_c", "updated_at", "updated_by", "ved_class",
-  ],
+    // STORES S1 (#1111) — the non-drug Stores columns; nullable or defaulted, so every pharmacy row is unchanged.
+    "category_id", "patient_billable", "search_aliases", "track_mode",
+  ].sort(),
+  /** STORES S1 (#1111) — the two-level non-drug category tree (`modules/stores/items.ts` is its only writer). */
+  item_categories: ["active", "code", "created_at", "created_by", "id", "name", "name_hi", "parent_id", "updated_at", "updated_by"],
   /** PHARMACY P6 (hygiene) — one row per governed "merge item B into item A" (`modules/materials/item-merge.ts`). */
   item_merges: [
     "approval_id", "id", "merged_at", "merged_by", "merged_item_id", "moved", "reason", "refused_at", "requested_at", "requested_by",
@@ -112,11 +116,13 @@ const CENSUS: Record<string, string[]> = {
     "batch_id", "discrepancy_reason", "id", "qty_issued", "qty_received", "transfer_id",
   ],
   /** PHARMACY GAP A6b — a sub-store's indent, answered by a transfer (`modules/materials/indents.ts`). */
+  // STORES S2a (#1112) — the write-once approval and review stamps (nullable or defaulted false: a pharmacy indent carries none).
   store_indents: [
-    "cancel_reason", "decided_at", "decided_by", "from_resource_id", "id", "indent_no", "note", "reject_reason",
-    "requested_at", "requested_by", "status", "to_resource_id", "transfer_id",
+    "approval_at", "approval_by", "approval_decision", "approval_for_hod", "approval_reason", "approval_required",
+    "cancel_reason", "decided_at", "decided_by", "from_resource_id", "id", "indent_no", "issue_before_approval", "note", "reject_reason",
+    "requested_at", "requested_by", "review_decision", "review_note", "reviewed_at", "reviewed_by", "status", "to_resource_id", "transfer_id",
   ],
-  store_indent_lines: ["id", "indent_id", "item_id", "line_idx", "qty_base", "qty_issued"],
+  store_indent_lines: ["id", "indent_id", "item_id", "line_idx", "qty_approved", "qty_base", "qty_issued"], // STORES S2a: + qty_approved
   /** OWNER RULING 2026-09-30 — the stores' settings, one row; the two-person GRN rule is its first (`modules/materials/settings.ts`). */
   materials_settings: ["grn_qc_needs_second_person", "id", "updated_at", "updated_by"],
   grns: [
@@ -237,8 +243,8 @@ describe("the materials tables (Plan 14 T1)", () => {
    * each, and the prose count followed the bullets rather than the tables. Recorded here as a
    * number rather than only in CLOSE, so the next phase that reads this family counts what exists.
    */
-  it("there are exactly THIRTY-FIVE of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one, A6b's indent two, the 2026-09-30 settings row one, the 2026-10-04 vendor rate contract one", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(35);
+  it("there are exactly THIRTY-FIVE of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one, A6b's indent two, the 2026-09-30 settings row one, the 2026-10-04 vendor rate contract one, Stores S1 (#1111) the category tree one", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(36);
   });
 
   // ───────────────────── the five semantic CHECKs, read out BY NAME ─────────────────────
@@ -483,9 +489,9 @@ describe("the materials tables (Plan 14 T1)", () => {
       select count(*)::int as "n" from pg_constraint c join pg_class t on t.oid = c.conrelid
       where t.relname = 'items' and c.contype = 'f'
     `)).rows as { n: number }[];
-    // Exactly TWO foreign keys on `items`: `formulary_medicine_id`, and (PHARMACY P6, item merge) the
-    // self-reference `merged_into_item_id`. Neither is `base_uom`.
-    expect(rows[0]?.n).toBe(2);
+    // Exactly THREE foreign keys on `items`: `formulary_medicine_id`, (PHARMACY P6, item merge) the
+    // self-reference `merged_into_item_id`, and (STORES S1 #1111) `category_id`. None is `base_uom`.
+    expect(rows[0]?.n).toBe(3);
   });
 
   /**

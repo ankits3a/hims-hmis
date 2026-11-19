@@ -20,6 +20,17 @@ export type EffectivePermissions = {
 const NO_PERMISSIONS: EffectivePermissions = { hospital: [], scoped: { department: {}, floor: {} } };
 
 /**
+ * True when the grant is held at ANY scope — hospital, or some department or floor. `can()` reads hospital scope
+ * only, so a department-scoped holder (a ward's store in-charge, an HOD) has no menu row of their own without
+ * this. Presentation only, like `can()`: the server still asks every grant at the department it acts on.
+ */
+export function heldAnywhere(p: EffectivePermissions, permission: string): boolean {
+  return p.hospital.includes(permission)
+    || Object.values(p.scoped.department).some((l) => l.includes(permission))
+    || Object.values(p.scoped.floor).some((l) => l.includes(permission));
+}
+
+/**
  * FD-9 — THE NAME ON THE COUNTER, and it is the LOGIN NAME because that is the only one the client
  * is given. `GET /auth/me` returns `{ actor, permissions }` and `actor.id` is a ULID; no route on
  * the API hands a caller their own full name. Desk One's header reads

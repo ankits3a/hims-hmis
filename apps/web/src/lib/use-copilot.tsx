@@ -197,6 +197,7 @@ export function sayParams(
     return { can: can.length < 2 ? can.join("") : `${can.slice(0, -1).join(", ")}${or}${can[can.length - 1]!}` };
   }
   if (key.startsWith("copilot.answer.rad")) return radParams(params, t, lang);
+  if (key.startsWith("copilot.answer.stores")) return storesParams(params, t);
   if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave") && !key.startsWith("copilot.answer.reminder")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
@@ -242,6 +243,24 @@ function radParams(params: Record<string, string | number>, t: Tr, lang: string)
       const at = new Date(v);
       out[k] = t("copilot.when.at", { day: dayWords(at, lang), time: clockWords(at) });
     } else out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * #1113 — THE STORES CONCIERGE'S PARAMS IN THE TOWER'S WORDS. A lane, a clock and the next step are codes; the
+ * reader hears the tower's own words (`stores.tower.*`). An empty holder is "nobody". Ticket numbers, names,
+ * counts and minutes pass through as they came.
+ */
+function storesParams(params: Record<string, string | number>, t: Tr): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (typeof v !== "string") { out[k] = v; continue; }
+    if (k === "lane") out[k] = t(`stores.tower.lane.${v}`, { defaultValue: v });
+    else if (k === "clock") out[k] = t(`stores.tower.clock.${v}`, { defaultValue: v });
+    else if (k === "next") out[k] = t(`stores.tower.next.${v}`, { defaultValue: v });
+    else if (k === "holder" && v === "") out[k] = t("stores.tower.nobody");
+    else out[k] = v;
   }
   return out;
 }

@@ -2991,7 +2991,26 @@
       "radActedAlready": "Already recorded for this report.",
       "radMediaNotReleased": "{{accession}}: report not released yet.",
       "radMediaPick": "Tap film or CD, then confirm.",
-      "radMediaDone": "{{kind}} asked for {{accession}}."
+      "radMediaDone": "{{kind}} asked for {{accession}}.",
+      "storesNoTicket": "No ticket with that number.",
+      "storesTicketWhere": "{{ticket}}: {{lane}}, with {{holder}}, {{minutes}} min. Next: {{next}}.",
+      "storesTicketStuck": "{{ticket}}: stuck, {{clock}} {{minutes}} min. With {{holder}}.",
+      "storesMyTickets": "Requested {{requested}} · Approved {{approved}} · Picking {{picking}} · In transit {{transit}} · Delivered {{delivered}} · Stuck {{stuck}}",
+      "storesMyTicketsNone": "No open tickets.",
+      "storesWaiting": "Waiting on you: approve {{approve}}, pick {{pick}}, carry {{carry}}, receive {{receive}}.",
+      "storesWaitingNone": "Nothing waiting on you.",
+      "storesNoItem": "No Stores item by that name.",
+      "storesItemWhere": "{{item}}: {{total}} in all.",
+      "storesShelfLow": "{{shelf}}: low {{low}}, out {{out}}.",
+      "storesShelfLowNone": "{{shelf}}: nothing low.",
+      "storesNoShelf": "No shelf of yours.",
+      "storesStuck": "Red cards {{count}}: stuck {{stuck}}, short {{short}}, out {{out}}, pass {{pass}}, more than book {{overBook}}.",
+      "storesStuckNone": "Nothing stuck.",
+      "storesReorderNone": "{{shelf}}: nothing to reorder.",
+      "storesReorderOpen": "Already open: {{ticket}}.",
+      "storesReorderPick": "Reorder ready for shelves: {{count}}. Tap one, then Send.",
+      "storesReorderSent": "Sent: {{ticket}}.",
+      "storesStateChanged": "State changed"
     },
     "act": {
       "leave": "Ask for this leave?",
@@ -3077,6 +3096,7 @@
         "today_one": "Reminder today",
         "today_other": "Reminders today"
       },
+      "stores": {"indentsToApprove_one": "Indent to approve", "indentsToApprove_other": "Indents to approve", "toPick_one": "Ticket to pick", "toPick_other": "Tickets to pick", "toReceive_one": "Delivery to receive", "toReceive_other": "Deliveries to receive"},
       "roster": {
         "leaveToDecide_one": "Leave to decide",
         "leaveToDecide_other": "Leaves to decide",

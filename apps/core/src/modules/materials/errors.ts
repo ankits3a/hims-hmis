@@ -195,6 +195,18 @@ export type MaterialsErrorCode =
   | "transfer_self_receipt"
   /** The destination names its keepers (`attributes.custodianRoles`) and the receiver holds none of them. */
   | "not_store_keeper"
+  /**
+   * STORES S1 (#1111) — the destination is a Stores department shelf (`attributes.domain: 'stores'`,
+   * `kind: 'shelf'`). Stock enters a shelf only through the Stores intent `receiveAtShelf`, which checks
+   * the department-scoped grant and writes the department's cost centre; this route checks neither.
+   */
+  | "shelf_receives_through_stores"
+  /**
+   * STORES (pre-merge review S1) — a `/materials/transfers` call names a Stores place (`attributes.domain: 'stores'`)
+   * as source or destination. Stores stock moves through the Stores intents, which check the department grant and
+   * the keepers; the materials route checks neither.
+   */
+  | "moves_through_stores"
   // ── PHARMACY PARITY P2 — purchase orders and the GRN received against one ──
   /** No such purchase order. */
   | "unknown_purchase_order"
@@ -312,6 +324,8 @@ export type MaterialsErrorCode =
   | "invalid_indent"
   /** The indent was already issued, rejected or cancelled — only a requested one is acted on. */
   | "indent_closed"
+  /** STORES S2a (#1112) — the indent waits for its approval (a Stores ticket the HOD has not approved yet): nothing is issued before it. */
+  | "indent_not_approved"
   // ── OWNER RULING 2026-09-30 — the two-person GRN setting (`settings.ts`, `grn.ts`) ──
   /** The setting is on and the person who captured this GRN tries to QC or post it: somebody else must. */
   | "grn_same_person"

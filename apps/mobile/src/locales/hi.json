@@ -2991,7 +2991,26 @@
       "radActedAlready": "इस रिपोर्ट पर पहले से दर्ज।",
       "radMediaNotReleased": "{{accession}}: रिपोर्ट अभी जारी नहीं।",
       "radMediaPick": "फिल्म या सीडी चुनें, फिर पुष्टि करें।",
-      "radMediaDone": "{{accession}} के लिए {{kind}} माँगी।"
+      "radMediaDone": "{{accession}} के लिए {{kind}} माँगी।",
+      "storesNoTicket": "इस नंबर का कोई टिकट नहीं।",
+      "storesTicketWhere": "{{ticket}}: {{lane}}, {{holder}} के पास, {{minutes}} मिनट। आगे: {{next}}।",
+      "storesTicketStuck": "{{ticket}}: अटका, {{clock}} {{minutes}} मिनट। {{holder}} के पास।",
+      "storesMyTickets": "मंज़ूरी बाकी {{requested}} · मंज़ूर {{approved}} · उठ रहा {{picking}} · रास्ते में {{transit}} · पहुँचा {{delivered}} · अटका {{stuck}}",
+      "storesMyTicketsNone": "कोई खुला टिकट नहीं।",
+      "storesWaiting": "आपके पास: मंज़ूरी {{approve}}, उठाना {{pick}}, ले जाना {{carry}}, लेना {{receive}}।",
+      "storesWaitingNone": "आपके पास कुछ बाकी नहीं।",
+      "storesNoItem": "इस नाम का कोई स्टोर सामान नहीं।",
+      "storesItemWhere": "{{item}}: कुल {{total}}।",
+      "storesShelfLow": "{{shelf}}: कम {{low}}, खत्म {{out}}।",
+      "storesShelfLowNone": "{{shelf}}: कुछ कम नहीं।",
+      "storesNoShelf": "आपकी कोई शेल्फ नहीं।",
+      "storesStuck": "लाल कार्ड {{count}}: अटके {{stuck}}, कम {{short}}, खत्म {{out}}, पास {{pass}}, बुक से ज़्यादा {{overBook}}।",
+      "storesStuckNone": "कुछ अटका नहीं।",
+      "storesReorderNone": "{{shelf}}: मँगाने को कुछ नहीं।",
+      "storesReorderOpen": "पहले से खुला: {{ticket}}।",
+      "storesReorderPick": "शेल्फ के लिए मँगवाना तैयार: {{count}}। एक चुनें, फिर भेजें।",
+      "storesReorderSent": "भेजा: {{ticket}}।",
+      "storesStateChanged": "स्थिति बदली"
     },
     "act": {
       "leave": "यह छुट्टी माँगें?",
@@ -3077,6 +3096,7 @@
         "today_one": "रिमाइंडर आज",
         "today_other": "रिमाइंडर आज"
       },
+      "stores": {"indentsToApprove_one": "इंडेंट मंज़ूरी बाकी", "indentsToApprove_other": "इंडेंट मंज़ूरी बाकी", "toPick_one": "टिकट उठाना है", "toPick_other": "टिकट उठाने हैं", "toReceive_one": "सामान लेना है", "toReceive_other": "सामान लेने हैं"},
       "roster": {
         "leaveToDecide_one": "छुट्टी तय करनी है",
         "leaveToDecide_other": "छुट्टियाँ तय करनी हैं",

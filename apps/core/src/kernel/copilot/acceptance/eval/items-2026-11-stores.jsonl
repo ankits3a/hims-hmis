@@ -1,0 +1,30 @@
+{"id": "st001", "question": "where is ticket MIN<<P1>> now", "want": "stores.where_is_ticket", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st002", "question": "what is waiting for me", "want": "stores.waiting_for_me", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st003", "question": "show our department's open tickets", "want": "stores.my_tickets", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st004", "question": "how many mop refills in the store", "want": "stores.where_is_item", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st005", "question": "which items are low on my shelf", "want": "stores.shelf_low", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st006", "question": "how many tickets are stuck", "want": "stores.stuck", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st007", "question": "show the red cards", "want": "stores.stuck", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st008", "question": "reorder my shelf", "want": "stores.reorder", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st009", "question": "indents to approve", "want": "stores.waiting_for_me", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st010", "question": "where do we have gloves", "want": "stores.where_is_item", "script": "en", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st011", "question": "MIN<<P1>> कहाँ है", "want": "stores.where_is_ticket", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st012", "question": "मेरे इंडेंट दिखाओ", "want": "stores.my_tickets", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st013", "question": "मुझे क्या करना है", "want": "stores.waiting_for_me", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st014", "question": "स्टोर में दस्ताने कितने हैं", "want": "stores.where_is_item", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st015", "question": "मेरे यहाँ क्या कम है", "want": "stores.shelf_low", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st016", "question": "कितने इंडेंट अटके हैं", "want": "stores.stuck", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st017", "question": "शेल्फ के लिए इंडेंट भेज दो", "want": "stores.reorder", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st018", "question": "मेरा सामान कहाँ पहुँचा", "want": "stores.where_is_ticket", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st019", "question": "मंज़ूरी के लिए कितने इंडेंट हैं", "want": "stores.waiting_for_me", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st020", "question": "किस स्टोर में मॉप है", "want": "stores.where_is_item", "script": "hi-deva", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st021", "question": "MIN<<P1>> kahan hai", "want": "stores.where_is_ticket", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st022", "question": "mere tickets dikhao", "want": "stores.my_tickets", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st023", "question": "mujhe kya karna hai", "want": "stores.waiting_for_me", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st024", "question": "store mein gloves kitne pade hain", "want": "stores.where_is_item", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st025", "question": "mere yahan kya kam hai", "want": "stores.shelf_low", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st026", "question": "kitne indent atke hain", "want": "stores.stuck", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st027", "question": "saman mangwa do", "want": "stores.reorder", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st028", "question": "mera saman kahan hai", "want": "stores.where_is_ticket", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st029", "question": "approve karne wale indent", "want": "stores.waiting_for_me", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}
+{"id": "st030", "question": "red card dikhao", "want": "stores.stuck", "script": "hi-latn", "typo": false, "source": "spec-1113-2026-11-19"}

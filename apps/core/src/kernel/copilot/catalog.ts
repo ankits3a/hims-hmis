@@ -1,5 +1,7 @@
+import { and, eq } from "drizzle-orm";
 import { COPILOT_ANSWER_KEYS } from "@hmis/contracts";
 import { hasPermission } from "../auth/permissions";
+import { roleAssignments, rolePermissions } from "../db/schema";
 import { toolHalted } from "./halt";
 import { CopilotIntentError } from "./intents";
 import { kernelCueTokens, moduleHelpIntents, normaliseCue } from "./phrasebook";
@@ -9,6 +11,8 @@ import type { CopilotHaltScope } from "../db/schema";
 import type { CopilotAnswer, CopilotToolCtx, CopilotToolDecl } from "./types";
 import type { CopilotIntent } from "./phrasebook";
 import type { ModuleRegistry } from "../modules/loader";
+import type { Db } from "../db/client";
+import type { Actor } from "@hmis/contracts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -203,7 +207,7 @@ export async function runTool(
     after. Run-then-filter would do the work and read the data for an answer the person may not see,
     which is the only thing the permission is for.
   */
-  if (!(await toolPermitted(tool, can))) {
+  if (!(await toolPermitted(tool, can, (p) => heldAtAnyScope(ctx.db, ctx.actor, p)))) {
     return { key: "copilot.answer.notPermitted", params: {} };
   }
 
@@ -228,9 +232,31 @@ export async function runTool(
   }
 }
 
-/** May the asker reach this tool? Null permission: any authenticated user. Re-read on every call, no cache. */
-export async function toolPermitted(tool: Pick<CopilotToolDecl, "permission" | "alsoAdmits">, can: PermissionCheck): Promise<boolean> {
-  return tool.permission === null || admitted([tool.permission, ...(tool.alsoAdmits ?? [])], can);
+/**
+ * May the asker reach this tool? Null permission: any authenticated user. Re-read on every call, no cache.
+ *
+ * #1113 — a `scopedGate` tool is admitted through `anywhere` (held at any scope) and refused when the caller
+ * passes no such check (the help list): the tool then narrows to the departments that grant it.
+ */
+export async function toolPermitted(
+  tool: Pick<CopilotToolDecl, "permission" | "alsoAdmits" | "scopedGate">, can: PermissionCheck, anywhere?: PermissionCheck,
+): Promise<boolean> {
+  if (tool.permission === null) return true;
+  const gate = [tool.permission, ...(tool.alsoAdmits ?? [])];
+  if (tool.scopedGate === true) return anywhere !== undefined && admitted(gate, anywhere);
+  return admitted(gate, can);
+}
+
+/**
+ * #1113 — does this person hold `permission` through ANY assignment (a department's, a floor's, the hospital's, or
+ * a live temporary grant)? Only the pre-gate of a `scopedGate` tool; the tool's own read asks at the department.
+ */
+export async function heldAtAnyScope(db: Db, actor: Actor, permission: string): Promise<boolean> {
+  if (actor.type !== "user") return false;
+  const [row] = await db.select({ u: roleAssignments.userId }).from(roleAssignments)
+    .innerJoin(rolePermissions, eq(rolePermissions.roleKey, roleAssignments.roleKey))
+    .where(and(eq(roleAssignments.userId, actor.id), eq(rolePermissions.permission, permission))).limit(1);
+  return row !== undefined || (await hasPermission(db, actor.id, permission, "hospital"));
 }
 
 /** Any one of the gate's permissions admits; asked in order, stopping at the first held. */

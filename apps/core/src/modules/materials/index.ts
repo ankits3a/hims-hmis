@@ -69,13 +69,24 @@ export type { CaptureLine, GrnLineRow, GrnRow, GrnWithLines } from "./grn";
 export {
   getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist,
 } from "./transfers";
+// STORES S2b (#1112) — what is left in transit after a short or an unsigned delivery, received late or returned (additive).
+export { inTransitByLine, receiveLate, returnInTransit } from "./transfers";
+export { ensureQuarantineStore } from "./stores";
+export { QUARANTINE_STORE_CODE } from "./config";
+// STORES S2c (#1119) — goods out on a returnable gate pass: a real store, created on first use (additive).
+export { OUT_ON_PASS_STORE_CODE } from "./config";
+export { ensureOutOnPassStore } from "./stores";
 export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
 // ── PHARMACY GAP A6b — indents: a sub-store asks, the supplying store answers with a transfer ──
 export { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";
+// STORES S2a (#1112) — the caller-authorised twins and the write-once approval stamps (additive; the four above are unchanged).
+export { issueIndentScoped, raiseIndentScoped, stampIndentApproval, stampIndentReview } from "./indents";
+// STORES S2b (#1112) — new lines on an indent still requested ("Add to open ticket?"), caller-authorised (additive).
+export { addIndentLinesScoped } from "./indents";
 // OWNER RULING 2026-09-30 — the stores' settings; the two-person GRN rule is the first.
 export { loadMaterialsSettings, updateMaterialsSettings } from "./settings";
 export type { MaterialsSettings } from "./settings";
-export type { IndentLineInput, IndentStatus, IndentView, IssueIndentInput, RaiseIndentInput } from "./indents";
+export type { IndentApprovalInput, IndentLineInput, IndentStatus, IndentView, IssueIndentInput, RaiseIndentInput } from "./indents";
 export { MaterialsIndentsController } from "./materials-indents.controller";
 /**
  * DD13's half of the interface Plan 15 imports: it appends `consignmentDeployed` (exported above,
@@ -107,7 +118,7 @@ export { PO_HEAD_APPROVAL_LIMIT_PAISE, PO_RECEIPT_TOLERANCE_BPS, PRICE_CHECK_THR
 export {
   OPEN_PO_STATUSES, allowedReceiptBase, approvalTierFor, assertNotPoApprover, purchaseOrderOfGrn, cancelPurchaseOrder, createPurchaseOrder, decidePurchaseOrder,
   getPurchaseOrder, lastPurchaseByItem, lineGstPaise, listPurchaseOrders, onOrderAt, overduePurchaseOrders,
-  purchasableVendors, purchaseOrdersAwaiting, receivableLines, sendPurchaseOrder, setStockLevel, settlePurchaseOrders,
+  purchasableVendors, purchaseOrdersAwaiting, receivableLines, sendPurchaseOrder, setStockLevel, settlePurchaseOrders, writeStockLevel,
   stockLevelsAt, submitPurchaseOrder, updatePurchaseOrder,
 } from "./purchase-orders";
 export type { LastPurchase, PoFilter, PoInput, PoLineInput, PoLineView, PoStatus, PoSummary, PoView, StockLevel } from "./purchase-orders";
@@ -203,3 +214,7 @@ export type {
   DuplicateSuggestion, DuplicateWhy, ItemMergeHooks, ItemMergeStatus, ItemMergeSummary, ItemMergeView, MergeItemSide, MergePreview,
   MergeRefusal, MergeRule, MergeStockLine, MergeTally,
 } from "./item-merge";
+// STORES S1 (#1111) — additive: the opening balance of a store (one `OPEN-<code>` batch per line, one
+// `adjust` row, no cost centre), read and written by `modules/stores`.
+export { OPENING_BALANCE_REF_TYPE, hasOpeningBalance, postOpeningBalances } from "./opening-balances";
+export type { OpeningLine } from "./opening-balances";
