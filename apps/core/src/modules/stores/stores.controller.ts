@@ -25,7 +25,7 @@ import {
   ticketsToReceive,
 } from "./tickets";
 import { ticketTimeline } from "./timeline";
-import { addToOpenTicket, openTicketFor, reAskShort } from "./tickets";
+import { addToOpenTicket, openTicketFor, reAskShort, shelfTickets, whoToAsk } from "./tickets";
 import {
   acceptReturn, confirmLateScan, deliverTicket, handOver, lateScansToConfirm, myCustody, postTransitLoss, raiseReturn, receiveReturn, resolveShort,
   returnUndelivered, returnsToReceive, takeCustody, takeOverCustody, custodyLookup, ticketsComingBack,
@@ -319,6 +319,19 @@ export class StoresController {
   @Get("shelves/:shelfId/open-ticket")
   async openTicket(@CurrentActor() actor: Actor, @Param("shelfId") shelfId: string): Promise<unknown> {
     try { return { ticket: await openTicketFor(this.db, actor, parsed(id, shelfId), new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  /** UX pass (walk finding 5): the shelf's newest tickets, "My tickets", read with the shelf's own grant. */
+  @Get("shelves/:shelfId/tickets")
+  async shelfTicketList(@CurrentActor() actor: Actor, @Param("shelfId") shelfId: string): Promise<unknown> {
+    try { return { tickets: await shelfTickets(this.db, actor, parsed(id, shelfId), new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  /** UX pass (walk finding 14): a refused reader is told who to ask — the department's HOD, by shelf or by ticket. */
+  @Get("who-to-ask")
+  async askWho(@CurrentActor() actor: Actor, @Query("shelfId") shelfId: unknown, @Query("indentId") indentId: unknown): Promise<unknown> {
+    const at = shelfId !== undefined ? { shelfId: parsed(id, shelfId) } : { indentId: parsed(id, indentId) };
+    try { return await whoToAsk(this.db, actor, at); } catch (e) { toHttp(e); }
   }
 
   @Post("tickets/:indentId/add")

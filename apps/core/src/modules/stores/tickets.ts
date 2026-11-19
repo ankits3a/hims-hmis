@@ -14,7 +14,7 @@ import {
 } from "../materials";
 import { chainsOf, holderOf, lastCustodianOf, legsOf, returningUndelivered } from "./chain";
 import {
-  STORES_INDENTS_APPROVE, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_WORK, holds, isStoresStore, recordAct, requireShelf, requireShelfAct,
+  STORES_INDENTS_APPROVE, STORES_NIGHTSTORE_ISSUE, STORES_SHELF_WORK, departmentOf, holds, isStoresStore, recordAct, requireShelf, requireShelfAct,
   toStoresStore,
 } from "./access";
 import { StoresError } from "./errors";
@@ -239,6 +239,41 @@ export async function openTicketFor(db: Db, actor: Actor, shelfId: string, now: 
   const newest = rows.at(-1);
   return newest === undefined ? null : ((await ticketViews(db, [newest], now))[0] ?? null);
 }
+
+/**
+ * UX pass (walk finding 5) — "My tickets" on the shelf: the shelf's newest tickets, any stage, newest first, read
+ * with the shelf's own grant. The requester follows a ticket after "Sent" from here.
+ */
+export async function shelfTickets(db: Db | Tx, actor: Actor, shelfId: string, now: Date = new Date()): Promise<TicketView[]> {
+  const shelf = await requireShelf(db, shelfId);
+  await requireShelfAct(db, actor, shelf, "read");
+  const rows = await db.select({ indent: storeIndents, details: storesTicketDetails }).from(storeIndents)
+    .innerJoin(storesTicketDetails, eq(storesTicketDetails.indentId, storeIndents.id))
+    .where(eq(storesTicketDetails.shelfId, shelfId))
+    .orderBy(desc(storeIndents.requestedAt), desc(storeIndents.indentNo)).limit(SHELF_TICKETS_LIMIT);
+  return ticketViews(db, rows, now);
+}
+const SHELF_TICKETS_LIMIT = 20;
+
+/**
+ * UX pass (walk finding 14, programme §5.5 "Not your department: ask the HOD of X") — who a refused reader asks:
+ * the department's approvers (assigned AT it), else its shelf in-charges, else the hospital-scope stand-ins. Names
+ * only; any signed-in user may read it, because the refusal is what sends them here.
+ */
+export async function whoToAsk(
+  db: Db | Tx, actor: Actor, at: { shelfId: string } | { indentId: string },
+): Promise<{ department: { id: string; name: string }; ask: { id: string; name: string }[] }> {
+  if (actor.type !== "user") throw new StoresError("not_permitted", "a person asks", {});
+  const departmentId = "shelfId" in at ? (await requireShelf(db, at.shelfId)).departmentId : (await requireTicketRow(db, at.indentId)).details.departmentId;
+  const dept = await departmentOf(db, departmentId);
+  let ids = await holdersOf(db, STORES_INDENTS_APPROVE, { departmentId });
+  if (ids.length === 0) ids = await holdersOf(db, STORES_SHELF_WORK, { departmentId });
+  if (ids.length === 0) ids = await holdersOf(db, STORES_INDENTS_APPROVE, "hospital");
+  ids = ids.slice(0, WHO_TO_ASK_LIMIT);
+  const names = ids.length === 0 ? [] : await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, ids));
+  return { department: { id: dept.id, name: dept.name }, ask: ids.map((id) => ({ id, name: names.find((n) => n.id === id)?.name ?? id })) };
+}
+const WHO_TO_ASK_LIMIT = 2;
 
 export async function addToOpenTicket(
   db: Db, actor: Actor, indentId: string, input: { lines: { itemId?: string | null; qtyBase: number }[] }, now: Date = new Date(),
