@@ -1740,7 +1740,7 @@ sweep nudges inside the hospital, once per ticket per step: the approvers at 45 
 late, the porter and the store when a leg passes 30 minutes. The copilot answers "where is my ticket" and six other
 Stores questions by keyword, and its one act, a shelf's reorder, raises a ticket only after the person taps Send.
 
-**Stores asset passport (decision 0099 Q3, 0100, S4a #1114, 2026-11-19).** Every unit of medical equipment, and
+**Stores asset passport (decision 0099 Q3, 0101, S4a #1114, 2026-11-19).** Every unit of medical equipment, and
 every IT or furniture unit bought at ₹5,000 or more, carries one QR label from the day it is received; cheaper
 durables stay counted. The label opens the unit's passport on any phone: what it is, where it is, which department
 holds it, its warranty, AMC and calibration dates with a word each, and its last five events. Where a unit is and
