@@ -18,7 +18,7 @@ import type { ShortDrug } from "./short-book";
 import { hindiRefusal, hindiSig } from "./phrasebook";
 import { istToday, sigOf } from "./work";
 import type { CollectResult } from "./lines";
-import type { ControlledHandover, HandoverIdentity, PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
+import type { ControlledHandover, DeclineReasonCode, HandoverIdentity, PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
 
 /**
  * THE MIDDLE COLUMN — the only one that changes with the stage (PD-D1). Idle: whose prescription is
@@ -60,7 +60,7 @@ export function TicketPanel({
   onClear: () => void;
   busy: boolean;
   onCollect: (verify: VerifyLine[] | null, pick: PickLine[]) => Promise<CollectResult>;
-  onDecline: (lineIdx: number, reason: string) => Promise<boolean>;
+  onDecline: (lineIdx: number, reason: string, reasonCode?: DeclineReasonCode) => Promise<boolean>;
   handOverError: string | null;
   /** What was taken, as the bill rail printed it — the done line repeats the server's figure, never a sum of its own. */
   takenLabel: string | null;

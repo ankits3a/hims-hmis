@@ -1688,6 +1688,13 @@
       "when": 1795058606528,
       "tag": "0241_stores_s3",
       "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1795058607528,
+      "tag": "0242_lost_demand",
+      "breakpoints": true
     }
   ]
 }

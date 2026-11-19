@@ -76,7 +76,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("parity P1, pure", () => {
   it("a decline reason that says the drug is not there offers the short book; any other does not", () => {
-    for (const r of ["not stocked", "out of stock", "Pan 40 khatam", "stock nahi hai", "short"]) expect(readsAsShortage(r)).toBe(true);
+    for (const r of ["not stocked", "not in stock", "out of stock", "Pan 40 khatam", "stock nahi hai", "short"]) expect(readsAsShortage(r)).toBe(true);
     for (const r of ["patient refused", "doctor changed it", "allergy"]) expect(readsAsShortage(r)).toBe(false);
   });
   it("the paper's state is its newest job per document: printed, failed, not taken after 30 s, or with the printer", () => {
@@ -151,24 +151,51 @@ describe("the short book at the counter (parity P1)", () => {
     expect(await screen.findByTestId("desk-ticker")).toHaveTextContent("Pan 40 tablet noted in the short book.");
   });
 
-  it("a line declined as not stocked offers the short book, ticked, and notes it after the decline", async () => {
+  /*
+    Spec #1064 — "not in stock" is the decline's reason code: the server records the medicine as asked for and raises the
+    short book in the decline itself, so there is no second note. Typed words that read as a shortage are offered the
+    same code, ticked; unticked, the decline is words only.
+  */
+  it("a line declined as not in stock carries the reason code, and no second short-book note is made", async () => {
     let current = dispense("claimed");
     mockRoutes(base(() => current, {
       "POST /api/pharmacy/dispenses/d1/lines/0/decline": () => {
-        current = dispense("claimed", { lines: [{ ...LINE, status: "declined", declinedReason: "not stocked" }] });
+        current = dispense("claimed", { lines: [{ ...LINE, status: "declined", declinedReason: "not in stock" }] });
         return { status: 201, body: current };
       },
-      "POST /api/pharmacy/short-book": { status: 201, body: { created: false, entry: { id: "sb1", drugName: "Pan 40 tablet", itemId: "it-pan" } } },
     }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     await userEvent.click(await screen.findByRole("button", { name: /What else for/ }));
     await userEvent.click(await screen.findByRole("button", { name: /Decline/ }));
     await userEvent.click(await screen.findByTestId("desk-line-0-why-notStocked"));
+    expect(screen.getByTestId("desk-line-0-why-notStocked")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByTestId("desk-line-0-also-short")).toBeNull();
+    expect(screen.getByTestId("desk-line-0-will-note")).toHaveTextContent("Will be noted as asked for.");
+    await userEvent.click(screen.getByRole("button", { name: /^Decline/ }));
+    await waitFor(() => expect(calls("POST", "/lines/0/decline")).toEqual([{ reason: "not in stock", reasonCode: "not_in_stock" }]));
+    expect(calls("POST", "/short-book")).toEqual([]);
+    expect(await screen.findByTestId("desk-ticker")).toHaveTextContent("noted as asked for");
+  });
+
+  it("typed words that read as a shortage are offered 'not in stock', ticked; unticked, the decline is words only", async () => {
+    let current = dispense("claimed");
+    mockRoutes(base(() => current, {
+      "POST /api/pharmacy/dispenses/d1/lines/0/decline": () => {
+        current = dispense("claimed", { lines: [{ ...LINE, status: "declined", declinedReason: "khatam" }] });
+        return { status: 201, body: current };
+      },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await userEvent.click(await screen.findByRole("button", { name: /What else for/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Decline/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: /Why is Pan 40/ }), "khatam");
     const offer = await screen.findByTestId("desk-line-0-also-short");
     expect(within(offer).getByRole("checkbox")).toBeChecked();
+    expect(offer).toHaveTextContent("Not in stock — note Pan 40 as asked for");
+    await userEvent.click(within(offer).getByRole("checkbox"));
     await userEvent.click(screen.getByRole("button", { name: /^Decline/ }));
-    await waitFor(() => expect(calls("POST", "/short-book")).toEqual([{ drugName: "Pan 40", source: "desk", dispenseId: "d1", itemId: "it-pan" }]));
-    expect(await screen.findByTestId("desk-ticker")).toHaveTextContent("already in the short book");
+    await waitFor(() => expect(calls("POST", "/lines/0/decline")).toEqual([{ reason: "khatam" }]));
+    expect(calls("POST", "/short-book")).toEqual([]);
   });
 
   it("the agent's draft is a card; nothing is written until the pharmacist confirms it", async () => {

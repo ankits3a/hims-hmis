@@ -256,6 +256,7 @@ function ShortBook(): React.ReactElement | null {
             <thead>
               <tr>
                 <th>{t("pharmacyReorder.item")}</th>
+                <th>{t("pharmacyReorder.short.store")}</th>
                 <th>{t("pharmacyReorder.short.noted")}</th>
                 <th>{t("pharmacyReorder.short.qty")}</th>
                 <th>{t("pharmacyReorder.short.from")}</th>
@@ -266,9 +267,15 @@ function ShortBook(): React.ReactElement | null {
               {rows.map((r) => (
                 <tr key={r.id} data-testid={`short-${r.id}`}>
                   <td>{r.drugName}{r.itemId === null && <span className="ml-1 rounded bg-muted px-1 text-xs text-muted-foreground">{t("pharmacyReorder.short.notStocked")}</span>}</td>
+                  {/* #1064 follow-up — one pharmacy buys for both counters: which counter's shelf is short. */}
+                  <td className="whitespace-nowrap" data-testid={`short-store-${r.id}`}>{r.storeCode === "PHARM-OPD" ? t("pharmacyReorder.short.stores.opd") : r.storeCode === "PHARM-RETAIL" ? t("pharmacyReorder.short.stores.walkIn") : (r.storeCode ?? "")}</td>
                   <td>{IST_WHEN.format(new Date(r.notedAt))} · {r.notedByName ?? "—"}</td>
-                  <td>{r.qtyWanted ?? ""}</td>
-                  <td>{t(`pharmacyReorder.short.source.${r.source}`)}</td>
+                  {/* Spec #1064 — a row patients asked for carries how often and how much; a hand-noted row its wanted quantity. */}
+                  <td>{r.qtyWanted ?? ((r.askedQtyBase ?? 0) > 0 ? r.askedQtyBase : "")}</td>
+                  <td>
+                    {t(`pharmacyReorder.short.source.${r.source}`)}
+                    {(r.askedCount ?? 0) > 0 && <span className="ml-1 text-xs text-muted-foreground" data-testid={`short-asked-${r.id}`}>· {t("pharmacyReorder.short.asked", { count: r.askedCount })}</span>}
+                  </td>
                   {canResolve && (
                     <td className="whitespace-nowrap">
                       {(["ordered", "received", "dismissed"] as const).map((how) => (

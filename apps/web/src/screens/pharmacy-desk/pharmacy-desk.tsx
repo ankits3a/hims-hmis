@@ -27,7 +27,7 @@ import { TicketPanel } from "./ticket";
 import { istToday } from "./work";
 import type { DeskLog } from "./log";
 import type { CollectResult } from "./lines";
-import type { ControlledHandover, HandoverIdentity, PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
+import type { ControlledHandover, DeclineReasonCode, HandoverIdentity, PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
 import "../../styles/paper-pine.css";
 import "../desk-one/desk-one.css";
 import "./pharmacy-desk.css";
@@ -454,15 +454,17 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     }
   }, [inHandId, qc, t]);
 
-  const decline = useCallback(async (lineIdx: number, reason: string): Promise<boolean> => {
+  const decline = useCallback(async (lineIdx: number, reason: string, reasonCode?: DeclineReasonCode): Promise<boolean> => {
     if (inHandId === null) return false;
     setError(null);
     try {
-      const d = await declineLine(inHandId, lineIdx, reason);
+      const d = await declineLine(inHandId, lineIdx, reason, reasonCode);
       settle(d);
       /* Spec #1046 D2 — a line dropped at the bill: the preview re-totals without it. */
       if (d.status === "picked") void qc.invalidateQueries({ queryKey: ["pharmacy", "bill", inHandId] });
-      say(t("pharmacyDesk.log.declined", { line: lineIdx + 1, reason }), "warn");
+      /* Spec #1064 — "not in stock" is recorded as asked for (and raises the short book) by the server, in the decline. */
+      if (reasonCode === "not_in_stock") void qc.invalidateQueries({ queryKey: ["pharmacy", "short-book"] });
+      say(t(reasonCode === "not_in_stock" ? "pharmacyDesk.log.declinedAsked" : "pharmacyDesk.log.declined", { line: lineIdx + 1, reason }), "warn");
       return true;
     } catch (e) {
       const text = pharmacyErrorText(e, t);
