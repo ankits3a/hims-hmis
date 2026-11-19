@@ -147,10 +147,40 @@ export const storesAuditQuery = z.object({
   afterSeq: z.coerce.number().int().nonnegative().optional(), limit: z.coerce.number().int().positive().max(5000).optional(),
 });
 
+// ── S2b (#1112): the custody chain, the receipt, shorts, returns ──
+const scanFields = { clientKey: z.string().min(1).max(80).nullish(), scannedAt: instant.nullish() };
+export const storesScanBody = z.object({ code: z.string().min(4).max(40), ...scanFields });
+export const storesHandOverBody = z.object({ code: z.string().min(4).max(40), fromUserId: id, ...scanFields });
+export const storesTakeOverBody = z.object({ reason: z.string().max(500) });
+export const storesDeliverBody = z.object({
+  lines: z.array(z.object({
+    lineIdx: z.number().int().min(0), accepted: z.number().int().min(0).optional(), short: z.number().int().min(0).optional(),
+    wrong: z.number().int().min(0).optional(), damaged: z.number().int().min(0).optional(),
+  })).max(100).optional(),
+  ...scanFields,
+});
+export const storesUndeliveredBody = z.object({ ...scanFields });
+export const storesResolveShortBody = z.object({ lineIdx: z.number().int().min(0), resolution: z.enum(["found", "returned", "lost"]), note: z.string().max(500).nullish() });
+export const storesAddLinesBody = z.object({ lines: z.array(z.object({ itemId: id.nullish(), qtyBase: z.number().int().min(1) })).min(1).max(100) });
+export const storesReturnBody = z.object({
+  lines: z.array(z.object({ itemId: id, qtyBase: z.number().int().min(1), reason: z.enum(["unused", "wrong", "defective"]) })).min(1).max(100),
+  note: z.string().max(500).nullish(),
+});
+
+export type WireCustodyResult = { ticket: WireTicket; duplicate: boolean; flag: "late" | "future" | null };
+/** UX pass (#1112): the label names the ticket; the server names whose hands it is in, for the one confirm tap. */
+export type WireCustodyLookup = { ticket: WireTicket; act: "take" | "hand_over"; holder: WireTicketPerson };
+export type WirePorterRow = { ticket: WireTicket; from: { id: string; code: string; name: string }; to: { id: string; code: string; name: string }; minutes: number };
+export type WireLateScan = { handoffId: string; indentId: string; indentNo: string; kind: string; by: WireTicketPerson; phoneAt: string; recordedAt: string; flag: "late" | "future" };
+export type WireReturnTicket = {
+  transferId: string; status: string; shelf: { id: string; code: string; name: string }; to: { id: string; code: string; name: string };
+  quarantine: boolean; raisedBy: WireTicketPerson; raisedAt: string; lines: { itemId: string; itemName: string; qtyBase: number }[];
+};
+
 export type WireTicketPerson = { id: string; name: string };
 export type WireTicket = {
   id: string; indentNo: string; status: string;
-  stage: "to_approve" | "to_pick" | "to_receive" | "delivered" | "declined" | "rejected" | "cancelled";
+  stage: "to_approve" | "to_pick" | "to_receive" | "delivered" | "declined" | "rejected" | "cancelled" | "returning" | "returned";
   priority: (typeof STORES_TICKET_PRIORITIES)[number]; channel: (typeof STORES_TICKET_CHANNELS)[number];
   neededBy: string | null; deliverTo: string | null; emergencyReason: string | null; night: boolean;
   department: { id: string; code: string; name: string };
@@ -163,13 +193,25 @@ export type WireTicket = {
   claim: { by: WireTicketPerson; at: string; lapsesAt: string } | null;
   transfer: { id: string; status: string } | null;
   lines: { lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null }[];
+  /** S2b (#1112): whose hands it is in, what the receiver said per line, and the shorts still in transit. */
+  custody?: { holder: WireTicketPerson | null; legs: number; lastCustodian: WireTicketPerson } | null;
+  delivery?: {
+    by: WireTicketPerson; at: string; atCounter: boolean; sentBack: number; sentBackAccepted: boolean;
+    lines: { lineIdx: number; itemId: string; accepted: number; short: number; wrong: number; damaged: number }[];
+  } | null;
+  shorts?: {
+    lineIdx: number; itemId: string; qty: number; with: WireTicketPerson;
+    resolution: { kind: "found" | "returned" | "lost"; by: WireTicketPerson; at: string; approvalId: string | null; posted: boolean } | null;
+  }[];
 };
 export type WireTimelineStep = {
-  step: "raise" | "re_raise" | "re_ask" | "approve" | "decline" | "review" | "claim" | "issue" | "receive" | "reject" | "cancel";
+  step: "raise" | "re_raise" | "re_ask" | "approve" | "decline" | "review" | "claim" | "issue" | "receive" | "reject" | "cancel"
+    | "take" | "hand_over" | "take_over" | "deliver" | "collect" | "send_back" | "return_undelivered" | "return_accepted" | "found" | "returned" | "lost";
   who: { id: string; name: string; roles: string[] } | null;
   from: { id: string; code: string; name: string } | null;
   to: { id: string; code: string; name: string } | null;
   at: string; minutes: number | null; forHod: boolean; note: string | null;
   lines: { itemId: string; itemName: string; asked: number; approved: number | null; issued: number | null }[];
+  phoneAt?: string | null; recordedAt?: string | null;
 };
 export type WireTicketTimeline = { indentId: string; indentNo: string; steps: WireTimelineStep[] };

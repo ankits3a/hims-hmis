@@ -2024,6 +2024,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   { roleKey: "nursing_supervisor", permissions: ["stores.nightstore.issue"] },
   { roleKey: "stores_auditor", permissions: ["stores.audit.read"] },
+  /**
+   * STORES S2b (#1112, decision 7) — the porter: `support_staff`, the IPD train's (#967) key and title, whichever lands
+   * second merges its grants into this row at rebase. Here it holds only `stores.carry`: take custody of an issued
+   * ticket by scanning its label (or typing its last four digits), hand it on, bring it back undelivered. Assigned by nobody.
+   */
+  { roleKey: "support_staff", permissions: ["stores.carry"] },
 ];
 
 /**
@@ -2291,6 +2297,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   department_head: "Head of Department (reads the department's Stores shelf; approves its requests from S2)",
   nursing_supervisor: "Nursing Supervisor (shift in-charge: the ward's nurses, early-warning escalations, family callbacks)",
   stores_auditor: "Stores Auditor (internal audit: reads the Stores audit pack, changes nothing)",
+  // STORES S2b (#1112) — the IPD train's exact key and title.
+  support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

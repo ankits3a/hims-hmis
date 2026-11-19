@@ -26,6 +26,9 @@ export const STORES_ACTS = [
   "import", "new_item_request", "resolve_request", "par", "category", "track_mode", "aliases", "reorder_draft",
   // S2a (#1112): a ticket's acts (refId = the indent) and each audit-pack export (decision 16).
   "raise_ticket", "approve_ticket", "decline_ticket", "reraise_ticket", "review_emergency", "claim_picking", "issue_ticket", "audit_export",
+  // S2b (#1112): the custody chain, the receipt, what went back, the shorts' resolutions, returns, late scans, adding to a ticket.
+  "take_custody", "hand_over", "take_over", "deliver_ticket", "send_back", "return_undelivered", "accept_return", "resolve_short",
+  "reask_ticket", "raise_return", "receive_return", "confirm_late_scan", "add_to_ticket",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

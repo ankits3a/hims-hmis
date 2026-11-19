@@ -1,12 +1,12 @@
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
-import { items, resources, stockBatches, transferLines, transfers, users } from "../../kernel/db/schema";
+import { items, resources, stockBatches, stockLedger, transferLines, transfers, users } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { MaterialsError } from "./errors";
 import { materialDiscrepancyFlagged, materialIssued, materialReceived } from "./events";
 import { fefoPick, getBatch, postMovements } from "./ledger";
-import { ensureTransitStore, requireStore, storeCustodianRoles } from "./stores";
+import { ensureTransitStore, isStoresPlace, requireStore, storeCustodianRoles } from "./stores";
 import type { MovementInput } from "./ledger";
 import type { Actor } from "@hmis/contracts";
 import type { Custody } from "./controlled";
@@ -232,7 +232,7 @@ export async function refuseStoresPlacesOnMaterialsRoute(db: Db | Tx, storeIds: 
   if (storeIds.length === 0) return;
   const rows = await db.select({ id: resources.id, code: resources.code, attributes: resources.attributes }).from(resources)
     .where(inArray(resources.id, [...storeIds]));
-  const hit = rows.find((r) => ((r.attributes ?? {}) as Record<string, unknown>).domain === "stores");
+  const hit = rows.find((r) => isStoresPlace(r));
   if (hit !== undefined) {
     throw new MaterialsError(
       "moves_through_stores",
@@ -426,6 +426,159 @@ export async function receiveStock(
   }
 
   return { status, shortfalls: shortfalls.map((s) => ({ transferLineId: s.transferLineId, qtyShort: s.qtyShort })) };
+}
+
+// ═══════════════════ STORES S2b (#1112, decisions 8, 9) — WHAT IS LEFT IN TRANSIT ═══════════════════
+//
+// ADDITIVE. A short (or a wrong / damaged line sent back, or a whole transfer nobody signed for) leaves stock
+// in IN-TRANSIT against its transfer. Until now nothing moved it on; these two do, each signed:
+//   · `receiveLate`     — the rest of a discrepancy line reaches the destination after all ("found");
+//   · `returnInTransit` — IN-TRANSIT → the source (or a named store, the quarantine) for a line or the whole.
+// What is left on a line is read off the LEDGER, never kept beside it: the transit store's rows for this
+// transfer and this batch (issue +, receive −, late receive −, return −). The transit balance is pooled across
+// transfers, so the per-transfer sum is the only honest figure, and neither call moves more than it.
+
+/** What each transfer line still has in IN-TRANSIT (issued − received − returned), from the transit store's rows. */
+export async function inTransitByLine(db: Db | Tx, transferId: string, siteId?: string): Promise<Map<string, number>> {
+  const transitId = await ensureTransitStore(db as Tx, siteId);
+  const lines = await db.select().from(transferLines).where(eq(transferLines.transferId, transferId)).orderBy(asc(transferLines.id));
+  const rows = await db.select({ batchId: stockLedger.batchId, qty: sql<string>`coalesce(sum(${stockLedger.qtyDelta}), 0)` })
+    .from(stockLedger)
+    .where(and(eq(stockLedger.resourceId, transitId), eq(stockLedger.refType, "transfer"), eq(stockLedger.refId, transferId)))
+    .groupBy(stockLedger.batchId);
+  const byBatch = new Map(rows.map((r) => [r.batchId, Number(r.qty)] as const));
+  const out = new Map<string, number>();
+  // One line per batch on a transfer (FEFO picks distinct batches per item, and an item is once on an indent);
+  // should two lines ever share a batch, the first takes what is left up to its own issue.
+  for (const l of lines) {
+    const left = byBatch.get(l.batchId) ?? 0;
+    const mine = Math.max(0, Math.min(left, l.qtyIssued - (l.qtyReceived ?? 0)));
+    out.set(l.id, mine);
+    byBatch.set(l.batchId, left - mine);
+  }
+  return out;
+}
+
+async function lockTransfer(tx: Tx, transferId: string): Promise<TransferRow> {
+  const [t] = await tx.select().from(transfers).where(eq(transfers.id, transferId)).for("update");
+  if (t === undefined) throw new MaterialsError("unknown_document", `transfer ${transferId} not found`);
+  return t;
+}
+
+/** After a late receipt or a return: a transfer with nothing left in transit is closed — `received`, or `returned` if nothing ever arrived. */
+async function closeIfSettled(tx: Tx, transfer: TransferRow, siteId?: string): Promise<string> {
+  const left = [...(await inTransitByLine(tx, transfer.id, siteId)).values()].reduce((a, b) => a + b, 0);
+  if (left > 0) return transfer.status === "in_transit" ? "in_transit" : "discrepancy";
+  const lines = await tx.select().from(transferLines).where(eq(transferLines.transferId, transfer.id));
+  const status = lines.some((l) => (l.qtyReceived ?? 0) > 0) ? "received" : "returned";
+  await tx.update(transfers).set({ status }).where(eq(transfers.id, transfer.id));
+  return status;
+}
+
+/**
+ * STORES S2b — the rest of a DISCREPANCY line reaches its destination: IN-TRANSIT → destination for at most what
+ * the line still has in transit. The same signatures as `receiveStock`: never the issuer, a shelf only through
+ * Stores, the destination's keepers when it names any; the same cost centre on both legs.
+ */
+export async function receiveLate(
+  tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qty: number }[], occurredAt: Date, siteId?: string,
+  opts: { costCenter?: string | null; throughStores?: boolean } = {},
+): Promise<{ status: string }> {
+  const transfer = await lockTransfer(tx, transferId);
+  if (transfer.status !== "discrepancy") {
+    throw new MaterialsError("already_received", `transfer ${transferId} is "${transfer.status}": only a discrepancy is received late`, { status: transfer.status });
+  }
+  const [destination] = await tx.select({ code: resources.code, attributes: resources.attributes }).from(resources).where(eq(resources.id, transfer.toResourceId));
+  const destAttrs = (destination?.attributes ?? {}) as Record<string, unknown>;
+  if (destAttrs.domain === "stores" && destAttrs.kind === "shelf" && opts.throughStores !== true) {
+    throw new MaterialsError("shelf_receives_through_stores", `${destination?.code ?? transfer.toResourceId} is a department shelf; it receives through Stores`, { storeId: transfer.toResourceId });
+  }
+  if (actor.id === transfer.issuedBy) throw new MaterialsError("transfer_self_receipt", `you issued transfer ${transferId}; the receiving side confirms it`);
+  const keepers = storeCustodianRoles(await requireStore(tx, transfer.toResourceId));
+  if (keepers.length > 0) {
+    let keeps = false;
+    for (const roleKey of keepers) if ((await usersHoldingRole(tx, roleKey)).includes(actor.id)) { keeps = true; break; }
+    if (!keeps) throw new MaterialsError("not_store_keeper", `only the receiving store's own staff (${keepers.join(", ")}) confirm what reached it`, { keepers });
+  }
+  const left = await inTransitByLine(tx, transferId, siteId);
+  const existing = new Map((await tx.select().from(transferLines).where(eq(transferLines.transferId, transferId))).map((l) => [l.id, l] as const));
+  const transitId = await ensureTransitStore(tx, siteId);
+  const costCenter = opts.costCenter === undefined || opts.costCenter === null ? {} : { costCenter: opts.costCenter };
+  const movements: MovementInput[] = [];
+  for (const l of lines) {
+    const line = existing.get(l.lineId);
+    if (line === undefined) throw new MaterialsError("unknown_document", `transfer line ${l.lineId} is not on transfer ${transferId}`);
+    if (!Number.isSafeInteger(l.qty) || l.qty <= 0 || l.qty > (left.get(l.lineId) ?? 0)) {
+      throw new MaterialsError("insufficient_stock", `line ${l.lineId} has ${String(left.get(l.lineId) ?? 0)} in transit`, { inTransit: left.get(l.lineId) ?? 0, qty: l.qty });
+    }
+    movements.push({ resourceId: transitId, batchId: line.batchId, qtyDelta: -l.qty, reason: "receive", refType: "transfer", refId: transferId, occurredAt, ...costCenter });
+    movements.push({ resourceId: transfer.toResourceId, batchId: line.batchId, qtyDelta: l.qty, reason: "receive", refType: "transfer", refId: transferId, occurredAt, ...costCenter });
+  }
+  if (movements.length === 0) throw new MaterialsError("unknown_document", "a late receipt names at least one line");
+  await postMovements(tx, actor, movements);
+  for (const l of lines) {
+    const line = existing.get(l.lineId)!;
+    await tx.update(transferLines).set({ qtyReceived: (line.qtyReceived ?? 0) + l.qty }).where(eq(transferLines.id, l.lineId));
+  }
+  await appendEvent(tx, materialReceived.make({
+    payload: {
+      transferId, fromResourceId: transfer.fromResourceId, toResourceId: transfer.toResourceId,
+      lines: lines.map((l) => ({ transferLineId: l.lineId, batchId: existing.get(l.lineId)!.batchId, qtyReceived: l.qty })),
+    },
+    actor, correlationId: transferId, occurredAt,
+  }));
+  return { status: await closeIfSettled(tx, transfer, siteId) };
+}
+
+/**
+ * STORES S2b — stock left in IN-TRANSIT goes BACK: to the transfer's source, or to `toResourceId` (the quarantine
+ * store, for damaged goods), signed by that store's keepers when it names any. Never more than the line has in
+ * transit. A transfer that ends with nothing in transit closes (`returned` when nothing was ever received). No
+ * cost centre rides on these rows: what was never received was never charged.
+ */
+export async function returnInTransit(
+  tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qty: number; toResourceId?: string }[], occurredAt: Date, siteId?: string,
+  /**
+   * `authorisedBy: "stores"` — set only by the Stores intent `resolveShort`, which has asked the materials head's
+   * own grant (`stores.masters.manage`): the head sends a short back to the source without being its keeper.
+   * Every other caller is checked against the receiving store's keepers.
+   */
+  opts: { authorisedBy?: "stores" } = {},
+): Promise<{ status: string }> {
+  const transfer = await lockTransfer(tx, transferId);
+  if (transfer.status !== "in_transit" && transfer.status !== "discrepancy") {
+    throw new MaterialsError("already_received", `transfer ${transferId} is "${transfer.status}" and holds nothing in transit`, { status: transfer.status });
+  }
+  const left = await inTransitByLine(tx, transferId, siteId);
+  const existing = new Map((await tx.select().from(transferLines).where(eq(transferLines.transferId, transferId))).map((l) => [l.id, l] as const));
+  const transitId = await ensureTransitStore(tx, siteId);
+  const checked = new Set<string>();
+  const movements: MovementInput[] = [];
+  const asked = new Map<string, number>();
+  for (const l of lines) {
+    const line = existing.get(l.lineId);
+    if (line === undefined) throw new MaterialsError("unknown_document", `transfer line ${l.lineId} is not on transfer ${transferId}`);
+    const want = (asked.get(l.lineId) ?? 0) + l.qty;
+    if (!Number.isSafeInteger(l.qty) || l.qty <= 0 || want > (left.get(l.lineId) ?? 0)) {
+      throw new MaterialsError("insufficient_stock", `line ${l.lineId} has ${String(left.get(l.lineId) ?? 0)} in transit`, { inTransit: left.get(l.lineId) ?? 0, qty: want });
+    }
+    asked.set(l.lineId, want);
+    const to = l.toResourceId ?? transfer.fromResourceId;
+    if (!checked.has(to) && opts.authorisedBy !== "stores") {
+      const keepers = storeCustodianRoles(await requireStore(tx, to));
+      if (keepers.length > 0) {
+        let keeps = false;
+        for (const roleKey of keepers) if ((await usersHoldingRole(tx, roleKey)).includes(actor.id)) { keeps = true; break; }
+        if (!keeps) throw new MaterialsError("not_store_keeper", `only the receiving store's own staff (${keepers.join(", ")}) take back what returns to it`, { keepers });
+      }
+      checked.add(to);
+    }
+    movements.push({ resourceId: transitId, batchId: line.batchId, qtyDelta: -l.qty, reason: "return", refType: "transfer", refId: transferId, occurredAt });
+    movements.push({ resourceId: to, batchId: line.batchId, qtyDelta: l.qty, reason: "return", refType: "transfer", refId: transferId, occurredAt });
+  }
+  if (movements.length === 0) throw new MaterialsError("unknown_document", "a return names at least one line");
+  await postMovements(tx, actor, movements);
+  return { status: await closeIfSettled(tx, transfer, siteId) };
 }
 
 // ═══════════════════════════════════════ READS ═══════════════════════════════════════

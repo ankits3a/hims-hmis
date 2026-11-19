@@ -96,7 +96,13 @@ export type PrintDocument =
    * the payee signs when the money leaves. Producer `payRefundVoucher` and renderer both in
    * `modules/billing` (`refund-print.ts`, registered by the billing module). Params: the voucher id.
    */
-  | "billing_refund_voucher";
+  | "billing_refund_voucher"
+  /**
+   * STORES S2b (#1112, spec "To pick": Issue prints the voucher and label) — the issue voucher with the label QR
+   * the porter scans (the ticket number only). Producer `issueTicket` and renderer both in `modules/stores`
+   * (`voucher.ts`, registered by the Stores module). Params: the indent id.
+   */
+  | "stores_issue_voucher";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -124,7 +130,9 @@ export type PrintDestination =
    * logical destination today: per-ward printers have no master data yet, and the relay owns which
    * physical queue(s) this maps to. A relay must be GRANTED it (`set-agent-print-destinations`).
    */
-  | "duty_board_a4";
+  | "duty_board_a4"
+  /** STORES S2b (#1112) — the central store's own A4 printer at the issue counter (the voucher and its label). */
+  | "stores_a4";
 
 /**
  * WHERE EACH DOCUMENT GOES, from the owner's rulings and `PrinterChoice.dc.html`.
@@ -154,6 +162,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   // #655 — the cash counter's A4 laser, where the payee stands and signs. DECIDED: not `office_a4`, the
   // superintendent's printer — a patient's paper does not come off a staff office's printer.
   billing_refund_voucher: "front_desk_a4",
+  // STORES S2b — the store's counter, where the keeper issues and the porter collects. Not a patient's paper.
+  stores_issue_voucher: "stores_a4",
 };
 
 /**

@@ -46,6 +46,22 @@ export const STORES_ERROR_CODES = [
   "not_emergency",
   "already_reviewed",
   "bad_window",
+  // ── S2b (#1112): the custody chain, delivery, shorts, returns, late scans ──
+  "you_issued_it",
+  "you_carried_it",
+  "not_in_your_hands",
+  "ambiguous_code",
+  "not_in_transit",
+  "already_resolved",
+  "nothing_short",
+  "already_reasked",
+  "nothing_to_reask",
+  "nothing_to_return",
+  "not_a_return",
+  "already_on_ticket",
+  "already_confirmed",
+  "unknown_scan",
+  "already_yours",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -100,6 +116,21 @@ const STATUS: Record<StoresErrorCode, number> = {
   not_emergency: 409,
   already_reviewed: 409,
   bad_window: 422,
+  you_issued_it: 403,
+  you_carried_it: 403,
+  not_in_your_hands: 403,
+  ambiguous_code: 409,
+  not_in_transit: 409,
+  already_resolved: 409,
+  nothing_short: 409,
+  already_reasked: 409,
+  nothing_to_reask: 409,
+  nothing_to_return: 409,
+  not_a_return: 422,
+  already_on_ticket: 409,
+  already_confirmed: 409,
+  unknown_scan: 404,
+  already_yours: 409,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

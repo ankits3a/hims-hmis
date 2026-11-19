@@ -9,9 +9,11 @@ import { ModuleRegistry } from "../../kernel/modules/loader";
 import { ALL_MANIFESTS } from "../../kernel/modules/manifests";
 import { KERNEL_RESOURCE_KINDS } from "../../kernel/resources/kinds";
 import { createResource } from "../../kernel/resources/registry";
-import { createShelf, listCategories, openStore, raiseTicket, registerStoresItem, seedStoresMasters } from "../stores";
+import { createShelf, departmentChargeOn, listCategories, openStore, raiseReturn, raiseTicket, receiveAtShelf, receiveReturn, registerStoresItem, seedStoresMasters } from "../stores";
 import { getIndent } from "./indents";
 import { MaterialsIndentsController } from "./materials-indents.controller";
+import { MaterialsController } from "./materials.controller";
+import { getTransfer, issueStock } from "./transfers";
 import { createStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -80,5 +82,21 @@ describe("the materials indent routes leave Stores tickets to Stores", () => {
     const ctl = new MaterialsIndentsController(db);
     const { indent } = await ctl.raise(keeper.actor, { fromResourceId: pharmCounter, toResourceId: pharmMain, lines: [{ itemId: mop, qtyBase: 1 }] });
     expect((await ctl.cancel(keeper.actor, indent.id, { reason: "not needed" })).indent.status).toBe("cancelled");
+  });
+
+  async function openShelfStock(): Promise<void> {
+    const { transferId } = await withTx(db, (tx) => issueStock(tx, keeper.actor, { fromResourceId: genMain, toResourceId: shelf, lines: [{ itemId: mop, qtyBase: 5 }], occurredAt: NOW }));
+    await receiveAtShelf(db, inA.actor, transferId, NOW);
+  }
+
+  it("pre-merge review S5: a department return is received through Stores, never the materials route, so the department's credit is never skipped", async () => {
+    await openShelfStock();
+    const [ret] = await raiseReturn(db, inA.actor, { shelfId: shelf, lines: [{ itemId: mop, qtyBase: 2, reason: "unused" }] }, NOW);
+    const tr = (await getTransfer(db, ret!.transferId))!;
+    const ctl = new MaterialsController(db);
+    expect(await codeOf(ctl.receive(keeper.actor, tr.id, { lines: tr.lines.map((l) => ({ lineId: l.id, qtyReceived: l.qtyIssued })) }))).toBe("moves_through_stores");
+    expect((await getTransfer(db, tr.id))!.status).toBe("in_transit");
+    await receiveReturn(db, keeper.actor, tr.id, NOW);
+    expect((await departmentChargeOn(db, "HSK", "2026-11-10")).chargePaise).toBe(5 * 250 - 2 * 250);
   });
 });

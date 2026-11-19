@@ -3,13 +3,26 @@ import { createResource, updateResource } from "../../kernel/resources/registry"
 import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { resources } from "../../kernel/db/schema";
 import { MATERIALS_RESOURCE_KINDS } from "./kinds";
-import { TRANSIT_STORE_CODE } from "./config";
+import { QUARANTINE_STORE_CODE, TRANSIT_STORE_CODE } from "./config";
 import { MaterialsError } from "./errors";
 import { ResourceError } from "../../kernel/resources/errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export type StoreRow = typeof resources.$inferSelect;
+
+/**
+ * STORES (pre-merge review S1) — the system stores only the Stores intents move stock through. They carry no
+ * `domain` (they are created by materials helpers) but are Stores places all the same: out of pharmacy's lists and
+ * refused on the materials transfer route, like every `domain = 'stores'` row.
+ */
+export const STORES_SYSTEM_STORE_CODES: readonly string[] = [QUARANTINE_STORE_CODE];
+
+/** A Stores place: a `domain = 'stores'` row or one of the Stores system stores. */
+export function isStoresPlace(row: { code: string; attributes: unknown }): boolean {
+  return ((row.attributes ?? {}) as Record<string, unknown>).domain === "stores"
+    || STORES_SYSTEM_STORE_CODES.some((c) => c.toLowerCase() === row.code.toLowerCase());
+}
 
 /**
  * PLAN 14 T5 / DD2, DD9 — stock LOCATIONS, which are registry resources of kind `store`.
@@ -97,6 +110,28 @@ export async function setStoreCustodianRoles(tx: Tx, actor: Actor, storeId: stri
  * `INSERT … ON CONFLICT DO NOTHING` cold-start shape from `nextEpisodeNo`, expressed against a
  * function that does more than an insert.
  */
+/**
+ * STORES S2b (#1112) — the quarantine store, created on first use in a savepoint exactly as `ensureTransitStore`
+ * is (a concurrent first create rolls back to the savepoint and the re-read finds the winner). It names no
+ * keepers: whoever moves stock into it has been asked their own grant by the calling intent.
+ */
+export async function ensureQuarantineStore(tx: Tx, siteId = "main"): Promise<string> {
+  const found = await findStoreByCode(tx, QUARANTINE_STORE_CODE, siteId);
+  if (found !== undefined) return found.id;
+  try {
+    const { resourceId } = await tx.transaction(async (sp) =>
+      createStore(sp, { type: "system", id: "materials-quarantine" }, {
+        code: QUARANTINE_STORE_CODE, name: "Quarantine", siteId,
+        attributes: { system: true, reason: "damaged or defective goods awaiting a supplier return" },
+      }));
+    return resourceId;
+  } catch (e) {
+    const again = await findStoreByCode(tx, QUARANTINE_STORE_CODE, siteId);
+    if (again !== undefined) return again.id;
+    throw e;
+  }
+}
+
 export async function ensureTransitStore(tx: Tx, siteId = "main"): Promise<string> {
   const found = await findStoreByCode(tx, TRANSIT_STORE_CODE, siteId);
   if (found !== undefined) return found.id;
@@ -221,6 +256,7 @@ export async function listStores(
   }
   if (opts.includeStoresDomain !== true) {
     clauses.push(sql`coalesce(${resources.attributes}->>'domain', '') <> 'stores'`);
+    clauses.push(sql`lower(${resources.code}) not in (${sql.join(STORES_SYSTEM_STORE_CODES.map((c) => sql`${c.toLowerCase()}`), sql`, `)})`);
   }
   return db.select().from(resources).where(and(...clauses)).orderBy(asc(resources.code));
 }

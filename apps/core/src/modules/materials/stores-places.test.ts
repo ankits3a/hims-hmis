@@ -9,7 +9,7 @@ import { withTx } from "../../kernel/db/client";
 import { orgDepartments } from "../../kernel/db/schema";
 import { KERNEL_RESOURCE_KINDS } from "../../kernel/resources/kinds";
 import { createResource } from "../../kernel/resources/registry";
-import { createStore, listStores } from "./stores";
+import { createStore, ensureQuarantineStore, listStores } from "./stores";
 import { MaterialsController } from "./materials.controller";
 import { createShelf, listShelves, listStoresStores, seedStoresMasters, storesManifest } from "../stores";
 import type { Actor } from "@hmis/contracts";
@@ -74,5 +74,15 @@ describe("Stores places stay out of pharmacy's lists and the materials transfer 
     }
     // Pharmacy to pharmacy goes past the new refusal (and stops later, at the unknown item, as before).
     expect(await codeOf(ctl.issue(head.actor, { fromResourceId: pharmMain, toResourceId: pharmCounter, lines: [line] }))).not.toBe("moves_through_stores");
+  });
+
+  it("the quarantine store (a Stores system store) is out of pharmacy's lists and refused on the transfer route", async () => {
+    const q = await withTx(db, (tx) => ensureQuarantineStore(tx));
+    expect((await listStores(db)).map((s) => s.code)).toEqual(["MAIN", "PHARM"]);
+    expect((await listStores(db, { includeStoresDomain: true })).map((s) => s.code)).toContain("QUARANTINE");
+    const ctl = new MaterialsController(db);
+    let code = "ok";
+    try { await ctl.issue(head.actor, { fromResourceId: q, toResourceId: pharmMain, lines: [{ itemId: newId(), qtyBase: 1 }] }); } catch (e) { code = ((e as HttpException).getResponse() as { code?: string }).code ?? String(e); }
+    expect(code).toBe("moves_through_stores");
   });
 });

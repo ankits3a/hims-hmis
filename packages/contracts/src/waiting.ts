@@ -66,7 +66,7 @@ export const WAITING_WEB_HREF: Record<WaitingKind, string | null> = {
   "roster.leaveRefused": "/roster/leave",
   "stores.indentsToApprove": "/stores/approve",
   "stores.toPick": "/stores/pick",
-  "stores.toReceive": "/stores",
+  "stores.toReceive": "/stores/receive",
   "reminders.today": null,
   "roster.dutiesToday": "/roster/my-duties",
 };

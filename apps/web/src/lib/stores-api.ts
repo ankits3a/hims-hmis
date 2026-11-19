@@ -1,7 +1,7 @@
 import { ApiError, api } from "./api";
 import type {
   WireImportResult, WireItemRequest, WireOverBookCard, WireReorderLine, WireShelfView, WireStoresCategory, WireStoresItem, WireStoresPickers,
-  WireStoresShelf, WireStoresStore, WireTicket, WireTicketTimeline,
+  WireStoresShelf, WireStoresStore, WireTicket, WireTicketTimeline, WireCustodyResult, WirePorterRow, WireCustodyLookup, WireReturnTicket, WireLateScan,
 } from "@hmis/contracts";
 
 /**
@@ -72,3 +72,29 @@ export const approveTicket = (indentId: string, lines: { lineIdx: number; qtyBas
 export const declineTicket = (indentId: string, reason: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/decline`, { reason });
 export const claimTicket = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/claim`, {});
 export const issueTicket = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/issue`, {});
+
+/* ── S2b (#1112): the custody chain, the receipt, "Add to open ticket?" ── */
+export type DeliverLine = { lineIdx: number; accepted: number; short?: number; wrong?: number; damaged?: number };
+/** A key per post, so a retried tap records once (decision 14). */
+const clientKey = (): string => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+export const ticketsToReceive = (): Promise<{ tickets: WireTicket[] }> => api("GET", "/stores/tickets/to-receive");
+export const deliverTicket = (indentId: string, lines: DeliverLine[]): Promise<WireCustodyResult> =>
+  api("POST", `/stores/tickets/${enc(indentId)}/deliver`, { lines, clientKey: clientKey(), scannedAt: new Date().toISOString() });
+export const takeCustody = (code: string): Promise<WireCustodyResult> =>
+  api("POST", "/stores/custody/take", { code, clientKey: clientKey(), scannedAt: new Date().toISOString() });
+export const handOverCustody = (code: string, fromUserId: string): Promise<WireCustodyResult> =>
+  api("POST", "/stores/custody/hand-over", { code, fromUserId, clientKey: clientKey(), scannedAt: new Date().toISOString() });
+export const returnUndelivered = (indentId: string): Promise<WireCustodyResult> =>
+  api("POST", `/stores/tickets/${enc(indentId)}/return-undelivered`, { clientKey: clientKey(), scannedAt: new Date().toISOString() });
+export const myCustody = (): Promise<{ rows: WirePorterRow[] }> => api("GET", "/stores/custody/mine");
+/* ── S2b UX pass (#1112): the porter's lookup, the keeper's take-back list and late scans ── */
+export const custodyLookup = (code: string): Promise<WireCustodyLookup> => api("GET", `/stores/custody/lookup?code=${enc(code)}`);
+export const ticketsComingBack = (): Promise<{ tickets: WireTicket[] }> => api("GET", "/stores/tickets/coming-back");
+export const acceptReturn = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/accept-return`, {});
+export const returnsToReceive = (): Promise<{ returns: WireReturnTicket[] }> => api("GET", "/stores/returns/to-receive");
+export const receiveReturn = (transferId: string): Promise<WireReturnTicket> => api("POST", `/stores/returns/${enc(transferId)}/receive`, {});
+export const lateScans = (): Promise<{ scans: WireLateScan[] }> => api("GET", "/stores/custody/late-scans");
+export const confirmLateScan = (handoffId: string): Promise<{ ok: true }> => api("POST", `/stores/custody/late-scans/${enc(handoffId)}/confirm`, {});
+export const openTicketFor = (shelfId: string): Promise<{ ticket: WireTicket | null }> => api("GET", `/stores/shelves/${enc(shelfId)}/open-ticket`);
+export const addToOpenTicket = (indentId: string, lines: { itemId: string; qtyBase: number }[]): Promise<{ ticket: WireTicket; added: string[]; alreadyOn: string[] }> =>
+  api("POST", `/stores/tickets/${enc(indentId)}/add`, { lines });

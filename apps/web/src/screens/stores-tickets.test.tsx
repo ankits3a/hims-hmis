@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithRouter } from "../test-utils";
-import { StoresApprove, StoresPick, StoresTicketTimeline } from "./stores-tickets";
+import { StoresApprove, StoresPick, StoresPorter, StoresTicketTimeline } from "./stores-tickets";
 import type { WireTicket } from "@hmis/contracts";
 
 /** STORES S2a (#1112) — the Approve list, the To pick list and the Timeline (spec "## Screens"). */
@@ -103,5 +103,35 @@ describe("the Stores ticket screens", () => {
     expect(await screen.findByTestId("step-approve")).toHaveTextContent("Approved · for HOD");
     expect(screen.getByTestId("step-approve")).toHaveTextContent("7 m");
     expect(screen.getByTestId("step-raise")).toHaveTextContent("Housekeeping F1 → Central store");
+  });
+
+  it("Timeline (S2b): a hand-off scanned late shows 'Synced late' with both times; a counter collection reads 'Collected at store'", async () => {
+    mock({
+      "GET /stores/tickets/t1": { body: {
+        ticket: ticket({ stage: "delivered" }),
+        timeline: { indentId: "t1", indentNo: "MIN2611100001", steps: [
+          { step: "hand_over", who: { id: "p2", name: "Porter B", roles: ["support_staff"] }, from: { id: "g1", code: "GEN-MAIN", name: "Central store" }, to: null, at: "2026-11-10T06:40:00.000Z", minutes: 10, forHod: false, note: "from Porter A", lines: [], phoneAt: "2026-11-10T06:40:00.000Z", recordedAt: "2026-11-10T07:20:00.000Z" },
+          { step: "collect", who: { id: "u2", name: "In-charge", roles: [] }, from: { id: "g1", code: "GEN-MAIN", name: "Central store" }, to: { id: "s1", code: "HSK-F1", name: "Housekeeping F1" }, at: "2026-11-10T07:30:00.000Z", minutes: 50, forHod: false, note: null, lines: [] },
+        ] },
+      } },
+    });
+    renderWithRouter(<StoresTicketTimeline indentId="t1" />);
+    expect(await screen.findByTestId("step-synced-late")).toHaveTextContent("Synced late");
+    expect(screen.getByTestId("step-collect")).toHaveTextContent("Collected at store");
+  });
+
+  it("Porter card: what is in my hands, and a take by the last four digits", async () => {
+    const calls = mock({
+      "GET /stores/custody/mine": { body: { rows: [] } },
+      "GET /stores/custody/lookup": { body: { ticket: ticket({ stage: "to_receive" }), act: "take", holder: { id: "k1", name: "Keeper A" } } },
+      "POST /stores/custody/take": { body: { ticket: ticket({ stage: "to_receive" }), duplicate: false, flag: null } },
+    });
+    const user = userEvent.setup();
+    renderWithRouter(<StoresPorter />);
+    expect(await screen.findByText("Nothing in your hands")).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Type last 4" }), "0001");
+    await user.click(await screen.findByRole("button", { name: "Take" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/stores/custody/take")?.body).toMatchObject({ code: "0001" }));
+    expect(await screen.findByText("Taken")).toBeInTheDocument();
   });
 });

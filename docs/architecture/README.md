@@ -163,7 +163,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | yes |
 | `orders` | lab, ordering, pharmacy, radiology | auth, db, episodes, events, modules, phi | — |
 | `phi` | abdm, aerb, billing, doctor-desk, lab, opd, patients, pcpndt, pharmacy, radiology | db | — |
-| `printing` | billing, lab, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | yes |
+| `printing` | billing, lab, opd, pharmacy, roster, stores | auth, crypto, db, events, phi, tokens | yes |
 | `push` | — | alerts, db, events, modules | — |
 | `ratelimit` | — | — | — |
 | `realtime` | lab, opd, radiology | auth, db, tokens | — |

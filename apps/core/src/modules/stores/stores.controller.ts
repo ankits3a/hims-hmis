@@ -4,6 +4,8 @@ import {
   storesCategoryBody, storesCheckBody, storesImportBody, storesItemBody, storesItemPatchBody, storesOpenBody, storesParBody, storesReceiveBody,
   storesReorderBody, storesRequestBody, storesResolveBody, storesShelfBody, storesStoreBody, storesUndoBody, storesUseBody,
   storesApproveBody, storesAuditQuery, storesDeclineBody, storesIssueBody, storesReviewBody, storesTicketBody,
+  storesAddLinesBody, storesDeliverBody, storesHandOverBody, storesResolveShortBody, storesReturnBody, storesScanBody, storesTakeOverBody,
+  storesUndeliveredBody,
 } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -21,6 +23,11 @@ import {
   ticketsToReceive,
 } from "./tickets";
 import { ticketTimeline } from "./timeline";
+import { addToOpenTicket, openTicketFor, reAskShort } from "./tickets";
+import {
+  acceptReturn, confirmLateScan, deliverTicket, handOver, lateScansToConfirm, myCustody, postTransitLoss, raiseReturn, receiveReturn, resolveShort,
+  returnUndelivered, returnsToReceive, takeCustody, takeOverCustody, custodyLookup, ticketsComingBack,
+} from "./custody";
 import { storesAuditPack } from "./audit-pack";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -256,6 +263,12 @@ export class StoresController {
     try { return { tickets: await ticketsToReceive(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
   }
 
+  /** UX pass (#1112): tickets coming back to a store the reader keeps, each one tap to accept. Before `tickets/:indentId`. */
+  @Get("tickets/coming-back")
+  async comingBack(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { tickets: await ticketsComingBack(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
   /** The ticket itself is read through its timeline's grant (shelf readers, approvers, keepers, auditors). */
   @Get("tickets/:indentId")
   async ticket(@CurrentActor() actor: Actor, @Param("indentId") indentId: string): Promise<unknown> {
@@ -297,6 +310,109 @@ export class StoresController {
   async issue(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
     const input = parsed(storesIssueBody, body ?? {});
     try { return await issueTicket(this.db, actor, parsed(id, indentId), input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /* ─────────────── S2b (#1112): the custody chain, the receipt, shorts, returns — each intent asks its own grant ─────────────── */
+
+  @Get("shelves/:shelfId/open-ticket")
+  async openTicket(@CurrentActor() actor: Actor, @Param("shelfId") shelfId: string): Promise<unknown> {
+    try { return { ticket: await openTicketFor(this.db, actor, parsed(id, shelfId), new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/add")
+  async addLines(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesAddLinesBody, body);
+    try { return await addToOpenTicket(this.db, actor, parsed(id, indentId), input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("custody/take")
+  async take(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesScanBody, body);
+    try { return await takeCustody(this.db, actor, input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("custody/hand-over")
+  async handOn(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesHandOverBody, body);
+    try { return await handOver(this.db, actor, input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** UX pass (#1112): the label's number (or last four) → the ticket and whose hands it is in, for the one confirm tap. */
+  @Get("custody/lookup")
+  async lookup(@CurrentActor() actor: Actor, @Query("code") code: unknown): Promise<unknown> {
+    const c = parsed(storesScanBody.shape.code, code);
+    try { return await custodyLookup(this.db, actor, c, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Get("custody/mine")
+  async inMyHands(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { rows: await myCustody(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  @Get("custody/late-scans")
+  async lateScans(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { scans: await lateScansToConfirm(this.db, actor) }; } catch (e) { toHttp(e); }
+  }
+
+  @Post("custody/late-scans/:handoffId/confirm")
+  async confirmLate(@CurrentActor() actor: Actor, @Param("handoffId") handoffId: string): Promise<unknown> {
+    try { return await confirmLateScan(this.db, actor, parsed(id, handoffId), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/take-over")
+  async takeOver(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesTakeOverBody, body);
+    try { return await takeOverCustody(this.db, actor, parsed(id, indentId), input.reason, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/deliver")
+  async deliver(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesDeliverBody, body ?? {});
+    try { return await deliverTicket(this.db, actor, parsed(id, indentId), input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/return-undelivered")
+  async undelivered(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesUndeliveredBody, body ?? {});
+    try { return await returnUndelivered(this.db, actor, parsed(id, indentId), input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/accept-return")
+  async acceptBack(@CurrentActor() actor: Actor, @Param("indentId") indentId: string): Promise<unknown> {
+    try { return await acceptReturn(this.db, actor, parsed(id, indentId), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/resolve-short")
+  async resolveShortLine(@CurrentActor() actor: Actor, @Param("indentId") indentId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesResolveShortBody, body);
+    try { return await resolveShort(this.db, actor, parsed(id, indentId), input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("tickets/:indentId/reask")
+  async reask(@CurrentActor() actor: Actor, @Param("indentId") indentId: string): Promise<unknown> {
+    try { return await reAskShort(this.db, actor, parsed(id, indentId), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("transit-losses/:approvalId/post")
+  @RequirePermission(STORES_MASTERS, "hospital")
+  async postLoss(@CurrentActor() actor: Actor, @Param("approvalId") approvalId: string): Promise<unknown> {
+    try { return await postTransitLoss(this.db, actor, parsed(id, approvalId), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @Post("shelves/:shelfId/returns")
+  async raiseBack(@CurrentActor() actor: Actor, @Param("shelfId") shelfId: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(storesReturnBody, body);
+    try { return { returns: await raiseReturn(this.db, actor, { ...input, shelfId: parsed(id, shelfId) }, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
+  @Get("returns/to-receive")
+  async returnsWaiting(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { returns: await returnsToReceive(this.db, actor) }; } catch (e) { toHttp(e); }
+  }
+
+  @Post("returns/:transferId/receive")
+  async receiveBack(@CurrentActor() actor: Actor, @Param("transferId") transferId: string): Promise<unknown> {
+    try { return await receiveReturn(this.db, actor, parsed(id, transferId), new Date()); } catch (e) { toHttp(e); }
   }
 
   /** Decision 16: the audit pack, JSON or CSV; the intent asks `stores.audit.read` and writes one event per export. */

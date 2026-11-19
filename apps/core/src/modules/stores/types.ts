@@ -125,7 +125,8 @@ export const TICKET_CHANNELS: readonly TicketChannel[] = ["phone", "web", "copil
  *   delivered  — the transfer was received (fully or with a discrepancy);
  *   declined   — the HOD said no; rejected — the store said no; cancelled — the requester withdrew.
  */
-export type TicketStage = "to_approve" | "to_pick" | "to_receive" | "delivered" | "declined" | "rejected" | "cancelled";
+/** S2b adds `returning` (the porter is bringing it back undelivered) and `returned` ("Returned undelivered"). */
+export type TicketStage = "to_approve" | "to_pick" | "to_receive" | "delivered" | "declined" | "rejected" | "cancelled" | "returning" | "returned";
 
 export type RaiseTicketInput = {
   shelfId: string;
@@ -178,9 +179,71 @@ export type TicketView = {
   claim: { by: TicketPerson; at: string; lapsesAt: string } | null;
   transfer: { id: string; status: string } | null;
   lines: { lineIdx: number; itemId: string; itemCode: string; itemName: string; baseUom: string; qtyBase: number; qtyApproved: number | null; qtyIssued: number | null }[];
+  /** S2b (decision 7): whose hands it is in, once issued. `holder` is null once the chain closed (delivered or returned). */
+  custody: TicketCustody | null;
+  /** S2b (decision 8): the receiver's per-line answer, once delivered. */
+  delivery: TicketDelivery | null;
+  /** S2b (decision 9): short quantities still in IN-TRANSIT, each against the last custodian, and their resolution. */
+  shorts: TicketShort[];
 };
 
-export type TimelineStepKind = "raise" | "re_raise" | "re_ask" | "approve" | "decline" | "review" | "claim" | "issue" | "receive" | "reject" | "cancel";
+export type TicketCustody = {
+  holder: TicketPerson | null;
+  /** Carrier legs: takes, hand-offs and take-overs (zero for a counter collection). */
+  legs: number;
+  /** The last person on the chain before the receiver (the issuer when nobody carried it). */
+  lastCustodian: TicketPerson;
+};
+
+export type DeliveryOutcome = { lineIdx: number; itemId: string; accepted: number; short: number; wrong: number; damaged: number };
+
+export type TicketDelivery = {
+  by: TicketPerson; at: string;
+  /** No carrier leg: "Collected at store". */
+  atCounter: boolean;
+  lines: DeliveryOutcome[];
+  /** Wrong + damaged quantities going back to the source, and whether the source keeper has taken them. */
+  sentBack: number; sentBackAccepted: boolean;
+};
+
+export type ShortResolution = "found" | "returned" | "lost";
+
+export type TicketShort = {
+  lineIdx: number; itemId: string; qty: number;
+  /** The last custodian on the chain: whose hands the short quantity was in. */
+  with: TicketPerson;
+  resolution: { kind: ShortResolution; by: TicketPerson; at: string; approvalId: string | null; posted: boolean } | null;
+};
+
+/** A scan from a phone: the label's ticket number (or its last four digits), a client idempotency key and the scan time. */
+export type ScanInput = { code: string; clientKey?: string | null; scannedAt?: string | null };
+
+export type DeliverLineInput = { lineIdx: number; accepted?: number; short?: number; wrong?: number; damaged?: number };
+export type DeliverInput = { lines?: DeliverLineInput[]; clientKey?: string | null; scannedAt?: string | null };
+
+/** Decision 14: a scan older than 12 h is accepted and flagged; one in the future is stored at server time and flagged. */
+export type ScanFlag = "late" | "future";
+
+export type CustodyLookup = { ticket: TicketView; act: "take" | "hand_over"; holder: TicketPerson };
+
+export type CustodyResult = { ticket: TicketView; duplicate: boolean; flag: ScanFlag | null };
+
+export type ReturnReason = "unused" | "wrong" | "defective";
+export type RaiseReturnInput = { shelfId: string; lines: { itemId: string; qtyBase: number; reason: ReturnReason }[]; note?: string | null };
+export type ReturnTicketView = {
+  transferId: string; status: string; shelf: { id: string; code: string; name: string }; to: { id: string; code: string; name: string };
+  quarantine: boolean; raisedBy: TicketPerson; raisedAt: string;
+  lines: { itemId: string; itemName: string; qtyBase: number }[];
+};
+
+export type PorterCardRow = { ticket: TicketView; from: { id: string; code: string; name: string }; to: { id: string; code: string; name: string }; minutes: number };
+
+export type LateScan = { handoffId: string; indentId: string; indentNo: string; kind: string; by: TicketPerson; phoneAt: string; recordedAt: string; flag: ScanFlag };
+
+export type TimelineStepKind =
+  | "raise" | "re_raise" | "re_ask" | "approve" | "decline" | "review" | "claim" | "issue" | "receive" | "reject" | "cancel"
+  // S2b: the custody chain, the receipt (carried or collected), what went back and how each short ended.
+  | "take" | "hand_over" | "take_over" | "deliver" | "collect" | "send_back" | "return_undelivered" | "return_accepted" | "found" | "returned" | "lost";
 
 export type TimelineStep = {
   step: TimelineStepKind;
@@ -195,6 +258,9 @@ export type TimelineStep = {
   note: string | null;
   /** Per line, where the step changed a quantity: asked → approved, approved → issued. */
   lines: { itemId: string; itemName: string; asked: number; approved: number | null; issued: number | null }[];
+  /** S2b (D22): a scan whose phone time and server time differ by more than 5 minutes shows both ("Synced late"). */
+  phoneAt?: string | null;
+  recordedAt?: string | null;
 };
 
 export type TicketTimeline = { indentId: string; indentNo: string; steps: TimelineStep[] };

@@ -149,6 +149,12 @@ export const EXPIRY_IS_A_MONTH_CLASSES = ["drug"] as const;
  * the real place it is.
  */
 export const TRANSIT_STORE_CODE = "IN-TRANSIT";
+/**
+ * STORES S2b (#1112, decisions 8, 10) — the quarantine store: damaged goods sent back on a ticket and defective
+ * goods a department returns wait here for a supplier return (`createSupplierReturn`). A real place with real
+ * balances, created on first use (`ensureQuarantineStore`), like the transit store.
+ */
+export const QUARANTINE_STORE_CODE = "QUARANTINE";
 
 // ═══ PLAN 14c, FIRST SLICE — COUNTS (phase doc `docs/superpowers/plans/2026-09-17-phase-materials-counts.md`) ═══
 

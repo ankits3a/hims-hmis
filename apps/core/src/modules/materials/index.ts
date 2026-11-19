@@ -69,11 +69,17 @@ export type { CaptureLine, GrnLineRow, GrnRow, GrnWithLines } from "./grn";
 export {
   getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist,
 } from "./transfers";
+// STORES S2b (#1112) — what is left in transit after a short or an unsigned delivery, received late or returned (additive).
+export { inTransitByLine, receiveLate, returnInTransit } from "./transfers";
+export { ensureQuarantineStore } from "./stores";
+export { QUARANTINE_STORE_CODE } from "./config";
 export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
 // ── PHARMACY GAP A6b — indents: a sub-store asks, the supplying store answers with a transfer ──
 export { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";
 // STORES S2a (#1112) — the caller-authorised twins and the write-once approval stamps (additive; the four above are unchanged).
 export { issueIndentScoped, raiseIndentScoped, stampIndentApproval, stampIndentReview } from "./indents";
+// STORES S2b (#1112) — new lines on an indent still requested ("Add to open ticket?"), caller-authorised (additive).
+export { addIndentLinesScoped } from "./indents";
 // OWNER RULING 2026-09-30 — the stores' settings; the two-person GRN rule is the first.
 export { loadMaterialsSettings, updateMaterialsSettings } from "./settings";
 export type { MaterialsSettings } from "./settings";

@@ -1,6 +1,6 @@
 ---
 issue: 1112
-status: approved
+status: built
 approved: 2026-11-18
 ---
 # SPEC: Stores S2, request tickets, approval, custody chain and porter scan (#1112) — APPROVED by owner 2026-11-18
