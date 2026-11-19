@@ -8,6 +8,7 @@ import {
   draftPdf, draftPo, draftRfq, enterQuote, getAward, getDraft, getException, groupLines, makeRfq, moveLine, objectAward, poFromAward, poFromGroup, poSheet,
   proposeAward, readQuotePdf, refuseException, requestAdvance, requestException, scorecard, sendPo, sendRfq, signException, submitPo, suppliers,
 } from "../lib/buying-api";
+import { dateLocale } from "../lib/date-locale";
 import { storesErrorCode } from "../lib/stores-api";
 import "./stores.css";
 import type {
@@ -946,7 +947,7 @@ function AdvanceDecision({ a, onDone }: { a: NonNullable<WireStoresPoSheet["adva
 
 /** The phone sheet of a single-source or emergency purchase: the one tap of whoever holds the next step. */
 function ExceptionSheet({ id }: { id: string }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const refused = useRefusal();
   const q = useQuery({ queryKey: ["stores-buying", "exception", id], queryFn: () => getException(id) });
   const [after, setAfter] = useState<WireBuyException | null>(null);
@@ -966,7 +967,7 @@ function ExceptionSheet({ id }: { id: string }): React.ReactElement {
       <Kv k={t("stores.buying.supplier")} v={e.vendorName} />
       <Kv k={t("stores.buying.reason")} v={e.reason} />
       <Kv k={t("stores.buying.exception.status")} v={t(`stores.buying.exceptionStatus.${e.status}`)} />
-      {e.confirmBy !== null && <Kv k={t("stores.buying.exception.confirmBy")} v={new Date(e.confirmBy).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })} />}
+      {e.confirmBy !== null && <Kv k={t("stores.buying.exception.confirmBy")} v={new Date(e.confirmBy).toLocaleString(dateLocale(i18n.language), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })} />}
       <Notice n={note} />
       {e.mine === null ? (
         <p style={{ margin: 0, fontWeight: 700 }}>{["approved", "confirmed", "refused"].includes(e.status) ? t(`stores.buying.exceptionStatus.${e.status}`) : t("stores.buying.notYours")}</p>
