@@ -135,10 +135,14 @@ department shelves every department (housekeeping included) receives from. Pharm
   (receipts into shelves +, into any other store −).
 - "Add to open ticket?": `openTicketFor` + `addToOpenTicket` (materials `addIndentLinesScoped`); an item already on
   the ticket is left off (an item is once per indent; 0155's line guard forbids raising a quantity).
+- UX pass: `custodyLookup` (`GET custody/lookup?code=`, carriers only) names the ticket AND its holder before any
+  write, so the porter card is Scan → "Taking from <name>" → Take, and posts `fromUserId` itself; `already_yours`
+  when it is the reader's. `ticketsComingBack` (`GET tickets/coming-back`, declared before `tickets/:indentId`)
+  lists pending sent_back / undelivered for the keeper's one-tap `acceptReturn`. Now card `stores.back` ("To take
+  back") counts those + department returns + late scans and opens `/stores/pick`, where each is one tap.
 - The issue voucher (`voucher.ts`, document `stores_issue_voucher`, destination `stores_a4`) is queued in
   `issueTicket`'s transaction; renderer registered in `StoresModule.onModuleInit`.
 
 ## 10. Not built here
 Gate passes (#1119); tower/concierge/"Stuck" and the end-of-shift red card (S3); an offline scan queue (native
-staff app); choosing which porter to send; a porter picker for the hand-off (the web card takes the outgoing
-porter's id); tagged units (S4); purchasing (S5).
+staff app); choosing which porter to send; tagged units (S4); purchasing (S5).

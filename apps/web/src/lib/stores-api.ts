@@ -1,7 +1,7 @@
 import { ApiError, api } from "./api";
 import type {
   WireImportResult, WireItemRequest, WireOverBookCard, WireReorderLine, WireShelfView, WireStoresCategory, WireStoresItem, WireStoresPickers,
-  WireStoresShelf, WireStoresStore, WireTicket, WireTicketTimeline, WireCustodyResult, WirePorterRow,
+  WireStoresShelf, WireStoresStore, WireTicket, WireTicketTimeline, WireCustodyResult, WirePorterRow, WireCustodyLookup, WireReturnTicket, WireLateScan,
 } from "@hmis/contracts";
 
 /**
@@ -87,6 +87,14 @@ export const handOverCustody = (code: string, fromUserId: string): Promise<WireC
 export const returnUndelivered = (indentId: string): Promise<WireCustodyResult> =>
   api("POST", `/stores/tickets/${enc(indentId)}/return-undelivered`, { clientKey: clientKey(), scannedAt: new Date().toISOString() });
 export const myCustody = (): Promise<{ rows: WirePorterRow[] }> => api("GET", "/stores/custody/mine");
+/* ── S2b UX pass (#1112): the porter's lookup, the keeper's take-back list and late scans ── */
+export const custodyLookup = (code: string): Promise<WireCustodyLookup> => api("GET", `/stores/custody/lookup?code=${enc(code)}`);
+export const ticketsComingBack = (): Promise<{ tickets: WireTicket[] }> => api("GET", "/stores/tickets/coming-back");
+export const acceptReturn = (indentId: string): Promise<WireTicket> => api("POST", `/stores/tickets/${enc(indentId)}/accept-return`, {});
+export const returnsToReceive = (): Promise<{ returns: WireReturnTicket[] }> => api("GET", "/stores/returns/to-receive");
+export const receiveReturn = (transferId: string): Promise<WireReturnTicket> => api("POST", `/stores/returns/${enc(transferId)}/receive`, {});
+export const lateScans = (): Promise<{ scans: WireLateScan[] }> => api("GET", "/stores/custody/late-scans");
+export const confirmLateScan = (handoffId: string): Promise<{ ok: true }> => api("POST", `/stores/custody/late-scans/${enc(handoffId)}/confirm`, {});
 export const openTicketFor = (shelfId: string): Promise<{ ticket: WireTicket | null }> => api("GET", `/stores/shelves/${enc(shelfId)}/open-ticket`);
 export const addToOpenTicket = (indentId: string, lines: { itemId: string; qtyBase: number }[]): Promise<{ ticket: WireTicket; added: string[]; alreadyOn: string[] }> =>
   api("POST", `/stores/tickets/${enc(indentId)}/add`, { lines });

@@ -26,7 +26,7 @@ import { ticketTimeline } from "./timeline";
 import { addToOpenTicket, openTicketFor, reAskShort } from "./tickets";
 import {
   acceptReturn, confirmLateScan, deliverTicket, handOver, lateScansToConfirm, myCustody, postTransitLoss, raiseReturn, receiveReturn, resolveShort,
-  returnUndelivered, returnsToReceive, takeCustody, takeOverCustody,
+  returnUndelivered, returnsToReceive, takeCustody, takeOverCustody, custodyLookup, ticketsComingBack,
 } from "./custody";
 import { storesAuditPack } from "./audit-pack";
 import type { Actor } from "@hmis/contracts";
@@ -263,6 +263,12 @@ export class StoresController {
     try { return { tickets: await ticketsToReceive(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
   }
 
+  /** UX pass (#1112): tickets coming back to a store the reader keeps, each one tap to accept. Before `tickets/:indentId`. */
+  @Get("tickets/coming-back")
+  async comingBack(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { tickets: await ticketsComingBack(this.db, actor, new Date()) }; } catch (e) { toHttp(e); }
+  }
+
   /** The ticket itself is read through its timeline's grant (shelf readers, approvers, keepers, auditors). */
   @Get("tickets/:indentId")
   async ticket(@CurrentActor() actor: Actor, @Param("indentId") indentId: string): Promise<unknown> {
@@ -329,6 +335,13 @@ export class StoresController {
   async handOn(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const input = parsed(storesHandOverBody, body);
     try { return await handOver(this.db, actor, input, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** UX pass (#1112): the label's number (or last four) → the ticket and whose hands it is in, for the one confirm tap. */
+  @Get("custody/lookup")
+  async lookup(@CurrentActor() actor: Actor, @Query("code") code: unknown): Promise<unknown> {
+    const c = parsed(storesScanBody.shape.code, code);
+    try { return await custodyLookup(this.db, actor, c, new Date()); } catch (e) { toHttp(e); }
   }
 
   @Get("custody/mine")

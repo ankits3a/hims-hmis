@@ -43,6 +43,7 @@ function mock(routes: Record<string, { status?: number; body: unknown }>): Call[
 function camera(rawValue: string): void {
   class FakeDetector { detect(): Promise<{ rawValue: string }[]> { return Promise.resolve([{ rawValue }]); } }
   vi.stubGlobal("BarcodeDetector", FakeDetector);
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined); // jsdom has no media playback
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
     value: { getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop: () => undefined }] }) },
@@ -52,6 +53,7 @@ function camera(rawValue: string): void {
 beforeEach(() => { setToken("t"); });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   Reflect.deleteProperty(navigator, "mediaDevices");
 });
 
@@ -100,17 +102,21 @@ describe("Porter card: scan or last four, the holder named, two taps", () => {
     const user = userEvent.setup();
     renderWithRouter(<StoresPorter />);
     await screen.findByTestId("porter-t1");
+    const fields = (): Element[] => [...screen.getByTestId("stores-porter").querySelectorAll("input, textarea, select")];
+    const noPerson = (): void => {
+      for (const el of fields()) {
+        const words = [el.getAttribute("name"), el.getAttribute("aria-label"), el.getAttribute("placeholder"), el.getAttribute("type"), el.id].join(" ");
+        expect(words).not.toMatch(/\b(id|user|porter|from)\b/i);
+      }
+    };
+    expect(fields()).toHaveLength(1);
+    expect(fields()[0]).toHaveAccessibleName("Type last 4");
+    expect(fields()[0]).toHaveAttribute("maxlength", "4");
+    noPerson();
     await user.click(screen.getByRole("button", { name: "Scan" }));
     await screen.findByText("Taking from Porter A");
-    const card = screen.getByTestId("stores-porter");
-    const inputs = card.querySelectorAll("input, textarea, select");
-    expect(inputs).toHaveLength(1);
-    expect(inputs[0]).toHaveAccessibleName("Type last 4");
-    expect(inputs[0]).toHaveAttribute("maxlength", "4");
-    for (const el of inputs) {
-      const words = [el.getAttribute("name"), el.getAttribute("aria-label"), el.getAttribute("placeholder"), el.getAttribute("type"), el.id].join(" ");
-      expect(words).not.toMatch(/\b(id|user|porter|from)\b/i);
-    }
+    expect(fields()).toHaveLength(0); // the confirm asks nothing: the server named the holder
+    noPerson();
   });
 
   it("a number that names nothing says so and keeps the field: no dead end", async () => {

@@ -167,6 +167,8 @@ export const storesReturnBody = z.object({
 });
 
 export type WireCustodyResult = { ticket: WireTicket; duplicate: boolean; flag: "late" | "future" | null };
+/** UX pass (#1112): the label names the ticket; the server names whose hands it is in, for the one confirm tap. */
+export type WireCustodyLookup = { ticket: WireTicket; act: "take" | "hand_over"; holder: WireTicketPerson };
 export type WirePorterRow = { ticket: WireTicket; from: { id: string; code: string; name: string }; to: { id: string; code: string; name: string }; minutes: number };
 export type WireLateScan = { handoffId: string; indentId: string; indentNo: string; kind: string; by: WireTicketPerson; phoneAt: string; recordedAt: string; flag: "late" | "future" };
 export type WireReturnTicket = {

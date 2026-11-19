@@ -23,7 +23,7 @@ import { receiveAtShelf } from "./use";
 import type { Chain } from "./chain";
 import type { TicketRow } from "./tickets";
 import type {
-  CustodyResult, DeliverInput, LateScan, PorterCardRow, RaiseReturnInput, ReturnTicketView, ScanFlag, ScanInput, ShortResolution,
+  CustodyLookup, CustodyResult, DeliverInput, LateScan, PorterCardRow, RaiseReturnInput, ReturnTicketView, ScanFlag, ScanInput, ShortResolution,
   TicketView,
 } from "./types";
 import type { Actor } from "@hmis/contracts";
@@ -204,6 +204,35 @@ export async function handOver(db: Db, actor: Actor, scan: ScanInput & { fromUse
     return false;
   });
   return { ticket: (await getTicket(db, row.indent.id, now))!, duplicate: dup, flag: dup ? null : clock.flag };
+}
+
+/**
+ * UX pass (#1112, spec "Porter card"): the porter scans the label (or types its last four) and the system names
+ * whose hands the goods are in, so nobody types a person. `act` says which intent the one confirm tap posts:
+ * "take" (still at the store, the keeper's hands) or "hand_over" (another porter's). Read-only; the intent
+ * that follows checks the holder again inside its own transaction.
+ */
+export async function custodyLookup(db: Db, actor: Actor, code: string, now: Date = new Date()): Promise<CustodyLookup> {
+  await requireCarrier(db, actor);
+  const notMine = (t: InTransit): boolean => holderOf(t.transfer.issuedBy, t.chain) !== actor.id;
+  let found: { row: InTransit };
+  try {
+    found = await ticketByCode(db, code, notMine);
+  } catch (e) {
+    if (!(e instanceof StoresError) || e.code !== "not_in_your_hands") throw e;
+    const mine = await ticketByCode(db, code, (t) => !notMine(t)).then(() => true, () => false);
+    if (mine) throw new StoresError("already_yours", "it is already in your hands");
+    throw e;
+  }
+  const { row } = found;
+  const holder = holderOf(row.transfer.issuedBy, row.chain);
+  const last = row.chain.handoffs.at(-1);
+  const [u] = await db.select({ n: users.fullName }).from(users).where(eq(users.id, holder));
+  return {
+    ticket: (await getTicket(db, row.indent.id, now))!,
+    act: last === undefined || last.kind === "take_over" ? "take" : "hand_over",
+    holder: { id: holder, name: u?.n ?? holder },
+  };
 }
 
 /** May this person take the goods over (decision 7, "porter gone")? The source store's keepers and the materials head. */
@@ -586,6 +615,25 @@ async function returnView(db: Db | Tx, transferId: string): Promise<ReturnTicket
     quarantine: (places.get(t.toResourceId)?.attributes as Record<string, unknown> | null)?.domain !== "stores",
     raisedBy: { id: t.issuedBy, name: who?.n ?? t.issuedBy }, raisedAt: t.issuedAt.toISOString(), lines: [...byItem.values()],
   };
+}
+
+/**
+ * UX pass (#1112): tickets coming back to the stores the reader keeps — a whole transfer returning undelivered, or
+ * the wrong and damaged lines a receiver sent back — waiting for the keeper's one-tap `acceptReturn`.
+ */
+export async function ticketsComingBack(db: Db, actor: Actor, now: Date = new Date()): Promise<TicketView[]> {
+  if (actor.type !== "user") return [];
+  const pending = await db.selectDistinct({ indentId: storesTransitResolutions.indentId }).from(storesTransitResolutions)
+    .where(and(inArray(storesTransitResolutions.kind, ["sent_back", "undelivered"]), eq(storesTransitResolutions.status, "pending")));
+  const kept = new Map<string, boolean>();
+  const rows: TicketRow[] = [];
+  for (const { indentId } of pending) {
+    const r = await requireTicketRow(db, indentId);
+    const source = r.indent.toResourceId;
+    if (!kept.has(source)) kept.set(source, await keepsStore(db, actor, await storesStoreRow(db, source)));
+    if (kept.get(source) === true) rows.push(r);
+  }
+  return (await ticketViews(db, rows, now)).sort((a, b) => a.clockFrom.localeCompare(b.clockFrom));
 }
 
 // ═══════════════════════════════ the porter's card and the keeper's late scans ═══════════════════════════════

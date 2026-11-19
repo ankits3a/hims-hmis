@@ -61,6 +61,7 @@ export const STORES_ERROR_CODES = [
   "already_on_ticket",
   "already_confirmed",
   "unknown_scan",
+  "already_yours",
 ] as const;
 
 export type StoresErrorCode = (typeof STORES_ERROR_CODES)[number];
@@ -129,6 +130,7 @@ const STATUS: Record<StoresErrorCode, number> = {
   already_on_ticket: 409,
   already_confirmed: 409,
   unknown_scan: 404,
+  already_yours: 409,
 };
 
 export function storesHttpStatus(code: StoresErrorCode): number {

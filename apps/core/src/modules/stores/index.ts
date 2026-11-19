@@ -28,10 +28,10 @@ export {
 } from "./tickets";
 export { ticketTimeline } from "./timeline";
 export { storesAuditPack } from "./audit-pack";
-export { STORES_DESK_PROVIDERS, storesApproveDesk, storesPickDesk, storesReceiveDesk } from "./desk";
+export { STORES_DESK_PROVIDERS, storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk } from "./desk";
 export {
   LATE_SCAN_MS, STORES_CARRY, acceptReturn, confirmLateScan, deliverTicket, handOver, lateScansToConfirm, myCustody, postTransitLoss, raiseReturn,
-  receiveReturn, resolveShort, returnUndelivered, returnsToReceive, scanClock, takeCustody, takeOverCustody,
+  receiveReturn, resolveShort, returnUndelivered, returnsToReceive, scanClock, takeCustody, takeOverCustody, custodyLookup, ticketsComingBack,
 } from "./custody";
 export { ISSUE_VOUCHER_DOCUMENT, addToOpenTicket, openTicketFor, reAskShort } from "./tickets";
 export { registerStoresPrinting, renderIssueVoucher } from "./voucher";

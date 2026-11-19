@@ -224,6 +224,8 @@ export type DeliverInput = { lines?: DeliverLineInput[]; clientKey?: string | nu
 /** Decision 14: a scan older than 12 h is accepted and flagged; one in the future is stored at server time and flagged. */
 export type ScanFlag = "late" | "future";
 
+export type CustodyLookup = { ticket: TicketView; act: "take" | "hand_over"; holder: TicketPerson };
+
 export type CustodyResult = { ticket: TicketView; duplicate: boolean; flag: ScanFlag | null };
 
 export type ReturnReason = "unused" | "wrong" | "defective";

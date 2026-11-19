@@ -123,13 +123,14 @@ describe("the Stores ticket screens", () => {
   it("Porter card: what is in my hands, and a take by the last four digits", async () => {
     const calls = mock({
       "GET /stores/custody/mine": { body: { rows: [] } },
+      "GET /stores/custody/lookup": { body: { ticket: ticket({ stage: "to_receive" }), act: "take", holder: { id: "k1", name: "Keeper A" } } },
       "POST /stores/custody/take": { body: { ticket: ticket({ stage: "to_receive" }), duplicate: false, flag: null } },
     });
     const user = userEvent.setup();
     renderWithRouter(<StoresPorter />);
     expect(await screen.findByText("Nothing in your hands")).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "Type last 4" }), "0001");
-    await user.click(screen.getByRole("button", { name: "Scan" }));
+    await user.click(await screen.findByRole("button", { name: "Take" }));
     await waitFor(() => expect(calls.find((c) => c.path === "/stores/custody/take")?.body).toMatchObject({ code: "0001" }));
     expect(await screen.findByText("Taken")).toBeInTheDocument();
   });

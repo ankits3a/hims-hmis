@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  approveTicket, claimTicket, declineTicket, deliverTicket, getTicket, handOverCustody, issueTicket, myCustody, returnUndelivered, storesErrorCode,
-  takeCustody, ticketsToApprove, ticketsToPick, ticketsToReceive,
+  acceptReturn, approveTicket, claimTicket, confirmLateScan, custodyLookup, declineTicket, deliverTicket, getTicket, handOverCustody, issueTicket,
+  lateScans, myCustody, receiveReturn, returnUndelivered, returnsToReceive, storesErrorCode, takeCustody, ticketsComingBack, ticketsToApprove,
+  ticketsToPick, ticketsToReceive,
 } from "../lib/stores-api";
+import { QrScan, cameraScanPossible } from "../components/qr-scan";
 import type { DeliverLine } from "../lib/stores-api";
-import type { WireTicket } from "@hmis/contracts";
+import type { WireCustodyLookup, WireLateScan, WireTicket } from "@hmis/contracts";
 
 /**
  * STORES S2a (#1112) — THE TICKET SCREENS (spec "## Screens"): Approve (phone, from the notice), To pick (the
@@ -160,6 +162,94 @@ export function StoresPick(): React.ReactElement {
       <Offline />
       <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.ticket.toPickTitle")}</h1>
       {tickets.length === 0 ? <p style={{ margin: 0 }}>{t("stores.ticket.nothingToPick")}</p> : tickets.map((tk) => <PickRow key={tk.id} ticket={tk} />)}
+      <TakeBack />
+      <LateScans />
+    </div>
+  );
+}
+
+/** The keeper's refusal words for taking back and confirming: each names who can, or that it is done. */
+function useKeeperRefusal(): (e: unknown) => string {
+  const { t } = useTranslation();
+  return (e) => {
+    const code = storesErrorCode(e);
+    const known: Record<string, string> = {
+      not_permitted: "stores.ticket.sendingKeeperOnly", nothing_to_return: "stores.ticket.alreadyBack", not_in_transit: "stores.ticket.alreadyBack",
+      already_confirmed: "stores.ticket.alreadyConfirmed", unknown_scan: "stores.ticket.alreadyConfirmed",
+    };
+    return t(code !== null && known[code] !== undefined ? known[code] : "stores.shelf.failed");
+  };
+}
+
+/**
+ * UX pass (#1112) — "To take back", on the keeper's own screen: tickets coming back undelivered or sent back, and
+ * the department returns on their way, each one tap. Absent when nothing is coming back.
+ */
+function TakeBack(): React.ReactElement | null {
+  const { t } = useTranslation();
+  const back = useQuery({ queryKey: ["stores", "coming-back"], queryFn: ticketsComingBack, retry: false });
+  const returns = useQuery({ queryKey: ["stores", "returns-to-receive"], queryFn: returnsToReceive, retry: false });
+  const tickets = back.data?.tickets ?? [];
+  const rets = returns.data?.returns ?? [];
+  if (tickets.length + rets.length === 0) return null;
+  return (
+    <section data-testid="stores-take-back" style={{ display: "flex", flexDirection: "column", gap: 2, borderTop: "2px solid var(--ink, #222)", paddingTop: 6 }}>
+      <h2 style={{ margin: 0, fontSize: 16 }}>{`${t("stores.now.toTakeBack")} · ${String(tickets.length + rets.length)}`}</h2>
+      {tickets.map((tk) => (
+        <OneTapRow key={tk.id} testId={`back-ticket-${tk.id}`} label={`${tk.indentNo.slice(-4)} · ${tk.department.name}`} word={t(`stores.ticket.stage.${tk.stage}`)}
+          action={t("stores.ticket.takeBack")} done={t("stores.ticket.backAtStore")} act={() => acceptReturn(tk.id)} invalidate={["coming-back"]} />
+      ))}
+      {rets.map((r) => (
+        <OneTapRow key={r.transferId} testId={`back-return-${r.transferId}`} label={`${r.shelf.name} · ${r.lines.map((l) => `${l.itemName} ${String(l.qtyBase)}`).join(", ")}`}
+          word={t(r.quarantine ? "stores.ticket.toQuarantine" : "stores.ticket.returnWord")}
+          action={t("stores.ticket.takeBack")} done={t("stores.ticket.backAtStore")} act={() => receiveReturn(r.transferId)} invalidate={["returns-to-receive"]} />
+      ))}
+    </section>
+  );
+}
+
+/** UX pass (#1112) — "Late scan to confirm": who scanned, the phone's time → when it reached the server; one tap. */
+function LateScans(): React.ReactElement | null {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["stores", "late-scans"], queryFn: lateScans, retry: false });
+  const scans: WireLateScan[] = q.data?.scans ?? [];
+  if (scans.length === 0) return null;
+  return (
+    <section data-testid="stores-late-scans" style={{ display: "flex", flexDirection: "column", gap: 2, borderTop: "2px solid var(--ink, #222)", paddingTop: 6 }}>
+      <h2 style={{ margin: 0, fontSize: 16 }}>{`${t("stores.ticket.lateScanToConfirm")} · ${String(scans.length)}`}</h2>
+      {scans.map((sc) => (
+        <OneTapRow key={sc.handoffId} testId={`late-${sc.handoffId}`} label={`${sc.indentNo.slice(-4)} · ${sc.by.name} · ${hhmm(sc.phoneAt)} → ${hhmm(sc.recordedAt)}`}
+          word={t(`stores.ticket.flag.${sc.flag}`)} action={t("stores.ticket.confirm")} done={t("stores.ticket.confirmed")}
+          act={() => confirmLateScan(sc.handoffId)} invalidate={["late-scans"]} />
+      ))}
+    </section>
+  );
+}
+
+function OneTapRow({ testId, label, word, action, done, act, invalidate }: {
+  testId: string; label: string; word: string; action: string; done: string; act: () => Promise<unknown>; invalidate: string[];
+}): React.ReactElement {
+  const qc = useQueryClient();
+  const refuse = useKeeperRefusal();
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [finished, setFinished] = useState(false);
+  return (
+    <div data-testid={testId} style={{ display: "flex", flexDirection: "column", borderBottom: "1px solid var(--rule, #e3e3e3)" }}>
+      <div style={{ ...rowStyle, borderBottom: "none" }}>
+        <span style={cell}>{label}</span>
+        <span style={{ flexShrink: 0, fontWeight: 700 }}>{finished ? done : word}</span>
+        {!finished && (
+          <button type="button" style={primary} disabled={busy} onClick={() => {
+            setBusy(true);
+            act()
+              .then(() => { setFinished(true); setNotice(null); return qc.invalidateQueries({ queryKey: ["stores", ...invalidate] }); })
+              .catch((e: unknown) => setNotice(refuse(e)))
+              .finally(() => setBusy(false));
+          }}>{action}</button>
+        )}
+      </div>
+      {notice !== null && <span role="status">{notice}</span>}
     </div>
   );
 }
@@ -309,30 +399,53 @@ function ReceiveCard({ ticket }: { ticket: WireTicket }): React.ReactElement {
   );
 }
 
-// ═══════════════════════════════ Porter card (S2b) ═══════════════════════════════
+// ═══════════════════════════════ Porter card (S2b, UX pass) ═══════════════════════════════
+
+/** The porter card's own refusal words: each names what to do next. */
+const PORTER_WORDS: Record<string, string> = {
+  unknown_ticket: "stores.ticket.noSuchTicket", ambiguous_code: "stores.ticket.twoMatch", already_yours: "stores.ticket.alreadyYours",
+  not_in_your_hands: "stores.ticket.notInHands", not_permitted: "stores.ticket.portersOnly", not_in_transit: "stores.ticket.notOnItsWay",
+};
 
 /**
- * STORES S2b (#1112, decision 7) — THE PORTER'S CARD: what is in my hands (from → to · minutes), and a take by the
- * label's number or its last four digits. A hand-on is the next porter's own take on their phone, naming me.
+ * STORES S2b (#1112, decision 7; UX pass) — THE PORTER'S CARD: what is in my hands (from → to · minutes), and a take
+ * in two taps — Scan (the camera reads the label's QR), then Take. Without a camera the label's last four digits,
+ * typed, find the ticket by themselves. The server names whose hands it is in ("Taking from <name>"): the keeper
+ * at the store, or the porter handing on. Nobody types a person; the one input is the label's last four.
  */
 export function StoresPorter(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const refuse = useRefusal();
   const q = useQuery({ queryKey: ["stores", "custody-mine"], queryFn: myCustody, retry: false });
   const [code, setCode] = useState("");
-  const [from, setFrom] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [noCamera, setNoCamera] = useState(false);
+  const [found, setFound] = useState<{ code: string; at: WireCustodyLookup } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const refresh = (): Promise<void> => qc.invalidateQueries({ queryKey: ["stores", "custody-mine"] });
+  const refuse = (e: unknown): void => {
+    const c = storesErrorCode(e);
+    setNotice(t(c !== null && PORTER_WORDS[c] !== undefined ? PORTER_WORDS[c] : "stores.shelf.failed"));
+    setFound(null);
+    setCode("");
+  };
+  const find = (c: string): void => {
+    setNotice(null);
+    setBusy(true);
+    custodyLookup(c).then((at) => setFound({ code: c, at })).catch(refuse).finally(() => setBusy(false));
+  };
+  const take = (): void => {
+    if (found === null) return;
+    setBusy(true);
+    (found.at.act === "take" ? takeCustody(found.code) : handOverCustody(found.code, found.at.holder.id))
+      .then(() => { setNotice(t("stores.ticket.taken")); setFound(null); setCode(""); return refresh(); })
+      .catch(refuse)
+      .finally(() => setBusy(false));
+  };
   if (q.data === undefined && !q.isError) return <Loading testId="stores-porter" />;
   const rows = q.data?.rows ?? [];
-  const take = (): void => {
-    const c = code.trim();
-    if (c === "") return;
-    (from.trim() === "" ? takeCustody(c) : handOverCustody(c, from.trim()))
-      .then(() => { setNotice(t("stores.ticket.taken")); setCode(""); setFrom(""); return refresh(); })
-      .catch((e: unknown) => setNotice(refuse(e)));
-  };
+  const canScan = !noCamera && cameraScanPossible();
   return (
     <div data-testid="stores-porter" style={page}>
       <Offline />
@@ -342,22 +455,45 @@ export function StoresPorter(): React.ReactElement {
         <div key={r.ticket.id} data-testid={`porter-${r.ticket.id}`} style={rowStyle}>
           <span style={cell}>{`${r.ticket.indentNo.slice(-4)} · ${r.from.name} → ${r.to.name}`}</span>
           <span style={{ ...num, minWidth: 40 }}>{`${String(r.minutes)} m`}</span>
-          <button type="button" style={btn} onClick={() => { returnUndelivered(r.ticket.id).then(refresh).catch((e: unknown) => setNotice(refuse(e))); }}>
+          <button type="button" style={btn} onClick={() => { returnUndelivered(r.ticket.id).then(refresh).catch(refuse); }}>
             {t("stores.ticket.returnBack")}
           </button>
         </div>
       ))}
-      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span>{t("stores.ticket.typeLast4")}</span>
-        <input inputMode="numeric" aria-label={t("stores.ticket.typeLast4")} value={code} onChange={(e) => setCode(e.target.value.replace(/[^0-9A-Za-z]/g, "").slice(0, 20))}
-          style={{ minHeight: 40, boxSizing: "border-box", width: "100%" }} />
-      </label>
-      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span>{t("stores.ticket.fromPorter")}</span>
-        <input aria-label={t("stores.ticket.fromPorter")} value={from} onChange={(e) => setFrom(e.target.value.trim().slice(0, 64))} style={{ minHeight: 40, boxSizing: "border-box", width: "100%" }} />
-      </label>
+      {found !== null ? (
+        <section data-testid="porter-confirm" style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "2px solid var(--ink, #222)", paddingTop: 6 }}>
+          <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("stores.ticket.takingFrom", { name: found.at.holder.name })}</strong>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {`${found.at.ticket.indentNo.slice(-4)} · ${found.at.ticket.source.name} → ${found.at.ticket.shelf.name}`}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" style={{ ...primary, flex: 1 }} disabled={busy} onClick={take}>{t("stores.ticket.take")}</button>
+            <button type="button" style={btn} onClick={() => { setFound(null); setCode(""); }}>{t("stores.ticket.cancel")}</button>
+          </div>
+        </section>
+      ) : scanning ? (
+        <QrScan
+          onRead={(text) => { setScanning(false); find(text); }}
+          onClose={(why) => { setScanning(false); if (why === "unavailable") { setNoCamera(true); setNotice(t("stores.ticket.cameraOff")); } }}
+        />
+      ) : (
+        <>
+          {canScan && <button type="button" style={{ ...primary, minHeight: 48 }} disabled={busy} onClick={() => { setNotice(null); setScanning(true); }}>{t("stores.ticket.scan")}</button>}
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span>{t("stores.ticket.typeLast4")}</span>
+            <input
+              inputMode="numeric" autoComplete="off" maxLength={4} aria-label={t("stores.ticket.typeLast4")} value={code} disabled={busy}
+              onChange={(e) => {
+                const c = e.target.value.replace(/\D/g, "").slice(0, 4);
+                setCode(c);
+                if (c.length === 4) find(c);
+              }}
+              style={{ minHeight: 40, boxSizing: "border-box", width: "100%", fontSize: 18, letterSpacing: 4 }}
+            />
+          </label>
+        </>
+      )}
       {notice !== null && <p role="status" style={{ margin: 0 }}>{notice}</p>}
-      <button type="button" style={primary} onClick={take}>{t("stores.ticket.scan")}</button>
     </div>
   );
 }

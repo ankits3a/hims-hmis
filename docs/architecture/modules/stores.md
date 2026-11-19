@@ -31,6 +31,7 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_CARRY`
   - `acceptReturn(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView>`
   - `confirmLateScan(db: Db, actor: Actor, handoffId: string, now: Date = new Date()): Promise<{ ok: true }>`
+  - `custodyLookup(db: Db, actor: Actor, code: string, now: Date = new Date()): Promise<CustodyLookup>`
   - `deliverTicket(db: Db, actor: Actor, indentId: string, input: DeliverInput = {}, now: Date = new Date()): Promise<CustodyResult>`
   - `handOver(db: Db, actor: Actor, scan: ScanInput & { fromUserId: string }, now: Date = new Date()): Promise<CustodyResult>`
   - `lateScansToConfirm(db: Db, actor: Actor): Promise<LateScan[]>`
@@ -44,11 +45,13 @@ Source: `apps/core/src/modules/stores/`
   - `scanClock(scannedAt: string | Date | null | undefined, now: Date): { phoneAt: Date | null; occurredAt: Date; flag: ScanFlag | null }`
   - `takeCustody(db: Db, actor: Actor, scan: ScanInput, now: Date = new Date()): Promise<CustodyResult>`
   - `takeOverCustody(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<CustodyResult>`
+  - `ticketsComingBack(db: Db, actor: Actor, now: Date = new Date()): Promise<TicketView[]>`
 - `desk.ts`
   - `STORES_DESK_PROVIDERS`
   - `storesApproveDesk: DeskProvider`
   - `storesPickDesk: DeskProvider`
   - `storesReceiveDesk: DeskProvider`
+  - `storesTakeBackDesk: DeskProvider`
 - `errors.ts`
   - `STORES_ERROR_CODES`
   - `class StoresError`
