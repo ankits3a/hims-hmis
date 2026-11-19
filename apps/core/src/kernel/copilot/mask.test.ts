@@ -233,3 +233,28 @@ describe("maskQuestion — the imaging accession", () => {
     expect(maskQuestion("2 x 4 film sheets").masked).toBe("2 x 4 film sheets");
   });
 });
+
+/**
+ * #1113 — THE STORES INDENT NUMBER, `MIN` + `YYMMDD` + a four-digit serial. The digits are the identifier and
+ * become the placeholder; the `MIN` prefix stays in the text (it identifies nobody) so the phrasebook can tell a
+ * Stores ticket from a patient's number. The slot holds the digits as typed.
+ */
+describe("maskQuestion — the Stores indent number", () => {
+  it.each([
+    ["MIN2611190007 kahan hai?", "MIN<<P1>> kahan hai?", "2611190007"],
+    ["MIN-261119-0007 kahan hai?", "MIN-<<P1>> kahan hai?", "261119-0007"],
+    ["min 261119 0007 ka status", "min <<P1>> ka status", "261119 0007"],
+    ["MIN२६१११९०००७ कहाँ है", "MIN<<P1>> कहाँ है", "२६१११९०००७"],
+  ])("masks the digits of %s and keeps the prefix", (typed, want, digits) => {
+    const { masked, slots } = maskQuestion(typed);
+    expect(masked).toBe(want);
+    expect(slots).toEqual({ "<<P1>>": digits });
+    expect(() => assertNoIdentifiers(masked)).not.toThrow();
+  });
+
+  it("still masks a word that merely ends in min, whole, as the visit-number shape", () => {
+    const { masked, slots } = maskQuestion("admin2611190007 kya hai");
+    expect(masked).toBe("<<P1>> kya hai");
+    expect(slots).toEqual({ "<<P1>>": "admin2611190007" });
+  });
+});

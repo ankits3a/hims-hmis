@@ -2,6 +2,7 @@ import { waitingItem } from "../../kernel/desk/waiting";
 import { STORES_INDENTS_APPROVE, STORES_SHELF_WORK } from "./access";
 import { lateScansToConfirm, returnsToReceive, ticketsComingBack } from "./custody";
 import { ticketsToApprove, ticketsToPick, ticketsToReceive } from "./tickets";
+import { STORES_TOWER_READ, boardCards } from "./tower";
 import type { DeskCard, DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
 import type { TicketView } from "./types";
 import type { WaitingItem, WaitingKind } from "@hmis/contracts";
@@ -84,4 +85,27 @@ export const storesTakeBackDesk: DeskProvider = {
   },
 };
 
-export const STORES_DESK_PROVIDERS = [storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk] as const;
+/**
+ * S3 (#1113, decision 13) — "Stuck" (`stores.tower.read`: the materials head, the duty manager, the store, the
+ * superintendent, the owner): every ticket past a clock, the longest-broken first, each naming the clock that broke.
+ * The tower's own read (`boardCards`), so the card and the board agree. A ticket number and a department per row.
+ */
+export const storesStuckDesk: DeskProvider = {
+  key: "stores.stuck", permission: STORES_TOWER_READ,
+  load: async (ctx) => {
+    const stuck = (await boardCards(ctx.db, ctx.now)).filter((c) => c.card.lane === "stuck")
+      .sort((a, b) => (b.card.clock?.minutes ?? 0) - (a.card.clock?.minutes ?? 0));
+    if (stuck.length === 0) return [];
+    return [{
+      key: "stores.stuck", band: "now", titleKey: "stores.now.stuck",
+      stats: [{ key: "count", value: String(stuck.length), href: "/stores/tower" }],
+      rows: stuck.slice(0, MAX_ROWS).map(({ card: c }) => ({
+        id: c.id, badge: c.priority === "emergency" ? "!" : null, title: c.indentNo,
+        subtitle: `${c.department.name} · ${c.clock!.kind} ${String(c.clock!.minutes)} min`, action: "Open", href: `/stores/tickets/${c.id}`,
+        severity: "hot" as const,
+      })),
+    }];
+  },
+};
+
+export const STORES_DESK_PROVIDERS = [storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk, storesStuckDesk] as const;

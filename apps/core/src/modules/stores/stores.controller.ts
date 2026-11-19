@@ -31,6 +31,7 @@ import {
   returnUndelivered, returnsToReceive, takeCustody, takeOverCustody, custodyLookup, ticketsComingBack,
 } from "./custody";
 import { storesAuditPack } from "./audit-pack";
+import { STORES_TOWER_READ, towerSummary, towerView } from "./tower";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -499,5 +500,23 @@ export class StoresController {
   @Header("Cache-Control", "no-store")
   async printGatePass(@Param("passId") passId: string): Promise<unknown> {
     try { return await renderGatePass(this.db, { passId: parsed(id, passId) }); } catch (e) { toHttp(e); }
+  }
+
+  /* ─────────────── S3 (#1113): the control tower and the owner's one line ─────────────── */
+
+  /** The board (decision 1): six lanes, red cards, the floor map, the numbers; `spend` only for `stores.spend.read`. */
+  @Get("tower")
+  @RequirePermission(STORES_TOWER_READ, "hospital")
+  @Header("Cache-Control", "no-store")
+  async tower(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await towerView(this.db, actor, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Decision 16: "3 stuck · 4B, OT" — the count and the floors, for the owner's phone. */
+  @Get("tower/summary")
+  @RequirePermission(STORES_TOWER_READ, "hospital")
+  @Header("Cache-Control", "no-store")
+  async towerSummary(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await towerSummary(this.db, actor, new Date()); } catch (e) { toHttp(e); }
   }
 }

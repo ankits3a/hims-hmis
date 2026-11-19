@@ -324,6 +324,31 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.radMediaNotReleased",
   "copilot.answer.radMediaPick",
   "copilot.answer.radMediaDone",
+  /*
+    ═══ #1113 (S3) — the Stores concierge: six reads and one confirmed act, floor-only. ═══
+    `ticket` is an indent number (MIN…); `lane` one of the tower's six, `clock` one of its clocks and `next`
+    one of approve · pick · carry · receive · none, each said by the web from the tower's own words. `holder`
+    and `item` are names; counts and minutes are counts. No patient field exists in Stores.
+  */
+  "copilot.answer.storesNoTicket",
+  "copilot.answer.storesTicketWhere",
+  "copilot.answer.storesTicketStuck",
+  "copilot.answer.storesMyTickets",
+  "copilot.answer.storesMyTicketsNone",
+  "copilot.answer.storesWaiting",
+  "copilot.answer.storesWaitingNone",
+  "copilot.answer.storesNoItem",
+  "copilot.answer.storesItemWhere",
+  "copilot.answer.storesShelfLow",
+  "copilot.answer.storesShelfLowNone",
+  "copilot.answer.storesNoShelf",
+  "copilot.answer.storesStuck",
+  "copilot.answer.storesStuckNone",
+  "copilot.answer.storesReorderNone",
+  "copilot.answer.storesReorderOpen",
+  "copilot.answer.storesReorderPick",
+  "copilot.answer.storesReorderSent",
+  "copilot.answer.storesStateChanged",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
@@ -487,3 +512,16 @@ export type CopilotImagingPick = {
 };
 /** #1082 — `radiology.draft_report`'s "draft ready": the study whose draft to open in the reading room. */
 export type CopilotImagingLink = { kind: "imagingLink"; studyId: string };
+
+/**
+ * #1113 — the Stores concierge's payloads. `storesPlaces`: an item's on-hand per place the asker may see
+ * (a store, one of the asker's shelves, IN-TRANSIT). `storesReorderPick`: one option per shelf whose reorder
+ * draft is not empty, each `proposal` indexing the ask response's `proposals`; the sheet's primary is Send.
+ */
+/** `stores.waiting_for_me`: the indent numbers waiting on the asker, oldest first. */
+export type CopilotStoresTickets = { kind: "storesTickets"; tickets: string[] };
+export type CopilotStoresPlaces = { kind: "storesPlaces"; item: string; rows: { place: string; kind: "store" | "shelf" | "transit"; qty: number }[] };
+export type CopilotStoresReorderPick = {
+  kind: "storesReorderPick";
+  options: { proposal: number; shelfId: string; shelf: string; lines: { itemId: string; name: string; qty: number }[] }[];
+};

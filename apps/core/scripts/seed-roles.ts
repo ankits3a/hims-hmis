@@ -816,6 +816,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       // STORES S2a (#1112, decision 16) — the owner reads the Stores audit pack (every movement and signature).
       "stores.audit.read",
+      // STORES S3 (#1113, decisions 5, 15, 16) — the control tower (its phone line "3 stuck · 4B, OT") and its spend tile.
+      "stores.tower.read", "stores.spend.read",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -967,6 +969,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // STORES S2a (#1112, decision 3) — the HOD's STAND-IN for a ticket: held at hospital scope, so it approves for an
       // HOD on leave or a requester who is the department's only approver; the timeline reads "for HOD". And the audit pack.
       "stores.indents.approve", "stores.audit.read",
+      // STORES S3 (#1113, decisions 5, 15) — the control tower and its spend tile.
+      "stores.tower.read", "stores.spend.read",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1113,7 +1117,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "duty_manager",
     // STORES S2a (#1112, decision 5) — a keeper of the night store (`GEN-NIGHT` custodianRoles): issues an emergency
     // ticket outside the central store's hours, through `issueIndentScoped`; no `materials.*` string.
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "stores.nightstore.issue"],
+    // STORES S3 (#1113, decisions 13, 15) — the control tower and its "Stuck" Now card (an approval past 60 min is theirs).
+    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "stores.nightstore.issue", "stores.tower.read"],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1332,6 +1337,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "stores.audit.read",
       // STORES S2c (#1119, decision 3) — raise, print and close a gate pass (never scan one: the guard does).
       "stores.gatepass.raise",
+      // STORES S3 (#1113, decisions 5, 13, 15) — the control tower, its "Stuck" Now card, and the month's spend tile.
+      "stores.tower.read", "stores.spend.read",
     ],
   },
   {
@@ -1356,6 +1363,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.coldchain.record",
       // STORES S2c (#1119, decision 3) — raise, print and close a gate pass for what leaves the store.
       "stores.gatepass.raise",
+      // STORES S3 (#1113, decisions 13, 15) — the control tower and its "Stuck" Now card (a pick past its clock is the store's).
+      // NOT `stores.spend.read`: money is the owner's, the materials head's and the superintendent's (decision 5).
+      "stores.tower.read",
     ],
   },
   // ------------------------------------------------------------------------------------------

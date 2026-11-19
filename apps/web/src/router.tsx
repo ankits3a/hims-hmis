@@ -72,6 +72,7 @@ import { StoresDesk } from "./screens/stores-desk";
 import { StoresShelf } from "./screens/stores-shelf";
 import { StoresApprove, StoresPick, StoresPorter, StoresReceive, StoresTicketTimeline } from "./screens/stores-tickets";
 import { StoresGate, StoresPasses } from "./screens/stores-gate";
+import { StoresTower } from "./screens/stores-tower";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -289,6 +290,8 @@ const NAV: readonly NavEntry[] = [
   },
   // STORES S2c (#1119) — the store's gate passes and the guard's Gate (the only screen a guard has), `storesManifest.menu`'s two rows.
   { to: "/stores/passes", label: "nav.storesPasses", permission: "stores.gatepass.raise", group: "admin" },
+  // STORES S3 (#1113) — the control tower (16:9 wall; at 390 px the owner's one line), `storesManifest.menu`'s row.
+  { to: "/stores/tower", label: "nav.storesTower", permission: "stores.tower.read", group: "admin" },
   { to: "/stores/gate", label: "nav.storesGate", permission: "stores.gatepass.scan", group: "desk" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
@@ -1921,6 +1924,7 @@ const storesPorterRoute = createRoute({ getParentRoute: () => authedRoute, path:
 // STORES S2c (#1119) — the guard's Gate (phone) and the store's Passes; each grant is asked by the server.
 const storesGateRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/gate", component: StoresGate });
 const storesPassesRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/passes", component: StoresPasses });
+const storesTowerRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/tower", component: StoresTower });
 const storesTicketRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/stores/tickets/$indentId",
@@ -2034,7 +2038,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTicketRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesTicketRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

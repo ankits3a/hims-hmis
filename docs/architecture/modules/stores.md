@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/stores/`
 
 - **Depends on modules:** `materials`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `printing`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `episodes`, `events`, `modules`, `printing`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -28,6 +28,17 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_SHELF_WORK`
 - `audit-pack.ts`
   - `storesAuditPack(db: Db, actor: Actor, filter: AuditPackFilter, now: Date = new Date()): Promise<AuditPack>`
+- `chaser.ts`
+  - `APPROVAL_NUDGE_MIN`
+  - `CHASER_WORDS`
+  - `runStoresChaser(db: Db, now: Date = new Date()): Promise<ChaserRun>`
+- `copilot-acts.ts`
+  - `reorderTool: CopilotToolDecl`
+- `copilot-intents.ts`
+  - `storesCopilotIntents: Readonly<Record<ModuleCopilotIntent, CopilotIntentDecl>>`
+- `copilot-tools.ts`
+  - `indentNoOf(subject: string): string | null`
+  - `storesCopilotReadTools: readonly CopilotToolDecl[]`
 - `custody.ts`
   - `LATE_SCAN_MS`
   - `STORES_CARRY`
@@ -53,6 +64,7 @@ Source: `apps/core/src/modules/stores/`
   - `storesApproveDesk: DeskProvider`
   - `storesPickDesk: DeskProvider`
   - `storesReceiveDesk: DeskProvider`
+  - `storesStuckDesk: DeskProvider`
   - `storesTakeBackDesk: DeskProvider`
 - `errors.ts`
   - `STORES_ERROR_CODES`
@@ -137,6 +149,15 @@ Source: `apps/core/src/modules/stores/`
   - `withinServiceHours(hours: string | null, now: Date): boolean`
 - `timeline.ts`
   - `ticketTimeline(db: Db, actor: Actor, indentId: string): Promise<TicketTimeline>`
+- `tower.ts`
+  - `CLOCKS`
+  - `RED_CARD_LIMIT`
+  - `STORES_SPEND_READ`
+  - `STORES_TOWER_READ`
+  - `boardCards(db: Db | Tx, now: Date, indentIds?: readonly string[]): Promise<BoardCard[]>`
+  - `departmentSpendByMonth(db: Db | Tx, month: string): Promise<Map<string, number>>`
+  - `towerSummary(db: Db, actor: Actor, now: Date = new Date()): Promise<WireTowerSummary>`
+  - `towerView(db: Db, actor: Actor, now: Date = new Date()): Promise<WireTowerView>`
 - `types.ts`
   - `STORES_ITEM_CLASSES`
   - `TICKET_CHANNELS: readonly TicketChannel[]`
@@ -159,12 +180,12 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_ticket_details`, `stores_transit_resolutions`
+`stores_client_keys`, `stores_custody_handoffs`, `stores_delivery_lines`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_picking_claims`, `stores_scan_confirmations`, `stores_ticket_details`, `stores_transit_resolutions`
 
 Foreign keys into: `materials`, `resources`
 
 ## HTTP routes
 
-- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/transit-losses`, `/stores/who-to-ask`
+- `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/tower`, `/stores/transit-losses`, `/stores/who-to-ask`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`

@@ -39,6 +39,7 @@ import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 import { printBoardIfDue, runMonthlyProposals, sweepDutyReminders, sweepRosterWindows } from "../../modules/roster";
 import { sendUnitReports } from "../../modules/doctor-desk";
+import { runStoresChaser } from "../../modules/stores";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -702,7 +703,11 @@ export function registerAllJobs(
     name: "sweepStaffNotices",
     every: 60_000,
     // An approval past its deadline tells its deciders once (decision 0043) — same clock, same job.
-    run: async (now) => { await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now); },
+    // Stores S3 (#1113, decision 12): the Stores chaser's internal nudges (one per ticket per step, `stores_nudges`)
+    // and S2c's "Pass overdue" ride this minute too, for the reason this job is one: no new name in the census.
+    run: async (now) => {
+      await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now); await runStoresChaser(db, now);
+    },
   });
   /**
    * MEDICINE NICKNAMES (owner 2026-10-08: "switch ON medicine nicknames") — the words doctors typed

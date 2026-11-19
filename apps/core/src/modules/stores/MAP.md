@@ -15,7 +15,8 @@ Hand-written notes: the WHY and the traps. Signatures, routes and tables are gen
 with a module name, `kernel/`, `packages/` or `apps/`. Citations name a file and a symbol, never a line number.
 Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials core), 0081 (done-means tests).
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
-`docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built).
+`docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
+`docs/specs/1113-stores-control-tower.md` (S3, built).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -208,6 +209,40 @@ department shelves every department (housekeeping included) receives from. Pharm
 - Web: `/stores/gate` (guard, opens on the camera, typed last four beside it, one primary Let out / Let in, partial
   return by lowering a line) and `/stores/passes` (rows overdue first; New pass is one screen; then Print pass).
 
+## 10a. The control tower, the chaser and the concierge (S3 #1113)
+- `tower.ts` `boardCards(db, now, indentIds?)` is THE read: every open ticket's card (lane, holder, minutes, the
+  broken clock), derived each time from the indent, stamp, claims, transfer, hand-off log, delivery and resolutions.
+  The tower (`towerView`), the owner's line (`towerSummary`), the Stuck Now card (`desk.ts` `storesStuckDesk`), the
+  chaser and the concierge all call it, so none can disagree. Inner join on `stores_ticket_details`: no pharmacy indent.
+- Lanes: an emergency issued-first waits on Approved/Picking (its pick clock is 10 min from raise), never Requested.
+  Delivered = received TODAY (IST); an older delivered ticket is on the board only while a clock runs (open short
+  24 h, emergency review 24 h). `CLOCKS` holds decision 2; stuck = elapsed >= the clock; Stuck wins.
+- Custody clock (2 h) runs when the last hand-off is a carrier kind; else the 30-min leg. Minutes use
+  `Math.round`, as `myCustody` does (D2 pins them equal).
+- Floor map / Out: only items with a par AT the shelf count (an expensed item always reads 0). A department on
+  several floors shows under each. Red cards: stuck, short (not yet stuck), out shelves, overdue passes (from the
+  end of the due-back day), "More than book" checks of the last 24 h; oldest first, the strip takes 8.
+- Spend (`departmentSpendByMonth`): `departmentChargeOn`'s rule by IST month, grouped by cost centre; the `spend`
+  key is ABSENT (not null) without `stores.spend.read`.
+- `chaser.ts` `runStoresChaser` rides the worker's every-minute `sweepStaffNotices` job (no new job name in the
+  census). `stores_nudges` (migration 0241) PK (ticket, step) is the "one nudge per step" guarantee: insert first
+  `on conflict do nothing`, bells only for the won row, same tx. Steps `approval`, `pick`, `leg:<n>`. It also calls
+  S2c's `notifyOverdueGatePasses`, so "Pass overdue" no longer waits for someone to open the Passes list.
+  Each ticket's nudge runs in its own try/catch (pre-merge review S4): a failure is logged (`stores-chaser`) and
+  counted in `run.failed`, writes no `stores_nudges` row (so the next minute retries it), and never stops later
+  tickets or the overdue-pass notices.
+- Concierge: `copilot-intents.ts` (cue-routed only, no menu), `copilot-tools.ts` (six reads), `copilot-acts.ts`
+  (`stores.reorder`). Department-scoped grants: the tools declare `scopedGate` (`kernel/copilot/catalog.ts` admits a holder at
+  ANY scope; each tool narrows to `myShelves` / `holds(…, dept)` or everything for `stores.tower.read`).
+- The masker keeps `MIN` and masks the digits (`MIN<<P1>>`); the cue `min<<` is what routes a ticket question. The
+  slot holds digits only: `indentNoOf` puts the prefix back. A bare `<<P1>> kahan hai` (a UHID) does NOT route here.
+- Reorder: recheck = an open (`requested`) ticket at the shelf, or a changed draft → "State changed". apply = 
+  `raiseTicket` (channel `copilot`) + one `copilot_reorder` act whose `after.confirmId` is the `copilot_acts` row's
+  `confirm_id` (kernel `CopilotActCtx.confirmId`, added for this).
+- TRAP: kernel cues "shelf", "wait", "order", "khatam", "kam pad" (pharmacy short book) and radiology's "stuck" sit
+  inside natural Stores questions; every Stores phrase must out-score them by 2. Run the eval set after any cue change.
+- Not built: the porter's end-of-shift red card (no shift-end source yet: attendance does not publish one).
+
 ## 11. Not built here
-Tower/concierge/"Stuck" and the end-of-shift red card (S3); an offline scan queue (native
+The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
 staff app); choosing which porter to send; tagged units (S4); purchasing (S5).

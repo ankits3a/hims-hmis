@@ -251,3 +251,61 @@ export type WireGatePassSource = {
 };
 /** The store's "New pass" sheet: where a returnable pass may start, and what a non-returnable pass may stand on. */
 export type WireGatePassForm = { stores: { id: string; code: string; name: string }[]; sources: WireGatePassSource[] };
+
+// ── S3 (#1113): the control tower, the owner's one line, the Stuck Now card ──
+/** The six lanes, in board order. A card sits in exactly one; Stuck wins (spec #1113 decision 1). */
+export const STORES_TOWER_LANES = ["requested", "approved", "picking", "in_transit", "delivered", "stuck"] as const;
+export type StoresTowerLane = (typeof STORES_TOWER_LANES)[number];
+/** The clock that broke (decision 2): approval 60 min, pick by priority, a 30-min leg, a porter's 2 h, an open short, an emergency review. */
+export const STORES_TOWER_CLOCKS = ["approval", "pick", "leg", "custody", "short", "review"] as const;
+export type StoresTowerClock = (typeof STORES_TOWER_CLOCKS)[number];
+/** The red-card strip's kinds (decision 4). */
+export const STORES_RED_CARD_KINDS = ["stuck", "short", "out", "pass", "over_book"] as const;
+export type StoresRedCardKind = (typeof STORES_RED_CARD_KINDS)[number];
+
+/** One ticket on the board. No patient field and no money: the key set is pinned by spec #1113 D6. */
+export type WireTowerCard = {
+  id: string; indentNo: string; lane: StoresTowerLane; priority: (typeof STORES_TICKET_PRIORITIES)[number];
+  department: { id: string; code: string; name: string };
+  floor: { id: string; code: string; name: string } | null;
+  /** Whose hands it is in, once issued. */
+  holder: WireTicketPerson | null;
+  /** Minutes on the lane's own clock (in transit: since the last hand-off). */
+  minutes: number;
+  /** Only on a Stuck card: which clock broke, and its minutes. */
+  clock: { kind: StoresTowerClock; minutes: number } | null;
+};
+export type WireRedCard = {
+  id: string; kind: StoresRedCardKind;
+  /** What (a ticket, shelf or pass number) and where (a department, floor or party), as data; the screen says the words. */
+  what: string; where: string;
+  /** When its clock started: the strip is oldest first. */
+  since: string; minutes: number;
+  clock: StoresTowerClock | null;
+  indentId: string | null; shelfId: string | null; passId: string | null;
+};
+export type WireTowerFloor = {
+  id: string | null; code: string; name: string;
+  departments: { id: string; code: string; name: string; status: StoresStatusWord }[];
+};
+export type WireTowerNumbers = {
+  ticketsToday: number; medianApprovalMin: number | null; medianDeliverMin: number | null;
+  /** Transfers received today whose issuer is not the receiver, in per cent; null when none was received. */
+  doubleSignedPct: number | null; openShorts: number;
+};
+export type WireTowerSpend = {
+  /** The IST month, `YYYY-MM`. */
+  month: string;
+  departments: { id: string; code: string; name: string; chargePaise: number; perOpdVisitPaise: number | null; perBedDayPaise: number | null }[];
+};
+export type WireTowerView = {
+  at: string;
+  lanes: Record<StoresTowerLane, WireTowerCard[]>;
+  redCards: WireRedCard[];
+  floors: WireTowerFloor[];
+  numbers: WireTowerNumbers;
+  /** Present only for a holder of `stores.spend.read` (decision 5): the key is absent for everybody else. */
+  spend?: WireTowerSpend;
+};
+/** The owner's one line at 390 px (decision 16): "3 stuck · 4B, OT". `places` are floor codes, most stuck first. */
+export type WireTowerSummary = { stuck: number; places: string[] };

@@ -338,3 +338,25 @@ export const storesGatePassScans = pgTable(
     check("stores_gate_pass_scans_close_ck", sql`${t.kind} <> 'close' or ${t.reason} is not null`),
   ],
 );
+
+/**
+ * STORES S3 (#1113, decision 12) — THE CHASER'S MEMORY. One row per ticket and step: the internal nudge the
+ * minute sweep sent (an approval waiting 45 min, a pick past its clock, a transit leg past 30 min). The unique key
+ * is what makes "at most one nudge per ticket per step" true under two sweeps at once; the row records who was
+ * told. Never a supplier, never a patient. Append-only by use: the sweep inserts `on conflict do nothing`.
+ *
+ * `step` is `approval`, `pick`, or `leg:<n>` (the n-th carrier hand-off, so every leg is chased once).
+ */
+export const storesNudges = pgTable(
+  "stores_nudges",
+  {
+    indentId: text("indent_id").notNull().references(() => storeIndents.id),
+    step: text("step").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+    recipients: jsonb("recipients").$type<string[]>().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.indentId, t.step] }),
+    check("stores_nudges_step_ck", sql`${t.step} in ('approval', 'pick') or ${t.step} ~ '^leg:[0-9]+$'`),
+  ],
+);

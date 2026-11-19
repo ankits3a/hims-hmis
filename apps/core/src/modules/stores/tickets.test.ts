@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
@@ -12,8 +13,9 @@ import { createResource } from "../../kernel/resources/registry";
 import { MaterialsError } from "../materials";
 import {
   StoresError, approveTicket, createShelf, issueTicket, listCategories, openStore, overdueEmergencyReviews, raiseTicket, registerStoresItem,
-  reviewEmergency, seedStoresMasters, ticketTimeline, withinServiceHours,
+  reviewEmergency, runStoresChaser, seedStoresMasters, ticketTimeline, withinServiceHours,
 } from "./index";
+import * as ticketsMod from "./tickets";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -117,5 +119,24 @@ describe("Stores S2a tickets: write-once stamps, emergency review, hours", () =>
     expect(withinServiceHours("09:00-17:00", new Date("2026-11-10T11:30:00.000Z"))).toBe(false); // 17:00 IST
     expect(withinServiceHours("22:00-06:00", new Date("2026-11-10T20:00:00.000Z"))).toBe(true); // 01:30 IST
     expect(withinServiceHours(null, new Date("2026-11-10T20:00:00.000Z"))).toBe(true);
+  });
+
+  it("pre-merge review S4: one ticket whose nudge fails does not stop the chaser; the next ticket is nudged and the failed one is tried again next minute", async () => {
+    const a = await raiseTicket(db, inA.actor, { shelfId: shelf, lines: [{ itemId: mop, qtyBase: 1 }], priority: "routine" }, NOW);
+    const b = await raiseTicket(db, inA.actor, { shelfId: shelf, lines: [{ itemId: mop, qtyBase: 2 }], priority: "routine" }, NOW);
+    const real = ticketsMod.notify;
+    const spy = jest.spyOn(ticketsMod, "notify").mockImplementation(async (...args: Parameters<typeof real>) => {
+      if (args[3].id === a.id) throw new Error("a bad row");
+      return real(...args);
+    });
+    const quiet = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    const later = new Date(NOW.getTime() + 46 * 60_000);
+    let run: Awaited<ReturnType<typeof runStoresChaser>>;
+    try { run = await runStoresChaser(db, later); } finally { spy.mockRestore(); quiet.mockRestore(); }
+    expect(run).toMatchObject({ approval: 1, failed: 1 });
+    const steps = async (): Promise<unknown[]> => (await db.execute(sql`select indent_id from stores_nudges order by indent_id`)).rows.map((r) => r.indent_id);
+    expect(await steps()).toEqual([b.id]);
+    expect((await runStoresChaser(db, new Date(later.getTime() + 60_000))).approval).toBe(1);
+    expect(await steps()).toEqual([a.id, b.id].sort());
   });
 });

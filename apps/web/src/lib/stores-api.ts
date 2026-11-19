@@ -2,7 +2,7 @@ import { ApiError, api } from "./api";
 import type {
   WireImportResult, WireItemRequest, WireOverBookCard, WireReorderLine, WireShelfView, WireStoresCategory, WireStoresItem, WireStoresPickers,
   WireStoresShelf, WireStoresStore, WireTicket, WireTicketTimeline, WireCustodyResult, WirePorterRow, WireCustodyLookup, WireReturnTicket, WireLateScan,
-  WireGatePass, WireGatePassForm, WireGatePassLookup, WireGatePassScanResult,
+  WireGatePass, WireGatePassForm, WireGatePassLookup, WireGatePassScanResult, WireTowerSummary, WireTowerView,
 } from "@hmis/contracts";
 import type { WireRenderedDocument } from "./print-api";
 
@@ -119,3 +119,7 @@ export const gatePassPrint = (passId: string): Promise<WireRenderedDocument | nu
 export const gatePassLookup = (code: string): Promise<WireGatePassLookup> => api("GET", `/stores/gate-passes/lookup?code=${enc(code)}`);
 export const scanGatePass = (code: string, act: "exit" | "entry", lines?: { itemId: string; qty: number }[]): Promise<WireGatePassScanResult> =>
   api("POST", "/stores/gate-passes/scan", { code, act, ...(lines === undefined ? {} : { lines }), clientKey: clientKey(), scannedAt: new Date().toISOString() });
+
+/* ── S3 (#1113): the control tower and the owner's one line ── */
+export const getTower = (): Promise<WireTowerView> => api("GET", "/stores/tower");
+export const getTowerSummary = (): Promise<WireTowerSummary> => api("GET", "/stores/tower/summary");

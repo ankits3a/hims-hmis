@@ -89,7 +89,7 @@ export async function holdersOf(exec: Db | Tx, permission: string, scope: { depa
 }
 
 /** Decision 3/12: the department's approvers, never the requester; when there is none, the stand-in (hospital scope). */
-async function approversToTell(exec: Db | Tx, departmentId: string, requesterId: string): Promise<string[]> {
+export async function approversToTell(exec: Db | Tx, departmentId: string, requesterId: string): Promise<string[]> {
   const own = (await holdersOf(exec, STORES_INDENTS_APPROVE, { departmentId })).filter((u) => u !== requesterId);
   if (own.length > 0) return own;
   return (await holdersOf(exec, STORES_INDENTS_APPROVE, "hospital")).filter((u) => u !== requesterId);
