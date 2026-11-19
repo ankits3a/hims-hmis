@@ -129,7 +129,7 @@ export const MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
     closureSlaMinutes: 240,
   },
   /**
-   * STORES S4b (#1114, ruling 0100 Q5) — a condemned or lost tagged unit whose original cost is above ₹50,000 or
+   * STORES S4b (#1114, ruling 0101 Q5) — a condemned or lost tagged unit whose original cost is above ₹50,000 or
    * unknown: the OWNER approves it too, beside the medical superintendent's write-off approval
    * (`materials_stock_adjustment`, unchanged). Asked by the Stores condemnation intent once every committee seat has
    * signed. A day to decide: the unit waits in the CONDEMNED hold.

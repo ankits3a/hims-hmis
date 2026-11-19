@@ -25,7 +25,7 @@ import type {
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
- * STORES S4b (#1114, decisions 13, 14, ruling 0100 Q5) — THE END OF A UNIT'S LIFE: condemnation, loss, disposal.
+ * STORES S4b (#1114, decisions 13, 14, ruling 0101 Q5) — THE END OF A UNIT'S LIFE: condemnation, loss, disposal.
  *
  *   propose (the HOD or biomedical, a reason from the list; or the chaser, 30 days after a round did not see a unit;
  *   or the materials head resolving a tagged unit lost in transit)
@@ -46,7 +46,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  * an act: the approver's decision is the kernel's own audited event, and the unit event it writes names the approver.
  */
 export const STORES_ASSETS_CONDEMN = "stores.assets.condemn";
-/** Ruling 0100 Q5: the owner also approves above this original cost, or when the cost is unknown (the PO-tier line). */
+/** Ruling 0101 Q5: the owner also approves above this original cost, or when the cost is unknown (the PO-tier line). */
 export const CONDEMN_OWNER_LINE_PAISE = 5_000_000;
 /** Decision 14 (DECIDED on the ruled quote bands): one buyer up to ₹25,000 expected; three written bids above. */
 export const SCRAP_ONE_BUYER_PAISE = 2_500_000;
