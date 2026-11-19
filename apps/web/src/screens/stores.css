@@ -39,3 +39,27 @@
   border: 1px solid var(--ink, #222); color: var(--ink, #222); text-decoration: none; flex-shrink: 0; white-space: nowrap;
 }
 .stores-ui [data-focused="true"] { outline: 2px solid var(--green, #1f6f4a); outline-offset: 2px; border-radius: 4px; }
+
+/*
+ * S3 (#1113) — THE CONTROL TOWER. A wall board first: dark, high contrast, big numbers, read from across the room.
+ * Its own tokens, so the wall looks the same whatever theme the desk around it wears. Every status is a word; the
+ * colour only repeats it. The stripe on a lane header and a card's left edge carry the lane's tone.
+ */
+.stores-tower {
+  --tw-bg: #0b1118; --tw-panel: #121b26; --tw-card: #182433; --tw-line: #26364a; --tw-ink: #e8eef5; --tw-dim: #8ea2b8;
+  --tw-red: #ff5d5d; --tw-amber: #ffb547; --tw-green: #3ddc97; --tw-blue: #5fb3ff; --tw-violet: #b69cff;
+  background: var(--tw-bg); color: var(--tw-ink); font-variant-numeric: tabular-nums;
+}
+.stores-tower .tw-panel { background: var(--tw-panel); border: 1px solid var(--tw-line); border-radius: 10px; }
+.stores-tower .tw-card {
+  background: var(--tw-card); border: 1px solid var(--tw-line); border-left: 4px solid var(--tw-tone, var(--tw-blue)); border-radius: 6px;
+  color: inherit; text-decoration: none; display: block; overflow: hidden;
+}
+.stores-tower a.tw-card:hover, .stores-tower a.tw-card:focus-visible { border-color: var(--tw-ink); }
+.stores-tower .tw-dim { color: var(--tw-dim); }
+.stores-tower .tw-ghost { background: var(--tw-card); border-radius: 6px; opacity: 0.5; }
+.stores-tower button.tw-btn {
+  min-height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--tw-line); background: var(--tw-card); color: var(--tw-ink); cursor: pointer;
+}
+.stores-tower .tw-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+.stores-tower .tw-copilot { background: var(--paper, #fff); color: var(--ink, #222); }

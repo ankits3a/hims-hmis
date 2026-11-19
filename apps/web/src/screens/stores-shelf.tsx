@@ -6,6 +6,7 @@ import {
   addToOpenTicket, getShelf, openTicketFor, raiseTicket, recordUse, reorderDraft, requestItem, saveCheck, saveReorder, searchItems, shelfTickets, storesErrorCode, undoUse,
 } from "../lib/stores-api";
 import { Refused, TicketNo, ageOf } from "./stores-tickets";
+import { StoresCopilot } from "../components/stores/stores-copilot";
 import "./stores.css";
 import type { TicketPriority } from "../lib/stores-api";
 import type { WireReorderLine, WireShelfItem, WireShelfView } from "@hmis/contracts";
@@ -113,6 +114,8 @@ export function StoresShelf({ shelfId }: { shelfId: string }): React.ReactElemen
         )}
         <button type="button" style={btn} onClick={() => setMode({ kind: "tickets" })}>{t("stores.ux.myTickets")}</button>
       </div>
+      {/* S3 (#1113): the concierge on the shelf — "what is low", "where is my ticket", "reorder my shelf" (Send confirms). */}
+      <div data-testid="shelf-copilot" style={{ minWidth: 0, maxWidth: "100%" }}><StoresCopilot variant="bar" /></div>
       {mode.kind === "used" && <UsedSheet view={view} item={mode.item} onClose={() => { setMode({ kind: "list" }); void refresh(); }} />}
     </div>
   );
