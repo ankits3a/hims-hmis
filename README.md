@@ -1802,6 +1802,13 @@ TDS on goods are switches, off until the owner turns them on after a dry run. Th
 category ledgers with department cost centres; a drug-only month's file is unchanged.
 `stores.tax.manage` is held by `accounts_officer` alone.
 
+**Stores stock planner (decision 0101, S7 #1117, 2026-11-19).** Each night, and again at every shelf use and receipt, the
+planner works out each shelf item's use per day and warns before it runs out; it drafts one top-up per shelf for the
+department's in-charge, who sends it as a normal ticket. It drafts central-store purchase requests for the materials head
+and suggests par levels each quarter that only the materials head accepts. It never sends, approves or changes anything by
+itself; automatic sending is off until the owner approves it for a department.
+`stores.planner.manage` is held by `materials_head` alone.
+
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the

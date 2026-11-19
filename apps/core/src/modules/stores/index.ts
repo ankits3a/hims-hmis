@@ -136,3 +136,16 @@ export { MSME_REPORT_DAYS, msmeDuesReport, msmeHalfBounds, msmeHalfOf, msmeObjec
 export { MSME_DUE_SOON_DAYS, MSME_DUE_WORDS, SERVICE_WORDS, msmeBillsDueSoon, sendMsmeDueSoon, sendServiceToConfirm, servicesDue } from "./paying-notices";
 export { gstNotCreditedBetween, payingSuppliers, tdsCertificates } from "./tax-on-bill";
 export { storesFlagsDesk, storesMsmeDueDesk, storesServicesDesk } from "./desk";
+// S7 (#1117): the stock planner — forecasts, warnings (also at every shelf use and receipt), one top-up proposal per
+// department, central `planner` requests, quarterly par suggestions only a person accepts, the score and the T3 switch.
+export { PLANNER_AGENT, PROPOSAL_CAP, STORES_PLANNER_MANAGE, recheckShelfItem } from "./planner-core";
+export {
+  BUDGET_DRAFT_WORDS, NOT_NOW_REASONS, PLANNER_TOOLS, approvePlannerT3, departmentPlannerScore, myTopUps, notNowTopUp, plannerForecast, plannerMonthlyLine,
+  plannerSettingsView, plannerTrail, returnSlowStock, sendTopUp, setPlannerSettings, topUpProposal,
+} from "./planner";
+export { NO_WARNING_WINDOW_MS, plannerMonthly, plannerScore, stockOutsWithoutWarning } from "./planner-score";
+export { acceptParSuggestion, keepParSuggestion, parSuggestions, suggestPars } from "./par-suggestions";
+export { planCentral } from "./planner-central";
+export { plannerNightOf, runPlannerNight, runPlannerNightIfDue } from "./planner-night";
+export type { PlannerNightRun } from "./planner-night";
+export { storesTopUpDesk } from "./desk";

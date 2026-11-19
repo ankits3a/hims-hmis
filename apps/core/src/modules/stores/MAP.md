@@ -18,7 +18,7 @@ Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
 `docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
 `docs/specs/1115-stores-buying-desk.md` (S5, built: S5a, S5b, S5c),
-`docs/specs/1116-stores-paying-desk.md` (S6, built: S6a, S6b, S6c).
+`docs/specs/1116-stores-paying-desk.md` (S6, built: S6a, S6b, S6c), `docs/specs/1117-stores-stock-planner.md` (S7, built).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -543,6 +543,43 @@ department shelves every department (housekeeping included) receives from. Pharm
   hot path) does not compute it.
 - Web: `/stores/pay` Tax button beside the six tabs (`apps/web/src/screens/stores-paying-tax.tsx`: tables in force/drafts, Record signature, certificates), Exports →
   Tally ledger names, Due → objections + MSME report, `?flags=1` the flags; `/stores/services` → confirmed sheets + Reverse.
+
+## 10j. The stock planner (S7 #1117; decision 0101 Q8)
+- Files: `planner-math.ts` (pure arithmetic), `planner-core.ts` (forecast/warning/draft rows, the proposal limit, the day's
+  `recheckShelfItem`), `planner.ts` (the in-charge's top-up: read, Send, Not now, slow-stock Return; trail; settings; T3),
+  `planner-night.ts` (the 02:00 IST night), `planner-central.ts` (`planner` PRs), `par-suggestions.ts`, `planner-score.ts`
+  (`stockOutsWithoutWarning`, `plannerScore`, the monthly line). Migration 0250: five tables, all append-only (0242's trigger fn).
+- TRAP (import cycle): `use.ts` calls `planner-core.ts` `recheckShelfItem` in the SAME tx as each "Used" and each receipt
+  (decision 5). `planner-core.ts` must never import `use.ts`, `tickets.ts`, `custody.ts` or `assets.ts` (they import `use.ts`).
+- Use per day: 8 weeks net of reversals, weighted 2:1 (`weightedUsePerDay`); < 8 weeks of history (from the first ledger row
+  at the place) = "Learning, n of 8 weeks" and S1's par rule (warn at reorder only). Workload form (OPD visits) only when its
+  last-28-day error beat plain; season factor only with 365 days of history. Both stored in `inputs` with the error.
+- Warn: (on hand + on its way) ≤ 48 h of use, or ≤ reorder. On its way = open tickets (requested: approved ?? asked; issued:
+  in transit). One live warning (newest row `warn`) until RECOVERED, judged on ON HAND only (a ticket sent never ends it).
+  A use-time check writes a forecast row (copy of the stored use per day, today's stock) only when it acts.
+- Drafts: one open top-up draft per shelf (advisory lock); a warning is drafted at most once (so Not now closes the card
+  until the item recovers and is warned again). Qty = max − on hand − on way, rounded UP to the issue pack only when that
+  stays within max, else down to whole packs (DECIDED). Only `track_mode = 'shelf'` items (never expensed/durable/tagged).
+- Limit: open proposals per department = top-up (all shelves = 1) + slow-stock (1) + each quarter's open par set; a 4th is
+  refused and "Planner paused: 3 open" goes to `stores.planner.manage` holders once per blocking set (source key = hash).
+- Halts: `draft` or `global` stop drafts (warnings still run); `read` (asks, model text) does not — nothing uses a model
+  and the "why" is a template from the forecast row (D10). DECIDED reading of decision 12.
+- Send = `raiseTicket` (channel `agent`, the person as requester) + `sent` row (`data.lines` planner vs person) +
+  `copilot_acts` (`confirm_id` `sp_<draft>`) + `planner_send`. Over 100 % of budget: a `stores_over_budget_marks` row at
+  send (decision 10), never a refusal. T3 auto-send (`raisePlannerTicketInTx`, HOD still approves) only when the
+  department's switch is on; switching on needs `plannerScore` over 8 weeks to pass (≥ 4 weeks, ≥ 95 % unchanged, 0
+  stock-outs without warning) and an `owner_t3` row by the owner role. OFF by default.
+- Central: only items with 8 weeks of issues at a central store; learning ones stay with the buyer's par-rule shortfall
+  (each subtracts the other's open central/planner asks). Lead = `lead_time_days` ?? median last 3 PO→GRN ?? 7; unknown
+  VED = Essential, unknown ABC = B (DECIDED). Estimate = last paid receipt else newest batch cost. One PR per category.
+- Par: quarterly (IST calendar quarter), 90 days of use; supply interval = median days between receipt days (180-day
+  look-back), 7 with fewer than two. Only `stores.masters.manage` accepts; accept writes S1's `par` act + `planner_par_accept`.
+- Metric: `stockOutsWithoutWarning` = ledger rows taking a shelf item's running balance to 0 with no live warning ≥ 24 h
+  before. Tower red card `no_warning` (7 days); not a new tower key. TRAP: it windows the whole shelf ledger; index or
+  snapshot before shelves reach ~10⁶ rows.
+- Night: `runPlannerNightIfDue` on the chaser's minute (02:00–07:00 IST, marker act `planner_night`, advisory lock).
+- Not built: chat intents (S3 D7 locks seven); "Buy now" urgency from a store-short shelf (edge 5: the draft shows "Store is
+  short" only); per bed-day workload (IPD off production); item-substitution history transfer beyond S1 merge.
 
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native

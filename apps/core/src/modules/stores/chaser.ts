@@ -10,6 +10,7 @@ import { approversToTell, notify } from "./tickets";
 import { sweepBudgetWarnings } from "./budgets";
 import { runBuyerNightIfDue } from "./buyer-agent";
 import { runAuditorNightIfDue } from "./auditor-agent";
+import { runPlannerNightIfDue } from "./planner-night";
 import { sendMsmeDueSoon, sendServiceToConfirm } from "./paying-notices";
 import { CLOCKS, boardCards } from "./tower";
 import type { BoardCard } from "./tower";
@@ -48,7 +49,8 @@ export const CHASER_WORDS = {
 export type ChaserRun = { approval: number; pick: number; leg: number; passes: number; failed: number; /** S4 (#1114): asset reminders sent. */ assets?: number; /** S4b (#1114): condemnations settled, loss proposals made. */ condemnations?: number; losses?: number; /** S5a (#1115): budget warnings raised. */ budgets?: number;
   /** S5c (#1115): the buyer agent's night, on the minute it ran. */ night?: { proposals: number; shortfallPr: string | null; halted: boolean };
   /** S6c (#1116): the auditor's night, on the minute it ran; "Service to confirm" and "MSME bill due soon" notices sent. */
-  audit?: { flags: number; halted: boolean }; services?: number; msmeDue?: number };
+  audit?: { flags: number; halted: boolean }; services?: number; msmeDue?: number;
+  /** S7 (#1117): the stock planner's night, on the minute it ran. */ planner?: { forecasts: number; warnings: number; drafts: number; halted: boolean } };
 
 const log = new Logger("stores-chaser");
 
@@ -145,6 +147,15 @@ export async function runStoresChaser(db: Db, now: Date = new Date()): Promise<C
   } catch (err) {
     run.failed += 1;
     log.error("stores chaser: the auditor agent's night failed", err instanceof Error ? err.stack : String(err));
+  }
+  try {
+    // S7 (#1117, flow 1): the stock planner's night (02:00 IST: forecasts, warnings, drafts, par suggestions, the central
+    // store's planner requests), once per night; nothing on any other minute. The day's checks run at each shelf use.
+    const plan = await runPlannerNightIfDue(db, now);
+    if (plan !== null) run.planner = { forecasts: plan.forecasts, warnings: plan.warnings, drafts: plan.drafts.length, halted: plan.halted };
+  } catch (err) {
+    run.failed += 1;
+    log.error("stores chaser: the stock planner's night failed", err instanceof Error ? err.stack : String(err));
   }
   try {
     // S6c (#1116, spec "Notices"): "Service to confirm" and "MSME bill due soon", once each (source key).

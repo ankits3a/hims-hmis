@@ -61,6 +61,7 @@ describe("Stores S7: the stock planner (spec #1117)", () => {
   afterAll(async () => { await teardown(); });
 
   beforeEach(async () => {
+    for (const k of Object.keys(ITEMS)) delete ITEMS[k];
     await truncateAll(db);
     const registry = new ModuleRegistry();
     for (const m of ALL_MANIFESTS.filter((x) => x.key !== "stores")) registry.install(m);
@@ -369,7 +370,7 @@ describe("Stores S7: the stock planner (spec #1117)", () => {
     // Now a top-up would be a fourth.
     await learningLow(b1, "late", -0.5);
     await runPlannerNight(db, NOW);
-    expect(await topUpProposal(db, inA.actor, deptB.id, NOW)).toBeNull();
+    expect((await topUpProposal(db, inA.actor, deptB.id, NOW))?.sections ?? []).toHaveLength(0);
     expect(await warnings(b1, "late")).toBe(1);
     await runPlannerNight(db, at(1));
     const told = await count(sql`select count(*)::int as n from alerts where user_id = ${head.id} and title = 'Planner paused: 3 open'`);

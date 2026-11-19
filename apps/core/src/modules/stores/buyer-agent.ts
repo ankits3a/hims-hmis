@@ -345,7 +345,7 @@ export async function raiseCentralShortfall(db: Db, now: Date): Promise<BuyerNig
 }
 
 /** What open central or planner requests (not declined or cancelled, not yet on an order) already ask for, per item. */
-async function openCentralAsks(db: Db, itemIds: readonly string[]): Promise<Map<string, number>> {
+export async function openCentralAsks(db: Db, itemIds: readonly string[]): Promise<Map<string, number>> {
   const rows = await db.select({ l: storesPurchaseRequestLines }).from(storesPurchaseRequestLines)
     .innerJoin(storesPurchaseRequests, eq(storesPurchaseRequests.id, storesPurchaseRequestLines.prId))
     .where(and(inArray(storesPurchaseRequests.source, ["central", "planner"]), inArray(storesPurchaseRequestLines.itemId, [...itemIds])));

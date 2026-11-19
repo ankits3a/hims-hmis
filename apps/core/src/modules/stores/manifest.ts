@@ -70,6 +70,10 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * Due, Runs, Payments, Exports) is `/stores/pay` (its own menu row, `materials.bills.manage`); the department's phone
  * "Service to confirm" is `/stores/services`.
  *
+ * S7 (#1117, decision 14) adds `stores.planner.manage` (hospital; `materials_head`): pause the stock planner per department,
+ * set the safety-days table, and switch T3 on (only when the planner's score passes and the owner approved). Reading the
+ * planner's warnings and drafts needs no new grant: the shelf's grant holders and the materials head.
+ *
  * S6b (#1116, decision 12) adds `stores.tax.manage` (hospital; `accounts_officer`): the CA's TDS and GST-credit tables
  * (saved, then signed with the CA's document), lower-deduction certificates and MSME objections. Shipped with no table.
  *
@@ -114,6 +118,7 @@ export const storesManifest: ModuleManifest = {
     "stores.ses.confirm",
     "stores.holds.release",
     "stores.tax.manage",
+    "stores.planner.manage",
   ],
   subscriptions: [],
   /** S2a (#1112, decision 12) — the Now cards: "Indents to approve", "To pick", "To receive", "To take back"; S3 adds "Stuck" (`desk.ts`). */

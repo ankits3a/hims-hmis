@@ -53,7 +53,7 @@ export type PurchaseRequestLineInput = {
   equipment?: { why: string; replacesTag?: string | null; usePerDay: string } | null;
 };
 export type RaisePurchaseRequestInput = {
-  source: "department" | "central"; departmentId?: string | null; shelfId?: string | null;
+  source: "department" | "central" | "planner"; departmentId?: string | null; shelfId?: string | null;
   priority?: "routine" | "urgent" | "emergency"; note?: string | null; lines: PurchaseRequestLineInput[];
 };
 
@@ -106,6 +106,9 @@ export async function raisePurchaseRequest(
       if (shelf.departmentId !== departmentId) throw new StoresError("not_this_shelf", "this shelf is another department's");
       shelfId = shelf.id;
     }
+  } else if (input.source === "planner") {
+    // S7 (#1117, decision 7): the stock planner's central shortfall, raised by the planner actor only; the materials head approves.
+    if (!(opts.agent === true && actor.type === "agent")) throw new StoresError("not_permitted", "planner requests are raised by the planner");
   } else if (input.source === "central") {
     const agent = opts.agent === true && actor.type === "agent";
     if (!agent && !(await holds(db, actor, STORES_BUYING_MANAGE)) && !(await holds(db, actor, STORES_MASTERS))) {

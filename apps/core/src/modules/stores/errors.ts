@@ -195,6 +195,14 @@ export const STORES_ERROR_CODES = [
   // ── S6c (#1116): the auditor agent's flags and their review ──
   "unknown_flag",
   "flag_reviewed",
+  // ── S7 (#1117): the stock planner's drafts, par suggestions and the T3 switch ──
+  "unknown_draft",
+  "draft_closed",
+  "not_on_draft",
+  "unknown_suggestion",
+  "suggestion_closed",
+  "t3_not_earned",
+  "owner_approval_needed",
   "hod_reviews_own",
 ] as const;
 
@@ -389,6 +397,13 @@ const STATUS: Record<StoresErrorCode, number> = {
   objection_closed: 409,
   unknown_flag: 404,
   flag_reviewed: 409,
+  unknown_draft: 404,
+  draft_closed: 409,
+  not_on_draft: 422,
+  unknown_suggestion: 404,
+  suggestion_closed: 409,
+  t3_not_earned: 409,
+  owner_approval_needed: 409,
   hod_reviews_own: 403,
 };
 

@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import {
-  events, itemStockLevels, opdEncounters, orgDepartments, resources, stockBalances, stockLedger, storeIndents, storesDeliveryLines,
+  events, itemStockLevels, items, opdEncounters, orgDepartments, resources, stockBalances, stockLedger, storeIndents, storesDeliveryLines,
   storesTicketDetails, transfers,
 } from "../../kernel/db/schema";
 import { STORES_ACT_EVENT } from "./events";
@@ -10,6 +10,7 @@ import { holds } from "./access";
 import { assetRedCards, equipmentReceivedByMonth } from "./asset-reads";
 import { CARRIER_KINDS, chainsOf } from "./chain";
 import { overdueGatePasses } from "./gate-pass";
+import { NO_WARNING_WINDOW_MS, stockOutsWithoutWarning } from "./planner-score";
 import { listShelves } from "./shelves";
 import { departmentSpendByMonth, monthLastDay, nextMonthStart } from "./spend";
 import { gstNotCreditedBetween } from "./tax-on-bill";
@@ -323,6 +324,20 @@ export async function redCards(db: Db | Tx, now: Date, cards: readonly BoardCard
     for (const e of overBook) {
       const shelfId = (e.payload as { storeId: string }).storeId;
       push({ id: `over_book:${e.eventId}`, kind: "over_book", what: names.get(shelfId) ?? "", where: "", clock: null, indentId: null, shelfId, passId: null }, e.at);
+    }
+  }
+  // S7 (#1117, decision 13): a shelf item that ran out with no planner warning 24 h before, over the last 7 days.
+  const outs = (await stockOutsWithoutWarning(db, new Date(now.getTime() - NO_WARNING_WINDOW_MS), now)).events;
+  if (outs.length > 0) {
+    const shelfNames = new Map((await (db as Db).select({ id: resources.id, name: resources.name }).from(resources)
+      .where(inArray(resources.id, [...new Set(outs.map((o) => o.storeId))]))).map((r) => [r.id, r.name] as const));
+    const itemNames = new Map((await (db as Db).select({ id: items.id, name: items.name }).from(items)
+      .where(inArray(items.id, [...new Set(outs.map((o) => o.itemId))]))).map((r) => [r.id, r.name] as const));
+    for (const o of outs) {
+      push({
+        id: `no_warning:${o.storeId}:${o.itemId}:${o.at}`, kind: "no_warning", what: itemNames.get(o.itemId) ?? "", where: shelfNames.get(o.storeId) ?? "",
+        clock: null, indentId: null, shelfId: o.storeId, passId: null,
+      }, new Date(o.at));
     }
   }
   // S4 (#1114): calibration overdue, AMC lapsed, a missing asset, units ≠ ledger.
