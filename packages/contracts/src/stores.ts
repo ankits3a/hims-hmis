@@ -624,13 +624,13 @@ export type WireStoresPoSheet = {
   /** The reader holds this PO's tier; `canApproveBoth`: also the award's approval, so one tap writes both stamps. */
   canApprove: boolean; canApproveBoth: boolean;
   /** S5c (decision 11): "Pay after GRN", or the owner-approved advance on an equipment PO; the advance row when there is one. */
-  payTerms: WirePayTerms; advance: WirePoAdvance | null;
+  payTerms?: WirePayTerms; advance?: WirePoAdvance | null;
 };
 export type WireBuyingDesk = {
   can: { buy: boolean; approveAward: boolean; owner: boolean };
   buyNow: WireBuyRow[]; groupable: WireBuyRow[]; groups: WireBuyGroup[]; rfqs: WireRfq[]; awards: WireAward[]; pos: WireStoresPoRow[];
   /** S5c: the agent's open drafts (night grouping, RFQ and PO drafts, quotes read from PDFs) and the single-source / emergency purchases. */
-  proposals: WireAgentProposal[]; exceptions: WireBuyException[];
+  proposals?: WireAgentProposal[]; exceptions?: WireBuyException[];
 };
 const lineRef = z.object({ prId: id, lineIdx: z.number().int().min(0).max(100) });
 export const storesGroupBody = z.object({ lines: z.array(lineRef).min(1).max(100), label: z.string().trim().max(80).nullish() });
