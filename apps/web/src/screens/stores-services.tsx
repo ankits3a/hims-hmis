@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
+import { dateLocale } from "../lib/date-locale";
 import { confirmService, serviceDepartments, servicesToConfirm } from "../lib/paying-api";
 import { storesErrorCode } from "../lib/stores-api";
 import "./stores.css";
@@ -62,7 +63,7 @@ function Service({ s }: { s: WireServiceToConfirm }): React.ReactElement {
   const [why, setWhy] = useState("");
   const [note, setNote] = useState<{ text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  const month = new Date(`${s.period.start}T00:00:00`).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  const month = new Date(`${s.period.start}T00:00:00`).toLocaleDateString(dateLocale(), { month: "short", year: "numeric" });
   const save = async (): Promise<void> => {
     setBusy(true);
     try {
@@ -85,11 +86,11 @@ function Service({ s }: { s: WireServiceToConfirm }): React.ReactElement {
   };
   return (
     <div style={card} data-testid={`service-${s.purchaseOrderId}`}>
-      <strong style={cut}>{s.vendorName} · {term ? t("stores.services.termStarted") : month}</strong>
+      <strong style={{ minWidth: 0, overflowWrap: "anywhere" }}>{s.vendorName} · {term ? t("stores.services.termStarted") : month}</strong>
       <span style={cut}>{s.poNo} · {s.department.code}</span>
       {s.lines.map((l) => (
         <div key={l.itemId} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ ...cut, flex: "1 1 140px" }}>{l.itemName}</span>
+          <span style={{ minWidth: 0, overflowWrap: "anywhere", flex: "1 1 140px" }}>{l.itemName}</span>
           {short
             ? <input aria-label={t("stores.services.qty")} inputMode="numeric" style={{ ...input, width: 100 }} value={qty[l.itemId] ?? String(l.qtyBase)} onChange={(e) => setQty({ ...qty, [l.itemId]: e.target.value })} />
             : <strong>{l.qtyBase}</strong>}

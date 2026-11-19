@@ -17,7 +17,8 @@ Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials co
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
 `docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
-`docs/specs/1115-stores-buying-desk.md` (S5, built: S5a, S5b, S5c).
+`docs/specs/1115-stores-buying-desk.md` (S5, built: S5a, S5b, S5c),
+`docs/specs/1116-stores-paying-desk.md` (S6, approved; S6a built here).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -442,8 +443,45 @@ department shelves every department (housekeeping included) receives from. Pharm
   Confirm line), "Draft by agent" on RFQ/PO, One supplier, Advance; sheets `?exception=`, `?po=` (advance). `/stores/buy`
   Budgets: On order, the over-budget list (`?tab=budgets&month=` from the owner's notice).
 
+## 10g. The paying desk (S6a #1116; decision 0099 Q4, ruling 0101 Q6, Q7)
+- One book: Stores bills ARE materials `supplier_bills`; every pharmacy number stays as before with the switches off
+  (`materials/stores-s6a-no-change.test.ts` + its golden JSON, captured on the lane below — rerun it after any change to
+  `materials/supplier-bills.ts` or `materials/payments.ts`).
+- Service entry sheets (`service-entries.ts`, migration 0247): `stores_service_entries` + `_lines`, append-only. One per PO
+  and period (`ses_exists`, advisory lock; a reversal names the first: `reverses_id`, the reversing act is NOT built).
+  Confirmer: `stores.ses.confirm` AT the department. Lines carry the PO line's rate, multiplier and GST (what the bill is
+  matched against). "Term started" (`period_kind = term_start`) is a prepaid contract's acceptance on its start day.
+- Bill lines from an SES: `supplier_bill_lines.ses_id` (plain text; `grn_id` nullable; CHECK exactly one). Materials reads
+  the sheet through `registerServiceEntrySource` (registered at import of `service-entries.ts`; a line naming an SES with
+  no reader is refused, fail closed). TRAP: `grn_id` can now be null — any `not in (select grn_id …)` needs
+  `grn_id is not null` (`unbilledGrns` does). A bill view's SES line has `grnId: null`, `grnNo: ""`, and `sesId`/`sesNo`
+  keys only when set (a GRN line's view is byte-identical).
+- Holds (`holds.ts`): rules, never the agent; placed on booking (materials `book()` → `registerBillHoldHooks.onBooked`, same
+  tx) and re-checked before a run is drafted or submitted (own tx, so a hold found at submit survives the refusal). Scope:
+  a bill with a Stores item line or a service line; pharmacy-only only when `holds_cover_pharmacy` is on. A kind open on
+  the bill is not placed again; a kind a person RELEASED is never placed again (else every re-check re-holds it); a
+  cooling-off hold returns only for a new `ends_at`. Open holds keep a bill out of `planPaymentRun`, refuse
+  create/update/submit (`line_on_hold`) and the payment. Release: a reason; ≤ ₹50,000 the materials head, above only
+  the owner (role); never the booker (`created_by`), the PO's `approved_by`, or the authoriser of a run carrying the bill;
+  `bank_cooling_off` never (`ends_by_itself`). Keep: reason + review ≤ 30 days; stays open.
+- `pay_after_grn` (DECIDED reading): a line billed `not_received`/`qty_over` on a PO whose `payTermsOf` is after_grn (or
+  no PO). `above_po`: all live bills on the PO above its total + the match tolerance. `out_of_pattern`: > 2 × p90 (nearest
+  rank) of the supplier's accepted bills in the 12 months before the bill date, or a first bill > ₹1,00,000.
+- UTR (materials `recordVendorPayment`, decision 9): NEFT 16 / RTGS 22 letters-digits, UPI 12 digits, upper-cased without
+  spaces, checked AFTER the earlier refusals (so their order is unchanged); reuse per mode over all rows
+  (`utr_reused`), backed by a partial unique index over `reference_checked` rows only (old rows stay false).
+- Switches (`paying-settings.ts`): versioned, owner's role; switching ON needs a dry run ≤ 1 day old (`holdsDryRun`, writes
+  nothing). `msme_rule` is stored but only S6b wires it.
+- Reads (`paying-reads.ts`): `payablesByGroup` apportions each bill's outstanding over its lines by value (item group = top
+  category, drugs one group; cost centre = SES department, else the receiving shelf's department, else the store code).
+  The owner's phone line (`runToAuthorise`); `submitRunFromDesk` raises "Run to authorise" (`stores_pay_run`).
+- Audit pack `{ billId }`: PO, GRN/SES, `supplier_bill.*`, holds and their steps, `payment_run.*`, `supplier_payment.*`
+  (the payment row's `after` carries mode and reference). TRAP: `grn.received` is dated by the wall clock.
+- Web: `/stores/pay` (`apps/web/src/screens/stores-paying.tsx`; `?run=` the owner's sheet, `?bill=` a bill's hold cards), `/stores/services`.
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
 staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
 SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5 leaves: splitting one request line
-across groups; the buyer's chat intents (locked S3 D7 pin); paying an advance and "Pay after GRN" enforcement (S6).
+across groups; the buyer's chat intents (locked S3 D7 pin); paying an advance (S6). S6a leaves: the reversing SES, the "Service to confirm" notice (no job), GST marks, TDS, IRN,
+the MSME rule and the Tally split (S6b), the auditor agent (S6c).

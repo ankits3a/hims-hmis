@@ -40,7 +40,9 @@ const cut: React.CSSProperties = { minWidth: 0, overflow: "hidden", textOverflow
 const input: React.CSSProperties = { minHeight: 40, minWidth: 0, boxSizing: "border-box", maxWidth: "100%" };
 const card: React.CSSProperties = { border: "1px solid var(--rule, #e3e3e3)", borderRadius: 8, padding: 10, display: "flex", flexDirection: "column", gap: 6, minWidth: 0 };
 
-const money = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+const money = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", paise % 100 === 0 ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** A supplier's name wraps rather than hides: long legal names are the norm. */
+const wrap: React.CSSProperties = { minWidth: 0, overflowWrap: "anywhere" };
 const rupeesToPaise = (s: string): number => Math.round(Number(s) * 100);
 const today = (): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
@@ -136,7 +138,7 @@ function ToBook({ rows, can }: { rows: WirePayToBook[]; can: boolean }): React.R
           <div style={row} data-testid={`book-row-${r.id}`}>
             <span style={word}>{t(`stores.paying.${r.kind}`)}</span>
             <strong>{r.no}</strong>
-            <span style={{ ...cut, flex: "1 1 160px" }}>{r.vendorName}</span>
+            <span style={{ ...wrap, flex: "1 1 160px" }}>{r.vendorName}</span>
             {r.poNo !== null && <span>{r.poNo}</span>}
             <span>{new Date(r.at).toLocaleDateString(dateLocale())}</span>
             {can && <button type="button" style={primary} onClick={() => setOpen(open === r.id ? null : r.id)}>{t("stores.paying.bookBill")}</button>}
@@ -168,7 +170,7 @@ function BookForm({ doc, onDone }: { doc: WirePayToBook; onDone: () => void }): 
           <input style={input} value={billNo} onChange={(e) => setNo(e.target.value)} /></label>
         <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>{t("stores.paying.billDate")}
           <input style={input} type="date" value={billDate} onChange={(e) => setDate(e.target.value)} /></label>
-        <span style={word}>{t("stores.paying.tax.tdsNotChecked")}</span>
+        <span style={{ ...word, alignSelf: "center" }}>{t("stores.paying.tax.tdsNotChecked")}</span>
       </div>
       {d.lines.map((l) => {
         const v = lines[l.itemId] ?? { qty: String(l.qtyPacks), rate: String(l.ratePaise / 100) };
@@ -217,7 +219,8 @@ function HoldCard({ h }: { h: WirePayHold }): React.ReactElement {
         <span style={h.status === "open" ? red : word}>{t(`stores.paying.holdStatus.${h.status}`)}</span>
         {h.msme && <span style={word}>{t("stores.paying.msme")}</span>}
       </div>
-      <div style={row}><span>{h.billNo}</span><span style={{ ...cut, flex: "1 1 120px" }}>{h.vendorName}</span><span>{money(h.totalPaise)}</span></div>
+      <span style={wrap}>{h.vendorName}</span>
+      <div style={row}><span>{h.billNo}</span><span style={{ marginLeft: "auto" }}>{money(h.totalPaise)}</span></div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {h.evidence.map((e) => <span key={`${e.type}:${e.id}`} style={{ ...word, fontWeight: 400 }}>{e.no === "" ? t(`stores.paying.doc.${e.type}`, { defaultValue: e.type }) : e.no}</span>)}
       </div>
@@ -268,7 +271,7 @@ function Due({ rows }: { rows: WirePayDue[] }): React.ReactElement {
           {r.dueWord === "overdue" && r.msme && <span style={red}>{t("stores.paying.due.interest")}</span>}
           {r.msme && <span style={word}>{t("stores.paying.msme")}</span>}
           <strong>{r.billNo}</strong>
-          <span style={{ ...cut, flex: "1 1 160px" }}>{r.vendorName}</span>
+          <span style={{ ...wrap, flex: "1 1 160px" }}>{r.vendorName}</span>
           <span>{new Date(`${r.dueDate}T00:00:00`).toLocaleDateString(dateLocale())}</span>
           <span>{money(r.outstandingPaise)}</span>
           <span style={word}>{t(`stores.paying.status.${r.status}`)}</span>
@@ -329,7 +332,7 @@ function AuthoriseSheet({ id }: { id: string }): React.ReactElement {
     <div data-testid="authorise-sheet" style={sheet}>
       <h1 style={{ margin: 0, fontSize: 18 }}>{t("stores.paying.runToAuthorise")} · {r.runNo}</h1>
       <p style={{ margin: 0, fontSize: 18, fontWeight: 700, overflowWrap: "anywhere" }}>{runLine(t, r)}</p>
-      <span style={word}>{t(`stores.paying.runStatus.${r.status}`)}</span>
+      <span style={{ ...word, alignSelf: "flex-start" }}>{t(`stores.paying.runStatus.${r.status}`)}</span>
       <Notice n={note} />
       {r.canDecide && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -385,7 +388,7 @@ function RecordPayment({ run }: { run: WirePayRun }): React.ReactElement {
         const f = form[v.vendorId] ?? { mode: "neft", utr: "" };
         return (
           <div key={v.vendorId} style={row}>
-            <span style={{ ...cut, flex: "1 1 160px" }}>{v.vendorName}</span>
+            <span style={{ ...wrap, flex: "1 1 160px" }}>{v.vendorName}</span>
             <span>{money(v.payPaise)}</span>
             <select aria-label={t("stores.paying.mode")} style={input} value={f.mode} onChange={(e) => setForm({ ...form, [v.vendorId]: { ...f, mode: e.target.value } })}>
               {["neft", "rtgs", "upi", "cheque", "cash"].map((m) => <option key={m} value={m}>{t(`stores.paying.modes.${m}`)}</option>)}
