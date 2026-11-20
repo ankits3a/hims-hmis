@@ -58,7 +58,12 @@ export type BillMismatch = "not_received" | "qty_over" | "qty_under" | "rate" | 
 const HOLDING: readonly BillMismatch[] = ["not_received", "qty_over", "gst_rate", "value"];
 
 export type BillLineInput = {
-  grnId: string;
+  /**
+   * The GRN this line bills — or, for a service, the service entry sheet (`sesId`, STORES S6a #1116, decision 3):
+   * exactly one of the two (`bill_invalid` otherwise).
+   */
+  grnId?: string | null;
+  sesId?: string | null;
   itemId: string;
   /** The pack billed. Defaults to the item's purchase pack. */
   uom?: string | null;
@@ -75,7 +80,17 @@ export type BillLineInput = {
   discountBps?: number;
   /** #637 — the discount as an amount off the list rate, per pack, in paise. Not with `discountBps`. */
   discountPaise?: number;
+  /**
+   * STORES S6b (#1116, decision 4) — the line's input-credit mark and reverse charge, as the accounts officer confirmed
+   * them. Only a Stores item line or a service line carries them (`bill_invalid` on a pharmacy line). Reverse charge:
+   * the supplier's bill carries no GST on the line (its GST columns are 0), the hospital owes it.
+   */
+  gstCredit?: BillGstCredit | null;
+  reverseCharge?: boolean | null;
 };
+
+export type BillGstCredit = "eligible" | "not_available" | "shared";
+export const BILL_GST_CREDITS: readonly BillGstCredit[] = ["eligible", "not_available", "shared"];
 
 export type BillInput = {
   vendorId: string;
@@ -84,16 +99,21 @@ export type BillInput = {
   interState?: boolean;
   roundOffPaise?: number;
   note?: string | null;
+  /** STORES S6b (#1116, decision 4) — the e-invoice's reference number (IRN) when the paper carries one. */
+  irn?: string | null;
   lines: BillLineInput[];
 };
 
 export type BillLineView = {
-  id: string; grnId: string; grnNo: string; itemId: string; itemCode: string; itemName: string; uom: string; multiplier: number;
+  /** STORES S6a (#1116): a service line has a null `grnId` and an empty `grnNo`, and carries `sesId` and `sesNo`. */
+  id: string; grnId: string | null; grnNo: string; sesId?: string; sesNo?: string; itemId: string; itemCode: string; itemName: string; uom: string; multiplier: number;
   qtyPacks: number; ratePaise: number; taxablePaise: number; gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
   /** #637 — list rate per pack before the vendor's discount (null when none was named), the percent, the amount off per pack. */
   listRatePaise: number | null; discountBps: number; discountPaise: number;
   totalPaise: number; expectedBase: number; expectedPacks: number; expectedRatePaise: number; expectedTaxablePaise: number;
   expectedGstRateBps: number; differencePaise: number; mismatch: BillMismatch[]; out: boolean;
+  /** STORES S6b (#1116) — present only when set (a pharmacy line's view is unchanged): the marks and the TDS booked. */
+  gstCredit?: BillGstCredit; reverseCharge?: boolean; tdsPaise?: number; tdsNature?: string;
 };
 
 export type BillSummary = {
@@ -109,7 +129,9 @@ export type BillView = BillSummary & {
   note: string | null; poNo: string | null; cancelReason: string | null; differenceAcceptedBy: string | null;
   names: Record<string, string>; lines: BillLineView[];
   /** GRN items accepted but not on the bill — counted in the expected total. */
-  unbilled: { grnId: string; grnNo: string; itemId: string; itemCode: string; itemName: string; expectedBase: number; expectedTaxablePaise: number }[];
+  unbilled: { grnId: string | null; grnNo: string; sesId?: string; itemId: string; itemCode: string; itemName: string; expectedBase: number; expectedTaxablePaise: number }[];
+  /** STORES S6b (#1116) — present only when set: the IRN, and the TDS deducted at booking (counted in `paidPaise`). */
+  irn?: string; tdsPaise?: number;
   /** Recorded payments against this bill; `creditPaise` is the vendor credit set off on the same voucher (P4). */
   payments: { paymentId: string; paymentNo: string; runNo: string; mode: string; reference: string | null; paidOn: string; paidPaise: number; creditPaise: number }[];
 };
@@ -171,6 +193,102 @@ function isIsoDate(s: string): boolean {
 
 const isMsme = (v: { msmeClass: string | null }): boolean => v.msmeClass !== null && v.msmeClass.trim() !== "";
 
+// ═══════════════════════════════════ STORES S6a — payment holds ═══════════════════════════════════
+
+/**
+ * STORES S6a (#1116, decisions 7–8) — payment holds are Stores' rows and rules (materials knows no Stores table); Stores
+ * registers these at import. With none registered nothing is held. With them registered and every S6a switch off, a
+ * pharmacy-only bill is never held (`stores-s6a-no-change.test.ts`): booking, payables, the run and the payment are as
+ * before.
+ */
+export type BillHoldHooks = {
+  /** A bill was booked (accepted), inside the act's transaction: the rules place what they find. */
+  onBooked(tx: Tx, actor: Actor, billId: string, now: Date): Promise<void>;
+  /** Before a run is drafted or submitted, in its own transaction: the rules run again over these bills. */
+  recheck(db: Db, actor: Actor, billIds: readonly string[], now: Date): Promise<void>;
+  /** The bills among these with an open hold. */
+  openHolds(db: Db | Tx, billIds: readonly string[], now: Date): Promise<Set<string>>;
+};
+let holdHooks: BillHoldHooks | null = null;
+
+export function registerBillHoldHooks(hooks: BillHoldHooks): () => void {
+  holdHooks = hooks;
+  return () => { if (holdHooks === hooks) holdHooks = null; };
+}
+
+export function billHoldHooks(): BillHoldHooks | null {
+  return holdHooks;
+}
+
+// ═══════════════════════════════════ STORES S6b — tax on the bill, the MSME rule, the Tally split ═══════════════════════════════════
+
+/**
+ * STORES S6b (#1116, decisions 4–6, 10, 13) — Stores' tax rules, the MSME rule and the Tally split are Stores' rows; Stores
+ * registers these at import. Each answers `null` (or leaves a bill out) when its switch is off or its table unsigned, and
+ * then materials does exactly what it did before S6b (`pharmacy/stores-s6b-no-change.test.ts`).
+ */
+export type BillBookingTax = {
+  /** Per line: a mark Stores fills on a Stores line left unmarked, and the TDS deducted (with its nature and table row). */
+  lines: { lineId: string; gstCredit?: BillGstCredit | null; tdsPaise: number | null; tdsNature: string | null; tdsRef: string | null }[];
+  /** The bill's TDS, the sum of its lines' (null = "TDS not checked": nothing deducted). */
+  tdsPaise: number | null;
+};
+export type BillTaxHooks = {
+  /** A bill is being booked, inside the act's transaction, before its row is written. `null` = nothing to write. */
+  onBooking(tx: Tx, actor: Actor, billId: string, now: Date): Promise<BillBookingTax | null>;
+  /** The due date under a rule other than today's (the Act's, when switched on); `null` = today's `dueDateFor`. */
+  dueDate(tx: Tx, input: { billId: string; vendorId: string; billDate: string; acceptanceDate: string; termsDays: number | null }): Promise<{ dueDate: string; msme: boolean; acceptanceDate: string } | null>;
+};
+let taxHooks: BillTaxHooks | null = null;
+
+export function registerBillTaxHooks(hooks: BillTaxHooks): () => void {
+  taxHooks = hooks;
+  return () => { if (taxHooks === hooks) taxHooks = null; };
+}
+
+/**
+ * STORES S6b (#1116, decision 10) — a purchase voucher read per line. A debit is > 0 and a credit < 0; `std` names one
+ * of pharmacy's own mapped ledgers, else `ledger` is the accountant's Stores name under `group`. `deductedPaise` is
+ * what the party is NOT credited (the TDS); the round-off and the party's credit are the export's, as before.
+ * `missing` lists Stores ledger keys with no name yet (the export refuses with the list).
+ */
+export type PurchaseSplitEntry = { amountPaise: number; costCentre: string | null } & (
+  | { std: "purchases" | "inputCgst" | "inputSgst" | "inputIgst" }
+  | { ledger: string; group: string }
+);
+export type PurchaseSplit = { entries: PurchaseSplitEntry[]; deductedPaise: number; missing: string[] };
+export type PurchaseSplitSource = (db: Db | Tx, billIds: readonly string[]) => Promise<Map<string, PurchaseSplit>>;
+let splitSource: PurchaseSplitSource | null = null;
+
+export function registerPurchaseSplitSource(source: PurchaseSplitSource): () => void {
+  splitSource = source;
+  return () => { if (splitSource === source) splitSource = null; };
+}
+
+/**
+ * STORES S6b (#1116, decision 5) — the accounts officer's change to a proposed TDS, with its reason, on an entered and
+ * not yet booked bill (inside the caller's transaction; the caller checks the grant and writes the act). Booking keeps a
+ * changed line's figure. An edit or a match re-enters the lines, and the TDS is then proposed afresh.
+ */
+export async function writeBillLineTds(tx: Tx, billId: string, lines: readonly { lineId: string; tdsPaise: number }[], reason: string): Promise<BillRow> {
+  const b = await lockBill(tx, billId);
+  if (!EDITABLE.includes(b.status as BillStatus)) throw wrongStatus(b, "changing the TDS", EDITABLE);
+  const mine = await tx.select().from(supplierBillLines).where(eq(supplierBillLines.billId, billId));
+  for (const l of lines) {
+    const row = mine.find((m) => m.id === l.lineId);
+    if (row === undefined) throw new MaterialsError("bill_invalid", `line ${l.lineId} is not on bill ${b.billNo}`);
+    if (!Number.isSafeInteger(l.tdsPaise) || l.tdsPaise < 0 || l.tdsPaise > row.taxablePaise) throw new MaterialsError("bill_invalid", "the TDS is between nothing and the line's value before GST");
+    await tx.update(supplierBillLines).set({ tdsPaise: l.tdsPaise, tdsReason: reason.slice(0, MAX_TEXT) }).where(eq(supplierBillLines.id, l.lineId));
+  }
+  return b;
+}
+
+/** The split of each bill that needs one (a Stores or service line, reverse charge or TDS); a bill left out exports as before. */
+export async function purchaseSplitsFor(db: Db | Tx, billIds: readonly string[]): Promise<Map<string, PurchaseSplit>> {
+  if (splitSource === null || billIds.length === 0) return new Map();
+  return splitSource(db, billIds);
+}
+
 // ═══════════════════════════════════ who may ═══════════════════════════════════
 
 async function requirePerm(db: Db | Tx, actor: Actor, perm: string, what: string): Promise<void> {
@@ -190,13 +308,82 @@ export async function requirePayablesReader(db: Db, actor: Actor): Promise<void>
 // ═══════════════════════════════════ what the GRN says ═══════════════════════════════════
 
 type Expectation = {
-  grnId: string; grnNo: string; itemId: string; acceptedBase: number;
+  /** A GRN's line — or (STORES S6a #1116) a service entry sheet's: `grnId` null, `sesId` set, `grnNo` its SES number. */
+  grnId: string | null; grnNo: string; sesId?: string; itemId: string; acceptedBase: number;
   /** Rate per BASE unit, as a fraction: `ratePaise / multiplier` of the PO line, or the GRN's own unit cost. */
   rate: { paise: number; per: number };
   gstRateBps: number;
 };
 
 type GrnRow = typeof grns.$inferSelect;
+
+/** The key of a line's expectation: the GRN's (as always) or, for a service, the SES's. */
+const docKey = (l: { grnId?: string | null; sesId?: string | null; itemId: string }): string =>
+  (l.grnId != null ? `${l.grnId}|${l.itemId}` : `ses:${l.sesId ?? ""}|${l.itemId}`);
+
+// ═══════════════════════════════════ STORES S6a — what a service entry sheet says ═══════════════════════════════════
+
+/** One line of a confirmed service entry sheet, as the bill is matched against it (the PO's rate and GST). */
+export type ServiceEntryLine = {
+  sesId: string; sesNo: string; vendorId: string; purchaseOrderId: string; itemId: string; acceptedBase: number;
+  ratePaise: number; multiplier: number; gstRateBps: number;
+  /** The MSMED Act's day of acceptance: the period's last day, or its first for a "term started" sheet. */
+  acceptanceDay: string;
+};
+
+/**
+ * STORES S6a (#1116, decision 3) — the service entry sheets are Stores' rows; materials knows no Stores table (the
+ * `registerAwardPoGuard` precedent). Stores registers the reader at import. A bill line naming an SES with no reader
+ * loaded is refused (fail closed); a bill with GRN lines only never asks it.
+ */
+export type ServiceEntrySource = {
+  /** The lines of these sheets (reversed ones left out), locked FOR UPDATE when `lock`. A sheet with no row is absent. */
+  lines(db: Db | Tx, sesIds: readonly string[], opts: { lock: boolean }): Promise<ServiceEntryLine[]>;
+};
+let sesSource: ServiceEntrySource | null = null;
+
+export function registerServiceEntrySource(source: ServiceEntrySource): () => void {
+  sesSource = source;
+  return () => { if (sesSource === source) sesSource = null; };
+}
+
+function requireSesSource(): ServiceEntrySource {
+  if (sesSource === null) throw new MaterialsError("bill_invalid", "a line names a service entry sheet and the service entries are not loaded");
+  return sesSource;
+}
+
+const sesExpectations = (rows: readonly ServiceEntryLine[]): Map<string, Expectation> => {
+  const out = new Map<string, Expectation>();
+  for (const r of rows) {
+    out.set(docKey({ sesId: r.sesId, itemId: r.itemId }), {
+      grnId: null, grnNo: r.sesNo, sesId: r.sesId, itemId: r.itemId, acceptedBase: r.acceptedBase,
+      rate: { paise: r.ratePaise, per: r.multiplier }, gstRateBps: r.gstRateBps,
+    });
+  }
+  return out;
+};
+
+/** Lock the sheets a bill names: each exists, is this vendor's and is on no other live bill. */
+async function lockSes(tx: Tx, vendorId: string, sesIds: readonly string[], exceptBillId: string | null): Promise<ServiceEntryLine[]> {
+  if (sesIds.length === 0) return [];
+  const rows = await requireSesSource().lines(tx, sesIds, { lock: true });
+  for (const id of sesIds) {
+    const mine = rows.filter((r) => r.sesId === id);
+    if (mine.length === 0) throw new MaterialsError("unknown_document", `service entry sheet ${id} not found`);
+    if (mine[0]!.vendorId !== vendorId) throw new MaterialsError("bill_invalid", `service entry ${mine[0]!.sesNo} is another vendor's`, { sesNo: mine[0]!.sesNo });
+  }
+  const taken = await tx.select({ sesId: supplierBillLines.sesId, billNo: supplierBills.billNo }).from(supplierBillLines)
+    .innerJoin(supplierBills, eq(supplierBills.id, supplierBillLines.billId))
+    .where(and(
+      inArray(supplierBillLines.sesId, [...sesIds]), ne(supplierBills.status, "cancelled"),
+      ...(exceptBillId === null ? [] : [ne(supplierBills.id, exceptBillId)]),
+    )).limit(1);
+  if (taken[0] !== undefined) {
+    const no = rows.find((r) => r.sesId === taken[0]!.sesId)!.sesNo;
+    throw new MaterialsError("ses_already_billed", `service entry ${no} is already on bill ${taken[0].billNo}`, { sesNo: no, billNo: taken[0].billNo });
+  }
+  return rows;
+}
 
 /**
  * For each GRN: every item it ACCEPTED (paid quantity only), the rate it should be billed at (the PO
@@ -247,11 +434,13 @@ const packRate = (multiplier: number, rate: { paise: number; per: number }): num
 // ═══════════════════════════════════ lines ═══════════════════════════════════
 
 type ResolvedLine = {
-  grnId: string; itemId: string; uom: string; multiplier: number; qtyPacks: number; ratePaise: number; taxablePaise: number;
+  grnId: string | null; sesId: string | null; itemId: string; uom: string; multiplier: number; qtyPacks: number; ratePaise: number; taxablePaise: number;
   listRatePaise: number | null; discountBps: number; discountPaise: number;
   gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
   expectedBase: number; expectedRatePaise: number; expectedTaxablePaise: number; expectedGstRateBps: number;
   mismatch: BillMismatch[];
+  /** STORES S6b — null on every pharmacy line. */
+  gstCredit: BillGstCredit | null; reverseCharge: boolean | null;
 };
 
 const MAX_LINES = 300;
@@ -332,15 +521,25 @@ export function discountOf(l: Pick<BillLineInput, "ratePaise" | "listRatePaise" 
 }
 
 async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineInput[], interState: boolean, exceptBillId: string | null): Promise<{
-  lines: ResolvedLine[]; grnRows: GrnRow[]; expectations: Map<string, Expectation>;
+  lines: ResolvedLine[]; grnRows: GrnRow[]; sesRows: ServiceEntryLine[]; expectations: Map<string, Expectation>;
 }> {
   if (input.length === 0) throw new MaterialsError("bill_invalid", "a bill carries at least one line");
   if (input.length > MAX_LINES) throw new MaterialsError("bill_invalid", `a bill carries at most ${String(MAX_LINES)} lines`);
-  const keys = new Set(input.map((l) => `${l.grnId}|${l.itemId}`));
+  // STORES S6a (#1116, decision 3): each line names its GRN or its service entry sheet — one of the two.
+  const named = (v: string | undefined | null): v is string => typeof v === "string" && v !== "";
+  for (const l of input) {
+    if (named(l.grnId) === named(l.sesId)) {
+      throw new MaterialsError("bill_invalid", "a bill line names the GRN it bills or the service entry sheet — one of the two", { itemId: l.itemId });
+    }
+  }
+  const keys = new Set(input.map((l) => docKey(l)));
   if (keys.size !== input.length) throw new MaterialsError("bill_invalid", "an item appears twice for one GRN — put it on one line");
-  const grnIds = [...new Set(input.map((l) => l.grnId))];
-  const grnRows = await lockGrns(tx, vendorId, grnIds, exceptBillId);
+  const grnIds = [...new Set(input.map((l) => l.grnId).filter(named))];
+  const sesIds = [...new Set(input.map((l) => l.sesId).filter(named))];
+  const grnRows = grnIds.length === 0 ? [] : await lockGrns(tx, vendorId, grnIds, exceptBillId);
+  const sesRows = await lockSes(tx, vendorId, sesIds, exceptBillId);
   const expectations = await expectationsOf(tx, grnRows);
+  for (const [k, e] of sesExpectations(sesRows)) expectations.set(k, e);
   const itemIds = [...new Set(input.map((l) => l.itemId))];
   const found = await tx.select().from(items).where(inArray(items.id, itemIds));
   const packs = await tx.select().from(itemUoms).where(inArray(itemUoms.itemId, itemIds));
@@ -359,22 +558,30 @@ async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineIn
     if (!okInt(l.qtyPacks, 0, MAX_PACKS) || !okInt(d.ratePaise, 0, MAX_RATE_PAISE) || !okInt(l.gstRateBps, 0, 2_800)) {
       throw new MaterialsError("bill_invalid", `line for ${item.code}: quantity, rate or GST is out of range`, { itemId: l.itemId });
     }
-    const e = expectations.get(`${l.grnId}|${l.itemId}`);
+    const e = expectations.get(docKey(l));
     const expectedBase = e?.acceptedBase ?? 0;
     const rate = e?.rate ?? { paise: 0, per: 1 };
-    // GST is on the DISCOUNTED value: packs × net rate (#637).
+    // STORES S6b (#1116, decision 4): the marks ride a Stores item or service line only; a pharmacy line carries none.
+    const storesLine = named(l.sesId) || (item.trackMode !== null && item.class !== "drug");
+    const gstCredit = l.gstCredit ?? null;
+    const reverseCharge = l.reverseCharge ?? null;
+    if (gstCredit !== null && !BILL_GST_CREDITS.includes(gstCredit)) throw new MaterialsError("bill_invalid", `line for ${item.code}: GST credit is eligible, not_available or shared`, { itemId: l.itemId });
+    if (!storesLine && (gstCredit !== null || reverseCharge !== null)) {
+      throw new MaterialsError("bill_invalid", `line for ${item.code}: a pharmacy line carries no GST credit or reverse-charge mark`, { itemId: l.itemId });
+    }
+    // GST is on the DISCOUNTED value: packs × net rate (#637). Reverse charge: the supplier bills none.
     const taxablePaise = l.qtyPacks * d.ratePaise;
-    const split = splitGst(lineGstPaise(taxablePaise, l.gstRateBps), interState);
+    const split = splitGst(reverseCharge === true ? 0 : lineGstPaise(taxablePaise, l.gstRateBps), interState);
     const resolved = {
-      grnId: l.grnId, itemId: l.itemId, uom: pack?.uom ?? item.baseUom, multiplier, qtyPacks: l.qtyPacks, ratePaise: d.ratePaise,
+      grnId: named(l.grnId) ? l.grnId : null, sesId: named(l.sesId) ? l.sesId : null, itemId: l.itemId, uom: pack?.uom ?? item.baseUom, multiplier, qtyPacks: l.qtyPacks, ratePaise: d.ratePaise,
       listRatePaise: d.listRatePaise, discountBps: d.discountBps, discountPaise: d.discountPaise,
       taxablePaise, gstRateBps: l.gstRateBps, ...split,
       expectedBase, expectedRatePaise: packRate(multiplier, rate), expectedTaxablePaise: valueAt(expectedBase, rate),
       expectedGstRateBps: e?.gstRateBps ?? item.gstRateBps ?? 0,
     };
-    return { ...resolved, mismatch: lineMismatches(resolved).reasons };
+    return { ...resolved, mismatch: lineMismatches(resolved).reasons, gstCredit, reverseCharge };
   });
-  return { lines, grnRows, expectations };
+  return { lines, grnRows, sesRows, expectations };
 }
 
 function totalsOf(lines: readonly ResolvedLine[], roundOffPaise: number): {
@@ -385,25 +592,37 @@ function totalsOf(lines: readonly ResolvedLine[], roundOffPaise: number): {
   return { ...t, roundOffPaise, totalPaise: t.taxablePaise + t.cgstPaise + t.sgstPaise + t.igstPaise + roundOffPaise };
 }
 
-/** What the GRNs received would have cost at the PO's rate, GST included — every accepted item, billed or not. */
-function expectedTotalOf(expectations: Map<string, Expectation>): number {
+/**
+ * What the GRNs received would have cost at the PO's rate, GST included — every accepted item, billed or not. STORES S6b
+ * (#1116): a line billed under reverse charge is expected without GST (the supplier bills none); no pharmacy line is.
+ */
+function expectedTotalOf(expectations: Map<string, Expectation>, lines: readonly Pick<ResolvedLine, "grnId" | "sesId" | "itemId" | "reverseCharge">[] = []): number {
+  const reverse = new Set(lines.filter((l) => l.reverseCharge === true).map((l) => docKey(l)));
   let total = 0;
-  for (const e of expectations.values()) {
+  for (const [k, e] of expectations) {
     const taxable = valueAt(e.acceptedBase, e.rate);
-    total += taxable + lineGstPaise(taxable, e.gstRateBps);
+    total += taxable + (reverse.has(k) ? 0 : lineGstPaise(taxable, e.gstRateBps));
   }
   return total;
 }
 
 async function insertLines(tx: Tx, billId: string, lines: readonly ResolvedLine[]): Promise<void> {
   await tx.insert(supplierBillLines).values(lines.map((l) => ({
-    id: newId(), billId, grnId: l.grnId, itemId: l.itemId, uom: l.uom, multiplier: l.multiplier, qtyPacks: l.qtyPacks,
+    id: newId(), billId, grnId: l.grnId, sesId: l.sesId, itemId: l.itemId, uom: l.uom, multiplier: l.multiplier, qtyPacks: l.qtyPacks,
     ratePaise: l.ratePaise, taxablePaise: l.taxablePaise, gstRateBps: l.gstRateBps, cgstPaise: l.cgstPaise, sgstPaise: l.sgstPaise,
     listRatePaise: l.listRatePaise, discountBps: l.discountBps, discountPaise: l.discountPaise,
     igstPaise: l.igstPaise, expectedBase: l.expectedBase, expectedRatePaise: l.expectedRatePaise,
     expectedTaxablePaise: l.expectedTaxablePaise, expectedGstRateBps: l.expectedGstRateBps,
     mismatch: l.mismatch.length === 0 ? null : l.mismatch.join(","),
+    ...(l.gstCredit === null ? {} : { gstCredit: l.gstCredit }), ...(l.reverseCharge === null ? {} : { reverseCharge: l.reverseCharge }),
   })));
+}
+
+/** STORES S6b (#1116): the IRN as printed, spaces out; not checked against the GST portal (out of scope). */
+function cleanIrn(v: string | null | undefined): string | null {
+  const t = (v ?? "").replace(/\s+/g, "");
+  if (t.length > 100) throw new MaterialsError("bill_invalid", "the IRN is longer than 100 characters");
+  return t === "" ? null : t;
 }
 
 function cleanText(v: string | null | undefined, what: string): string | null {
@@ -438,9 +657,9 @@ async function assertNotDuplicate(tx: Tx, vendorId: string, key: string, fy: str
   }
 }
 
-/** The one PO every GRN on the bill was received against, when there is exactly one. */
-const poOf = (grnRows: readonly GrnRow[]): string | null => {
-  const pos = [...new Set(grnRows.map((g) => g.purchaseOrderId))];
+/** The one PO every GRN (and, STORES S6a, every service entry sheet) on the bill was received against, when there is exactly one. */
+const poOf = (grnRows: readonly GrnRow[], sesRows: readonly ServiceEntryLine[] = []): string | null => {
+  const pos = [...new Set([...grnRows.map((g) => g.purchaseOrderId), ...sesRows.map((r) => r.purchaseOrderId)])];
   return pos.length === 1 ? pos[0]! : null;
 };
 
@@ -461,7 +680,7 @@ const header = (b: Pick<BillRow, "id" | "billNo" | "vendorId" | "vendorBillNo" |
 
 type Change = { field: string; before: string | number | boolean | null; after: string | number | boolean | null };
 type LineMoney = {
-  grnId: string; itemId: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number; taxablePaise: number;
+  grnId: string | null; sesId?: string | null; itemId: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number; taxablePaise: number;
   listRatePaise: number | null; discountBps: number; discountPaise: number;
 };
 
@@ -475,7 +694,7 @@ export function billChanges(before: BillRow, after: BillRow, beforeLines: readon
   for (const f of ["vendorBillNo", "billDate", "interState", "taxablePaise", "cgstPaise", "sgstPaise", "igstPaise", "roundOffPaise", "totalPaise"] as const) {
     if (before[f] !== after[f]) out.push({ field: f, before: before[f], after: after[f] });
   }
-  const key = (l: LineMoney): string => `${l.grnId}|${l.itemId}`;
+  const key = (l: LineMoney): string => docKey(l);
   const old = new Map(beforeLines.map((l) => [key(l), l] as const));
   const now = new Map(afterLines.map((l) => [key(l), l] as const));
   for (const k of new Set([...old.keys(), ...now.keys()])) {
@@ -514,14 +733,15 @@ export async function createSupplierBill(
       const h = cleanHeader(input, now);
       await assertNotDuplicate(tx, input.vendorId, h.key, h.fy, null);
       const interState = input.interState ?? false;
-      const { lines, grnRows, expectations } = await resolveLines(tx, input.vendorId, input.lines, interState, null);
+      const { lines, grnRows, sesRows, expectations } = await resolveLines(tx, input.vendorId, input.lines, interState, null);
       const id = newId();
       const billNo = await nextEpisodeNo(tx, "supplier_bill", istDay(now));
       const totals = totalsOf(lines, h.roundOffPaise);
       await tx.insert(supplierBills).values({
         id, billNo, vendorId: input.vendorId, vendorBillNo: h.vendorBillNo, vendorBillKey: h.key, billDate: h.billDate, fy: h.fy,
-        purchaseOrderId: poOf(grnRows), status: "draft", interState, ...totals, expectedTotalPaise: expectedTotalOf(expectations),
+        purchaseOrderId: poOf(grnRows, sesRows), status: "draft", interState, ...totals, expectedTotalPaise: expectedTotalOf(expectations, lines),
         msme: isMsme(vendor), termsDays: vendor.paymentTermsDays, note: cleanText(input.note, "the note"),
+        ...(cleanIrn(input.irn) === null ? {} : { irn: cleanIrn(input.irn) }),
         createdBy: actor.id, updatedBy: actor.id, createdAt: now, updatedAt: now,
       });
       await insertLines(tx, id, lines);
@@ -530,6 +750,7 @@ export async function createSupplierBill(
         payload: {
           billId: id, billNo, vendorId: input.vendorId, vendorBillNo: h.vendorBillNo, totalPaise: totals.totalPaise,
           grnIds: grnRows.map((g) => g.id), lines: lines.length, source: opts.source ?? "manual",
+          ...(sesRows.length === 0 ? {} : { sesIds: [...new Set(sesRows.map((r) => r.sesId))] }),
         },
       }));
       return id;
@@ -544,8 +765,9 @@ export async function createSupplierBill(
 /** Header and, when given, the whole set of lines. A matched or held bill edited goes back to draft. */
 /** A stored line read back as the input that wrote it (an edit or a match re-resolves it), discount included. */
 const storedInput = (l: typeof supplierBillLines.$inferSelect): BillLineInput => ({
-  grnId: l.grnId, itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
+  ...(l.grnId !== null ? { grnId: l.grnId } : { sesId: l.sesId ?? "" }), itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
   ...(l.listRatePaise === null ? {} : { listRatePaise: l.listRatePaise, ...(l.discountBps !== 0 ? { discountBps: l.discountBps } : { discountPaise: l.discountPaise }) }),
+  ...(l.gstCredit === null ? {} : { gstCredit: l.gstCredit as BillGstCredit }), ...(l.reverseCharge === null ? {} : { reverseCharge: l.reverseCharge }),
 });
 
 export async function updateSupplierBill(
@@ -565,14 +787,15 @@ export async function updateSupplierBill(
       const beforeLines = await tx.select().from(supplierBillLines).where(eq(supplierBillLines.billId, billId));
       const inputLines: BillLineInput[] = patch.lines ?? beforeLines
         .map((l) => storedInput(l));
-      const { lines, grnRows, expectations } = await resolveLines(tx, b.vendorId, inputLines, interState, billId);
+      const { lines, grnRows, sesRows, expectations } = await resolveLines(tx, b.vendorId, inputLines, interState, billId);
       await tx.delete(supplierBillLines).where(eq(supplierBillLines.billId, billId));
       await insertLines(tx, billId, lines);
       const totals = totalsOf(lines, h.roundOffPaise);
       const [after] = await tx.update(supplierBills).set({
         vendorBillNo: h.vendorBillNo, vendorBillKey: h.key, billDate: h.billDate, fy: h.fy, interState, ...totals,
-        purchaseOrderId: poOf(grnRows), expectedTotalPaise: expectedTotalOf(expectations), status: "draft", heldReason: null, matchedAt: null,
+        purchaseOrderId: poOf(grnRows, sesRows), expectedTotalPaise: expectedTotalOf(expectations, lines), status: "draft", heldReason: null, matchedAt: null,
         ...(patch.note !== undefined ? { note: cleanText(patch.note, "the note") } : {}),
+        ...(patch.irn !== undefined ? { irn: cleanIrn(patch.irn) } : {}),
         updatedBy: actor.id, updatedAt: now,
       }).where(eq(supplierBills.id, billId)).returning();
       await appendEvent(tx, supplierBillUpdated.make({
@@ -601,10 +824,10 @@ export async function matchSupplierBill(db: Db, actor: Actor, billId: string, no
     const { lines, expectations } = await resolveLines(tx, b.vendorId, current.map((l) => storedInput(l)), b.interState, billId);
     await tx.delete(supplierBillLines).where(eq(supplierBillLines.billId, billId));
     await insertLines(tx, billId, lines);
-    const expectedTotalPaise = expectedTotalOf(expectations);
+    const expectedTotalPaise = expectedTotalOf(expectations, lines);
     const out = lines.filter((l) => lineMismatches(l).out);
-    const billed = new Set(lines.map((l) => `${l.grnId}|${l.itemId}`));
-    const unbilled = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(`${e.grnId}|${e.itemId}`));
+    const billed = new Set(lines.map((l) => docKey(l)));
+    const unbilled = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(docKey(e)));
     const totalOk = withinMatch(b.totalPaise, expectedTotalPaise);
     const held = out.length > 0 || !totalOk || unbilled.length > 0;
     const reasons = [
@@ -621,8 +844,8 @@ export async function matchSupplierBill(db: Db, actor: Actor, billId: string, no
       payload: {
         ...header(after!), expectedTotalPaise, outcome: held ? "held_for_match" : "matched",
         mismatches: [
-          ...out.map((l) => ({ itemId: l.itemId, grnId: l.grnId, reasons: l.mismatch })),
-          ...unbilled.map((e) => ({ itemId: e.itemId, grnId: e.grnId, reasons: ["not_billed"] })),
+          ...out.map((l) => ({ itemId: l.itemId, grnId: l.grnId, ...(l.sesId === null ? {} : { sesId: l.sesId }), reasons: l.mismatch })),
+          ...unbilled.map((e) => ({ itemId: e.itemId, grnId: e.grnId, ...(e.sesId === undefined ? {} : { sesId: e.sesId }), reasons: ["not_billed"] })),
         ],
       },
     }));
@@ -630,30 +853,57 @@ export async function matchSupplierBill(db: Db, actor: Actor, billId: string, no
   return (await readSupplierBill(db, billId))!;
 }
 
-/** The earliest posting day (IST) of the bill's GRNs — the MSME Act's day of acceptance. */
+/**
+ * The earliest posting day (IST) of the bill's GRNs — the MSME Act's day of acceptance. STORES S6a (#1116): a service
+ * line's day is its sheet's (the period's last day, or the start of a "term started" sheet).
+ */
 async function acceptanceDayOf(tx: Tx, billId: string): Promise<string> {
   const rows = await tx.select({ postedAt: grns.postedAt }).from(grns)
     .innerJoin(supplierBillLines, eq(supplierBillLines.grnId, grns.id))
     .where(eq(supplierBillLines.billId, billId));
-  const days = rows.map((r) => (r.postedAt === null ? null : istDay(r.postedAt))).filter((d): d is string => d !== null).sort();
+  const sesIds = (await tx.select({ sesId: supplierBillLines.sesId }).from(supplierBillLines)
+    .where(and(eq(supplierBillLines.billId, billId), isNotNull(supplierBillLines.sesId)))).map((r) => r.sesId!);
+  const sesDays = sesIds.length === 0 ? [] : (await requireSesSource().lines(tx, sesIds, { lock: false })).map((r) => r.acceptanceDay);
+  const days = [...rows.map((r) => (r.postedAt === null ? null : istDay(r.postedAt))).filter((d): d is string => d !== null), ...sesDays].sort();
   if (days[0] === undefined) throw new MaterialsError("bill_invalid", "the bill names no posted GRN");
   return days[0];
 }
 
 async function book(tx: Tx, actor: Actor, b: BillRow, now: Date, difference: { reason: string } | null): Promise<void> {
   const [vendor] = await tx.select().from(vendors).where(eq(vendors.id, b.vendorId));
-  const msme = isMsme(vendor!);
-  const acceptanceDate = await acceptanceDayOf(tx, b.id);
-  const dueDate = dueDateFor({ msme, termsDays: vendor!.paymentTermsDays, billDate: b.billDate, acceptanceDate });
+  const delivered = await acceptanceDayOf(tx, b.id);
+  // STORES S6b (#1116, decision 6): the Act's clock when the owner has switched it on; else today's rule, unchanged.
+  const ruled = taxHooks === null ? null
+    : await taxHooks.dueDate(tx, { billId: b.id, vendorId: b.vendorId, billDate: b.billDate, acceptanceDate: delivered, termsDays: vendor!.paymentTermsDays });
+  const msme = ruled?.msme ?? isMsme(vendor!);
+  const acceptanceDate = ruled?.acceptanceDate ?? delivered;
+  const dueDate = ruled?.dueDate ?? dueDateFor({ msme, termsDays: vendor!.paymentTermsDays, billDate: b.billDate, acceptanceDate });
+  // STORES S6b (#1116, decisions 4–5): the marks Stores fills and the TDS deducted from a signed table. A deduction is a
+  // settlement: it is counted in `paid_paise`, so the payable (and every run and payment) is the total less TDS.
+  const tax = taxHooks === null ? null : await taxHooks.onBooking(tx, actor, b.id, now);
+  if (tax !== null) {
+    for (const l of tax.lines) {
+      await tx.update(supplierBillLines).set({
+        ...(l.gstCredit === undefined ? {} : { gstCredit: l.gstCredit }), tdsPaise: l.tdsPaise, tdsNature: l.tdsNature, tdsRef: l.tdsRef,
+      }).where(and(eq(supplierBillLines.id, l.lineId), eq(supplierBillLines.billId, b.id)));
+    }
+  }
+  const tdsPaise = tax?.tdsPaise ?? null;
   await tx.update(supplierBills).set({
     status: "accepted", acceptedBy: actor.id, acceptedAt: now, acceptanceDate, dueDate, msme, termsDays: vendor!.paymentTermsDays,
     ...(difference === null ? {} : { differenceAcceptedBy: actor.id, differenceReason: difference.reason }),
+    ...(tdsPaise === null ? {} : { tdsPaise, paidPaise: b.paidPaise + tdsPaise }),
     updatedBy: actor.id, updatedAt: now,
   }).where(eq(supplierBills.id, b.id));
   await appendEvent(tx, supplierBillAccepted.make({
     occurredAt: now, actor, correlationId: b.id,
-    payload: { ...header(b), dueDate, msme, differenceReason: difference?.reason ?? null, differencePaise: b.totalPaise - b.expectedTotalPaise },
+    payload: {
+      ...header(b), dueDate, msme, differenceReason: difference?.reason ?? null, differencePaise: b.totalPaise - b.expectedTotalPaise,
+      ...(tdsPaise === null ? {} : { tdsPaise }),
+    },
   }));
+  // STORES S6a (#1116, decision 7): the hold rules, in the booking's own transaction.
+  if (holdHooks !== null) await holdHooks.onBooked(tx, actor, b.id, now);
 }
 
 /** Matched → accepted: now a payable, due by `dueDateFor`. */
@@ -784,8 +1034,9 @@ export type UnbilledGrn = { grnId: string; grnNo: string; vendorId: string; vend
  */
 export async function unbilledGrns(db: Db, actor: Actor, limit = 200): Promise<UnbilledGrn[]> {
   await requirePayablesReader(db, actor);
+  // STORES S6a (#1116): a service line has a null GRN; `not in` over a set holding a null matches nothing, so it is left out.
   const billed = db.select({ grnId: supplierBillLines.grnId }).from(supplierBillLines)
-    .innerJoin(supplierBills, eq(supplierBills.id, supplierBillLines.billId)).where(ne(supplierBills.status, "cancelled"));
+    .innerJoin(supplierBills, eq(supplierBills.id, supplierBillLines.billId)).where(and(ne(supplierBills.status, "cancelled"), isNotNull(supplierBillLines.grnId)));
   const rows = await db.select({ g: grns, vendorName: sql<string>`coalesce(${vendors.tradeName}, ${vendors.legalName})`, poNo: purchaseOrders.poNo })
     .from(grns).innerJoin(vendors, eq(vendors.id, grns.vendorId))
     .leftJoin(purchaseOrders, eq(purchaseOrders.id, grns.purchaseOrderId))
@@ -825,14 +1076,19 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
     .leftJoin(purchaseOrders, eq(purchaseOrders.id, supplierBills.purchaseOrderId))
     .where(eq(supplierBills.id, billId));
   if (row === undefined) return undefined;
+  // STORES S6a (#1116): a service line names no GRN (left join; its SES number from the Stores reader), after the GRN lines.
   const lines = await db.select({ l: supplierBillLines, code: items.code, name: items.name, grnNo: grns.grnNo }).from(supplierBillLines)
-    .innerJoin(items, eq(items.id, supplierBillLines.itemId)).innerJoin(grns, eq(grns.id, supplierBillLines.grnId))
-    .where(eq(supplierBillLines.billId, billId)).orderBy(asc(grns.grnNo), asc(items.name));
-  const grnIds = [...new Set(lines.map((l) => l.l.grnId))];
+    .innerJoin(items, eq(items.id, supplierBillLines.itemId)).leftJoin(grns, eq(grns.id, supplierBillLines.grnId))
+    .where(eq(supplierBillLines.billId, billId)).orderBy(asc(grns.grnNo), asc(supplierBillLines.sesId), asc(items.name));
+  const grnIds = [...new Set(lines.map((l) => l.l.grnId).filter((g): g is string => g !== null))];
   const grnRows = grnIds.length === 0 ? [] : await db.select().from(grns).where(inArray(grns.id, grnIds));
   const expectations = await expectationsOf(db, grnRows);
-  const billed = new Set(lines.map((l) => `${l.l.grnId}|${l.l.itemId}`));
-  const missing = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(`${e.grnId}|${e.itemId}`));
+  const sesIds = [...new Set(lines.map((l) => l.l.sesId).filter((x): x is string => x !== null))];
+  const sesRows = sesIds.length === 0 ? [] : await requireSesSource().lines(db, sesIds, { lock: false });
+  for (const [k, e] of sesExpectations(sesRows)) expectations.set(k, e);
+  const sesNo = new Map(sesRows.map((r) => [r.sesId, r.sesNo] as const));
+  const billed = new Set(lines.map((l) => docKey(l.l)));
+  const missing = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(docKey(e)));
   const missingItems = missing.length === 0 ? [] : await db.select().from(items).where(inArray(items.id, missing.map((m) => m.itemId)));
   const payments = await db.select({ p: supplierPayments, runNo: supplierPaymentRuns.runNo, paid: supplierPaymentRunLines.payPaise, credit: supplierPaymentRunLines.creditPaise })
     .from(supplierPaymentRunLines)
@@ -843,22 +1099,25 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
   return {
     ...summaryOf(row.b, row.vendor), note: row.b.note, poNo: row.poNo, cancelReason: row.b.cancelReason,
     differenceAcceptedBy: row.b.differenceAcceptedBy, names,
+    ...(row.b.irn === null ? {} : { irn: row.b.irn }), ...(row.b.tdsPaise === null ? {} : { tdsPaise: row.b.tdsPaise }),
     lines: lines.map(({ l, code, name, grnNo }) => {
       const m = lineMismatches(l);
       return {
-        id: l.id, grnId: l.grnId, grnNo, itemId: l.itemId, itemCode: code, itemName: name, uom: l.uom, multiplier: l.multiplier,
+        id: l.id, grnId: l.grnId, grnNo: grnNo ?? "", ...(l.sesId === null ? {} : { sesId: l.sesId, sesNo: sesNo.get(l.sesId) ?? "" }), itemId: l.itemId, itemCode: code, itemName: name, uom: l.uom, multiplier: l.multiplier,
         qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, taxablePaise: l.taxablePaise, gstRateBps: l.gstRateBps, cgstPaise: l.cgstPaise,
         listRatePaise: l.listRatePaise, discountBps: l.discountBps, discountPaise: l.discountPaise,
         sgstPaise: l.sgstPaise, igstPaise: l.igstPaise, totalPaise: l.taxablePaise + l.cgstPaise + l.sgstPaise + l.igstPaise,
         expectedBase: l.expectedBase, expectedPacks: l.expectedBase / l.multiplier, expectedRatePaise: l.expectedRatePaise,
         expectedTaxablePaise: l.expectedTaxablePaise, expectedGstRateBps: l.expectedGstRateBps,
         differencePaise: l.taxablePaise - l.expectedTaxablePaise, mismatch: m.reasons, out: m.out,
+        ...(l.gstCredit === null ? {} : { gstCredit: l.gstCredit as BillGstCredit }), ...(l.reverseCharge === null ? {} : { reverseCharge: l.reverseCharge }),
+        ...(l.tdsPaise === null ? {} : { tdsPaise: l.tdsPaise }), ...(l.tdsNature === null ? {} : { tdsNature: l.tdsNature }),
       };
     }),
     unbilled: missing.map((e) => {
       const it = missingItems.find((i) => i.id === e.itemId);
       return {
-        grnId: e.grnId, grnNo: e.grnNo, itemId: e.itemId, itemCode: it?.code ?? "", itemName: it?.name ?? "",
+        grnId: e.grnId, grnNo: e.grnNo, ...(e.sesId === undefined ? {} : { sesId: e.sesId }), itemId: e.itemId, itemCode: it?.code ?? "", itemName: it?.name ?? "",
         expectedBase: e.acceptedBase, expectedTaxablePaise: valueAt(e.acceptedBase, e.rate),
       };
     }),
@@ -1053,7 +1312,8 @@ export async function payables(db: Db, actor: Actor, now: Date = new Date(), fil
 }
 
 export type LedgerEntry = {
-  date: string; kind: "bill" | "payment" | "debit_note" | "credit_note"; voucherNo: string; reference: string;
+  /** STORES S6b (#1116): `tds` = the TDS deducted from a bill at booking (a debit: it is owed to the tax, not the vendor). */
+  date: string; kind: "bill" | "payment" | "debit_note" | "credit_note" | "tds"; voucherNo: string; reference: string;
   /** What we owe the vendor goes up (a bill) … */
   creditPaise: number;
   /** … or down (a payment, or the vendor's accepted credit note). */
@@ -1075,7 +1335,7 @@ export type SupplierLedger = {
   creditedPaise: number;
 };
 
-const LEDGER_KIND_ORDER: Record<LedgerEntry["kind"], number> = { bill: 0, debit_note: 1, credit_note: 2, payment: 3 };
+const LEDGER_KIND_ORDER: Record<LedgerEntry["kind"], number> = { bill: 0, tds: 1, debit_note: 2, credit_note: 3, payment: 4 };
 
 /**
  * One vendor's account, oldest first: each accepted bill on its bill date (credit), each payment on
@@ -1102,6 +1362,7 @@ export async function supplierLedger(db: Db, actor: Actor, vendorId: string, ran
     .where(and(eq(supplierCreditNotes.vendorId, vendorId), eq(supplierCreditNotes.status, "accepted"), ...(to === null ? [] : [lte(supplierCreditNotes.creditNoteDate, to)])));
   const all: Omit<LedgerEntry, "balancePaise">[] = [
     ...bills.map((b) => ({ date: b.billDate, kind: "bill" as const, voucherNo: b.billNo, reference: b.vendorBillNo, creditPaise: b.totalPaise, debitPaise: 0, memoPaise: 0, id: b.id })),
+    ...bills.filter((b) => (b.tdsPaise ?? 0) > 0).map((b) => ({ date: b.billDate, kind: "tds" as const, voucherNo: b.billNo, reference: `TDS ${b.vendorBillNo}`, creditPaise: 0, debitPaise: b.tdsPaise!, memoPaise: 0, id: `${b.id}:tds` })),
     ...pays.map((p) => ({ date: p.paidOn, kind: "payment" as const, voucherNo: p.paymentNo, reference: `${p.mode.toUpperCase()}${p.reference === null ? "" : ` ${p.reference}`}`, creditPaise: 0, debitPaise: p.amountPaise, memoPaise: 0, id: p.id })),
     ...debitNotes.map((r) => ({ date: r.debitNoteDate!, kind: "debit_note" as const, voucherNo: r.debitNoteNo!, reference: r.returnNo, creditPaise: 0, debitPaise: 0, memoPaise: r.totalPaise, id: r.id })),
     ...credits.map(({ c, debitNoteNo }) => ({

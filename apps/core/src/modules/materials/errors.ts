@@ -251,6 +251,15 @@ export type MaterialsErrorCode =
   | "cash_limit_exceeded"
   /** A bank mode without its reference (UTR, cheque number). */
   | "payment_reference_required"
+  // ── STORES S6a (#1116) — service bills, payment holds, the reference's shape and reuse ──
+  /** A service entry sheet is already on another live bill. */
+  | "ses_already_billed"
+  /** A bill on the run has an open payment hold (decision 7): released first, or left off the run. */
+  | "line_on_hold"
+  /** The reference is not the mode's shape: NEFT 16 letters and digits, RTGS 22, UPI 12 digits. */
+  | "reference_shape"
+  /** The same reference is already on an earlier payment of that mode. */
+  | "utr_reused"
   // ── PHARMACY PARITY P4 — returns to the supplier, credit notes, write-offs, recalls ──
   /** No such return to a supplier. */
   | "unknown_supplier_return"

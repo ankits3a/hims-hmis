@@ -4,6 +4,8 @@ import {
   STORES_BUDGET_MANAGE, STORES_BUYING_MANAGE, STORES_GRN_QC, STORES_INDENTS_APPROVE, STORES_MASTERS, STORES_PURCHASE_REQUEST, holds,
 } from "./access";
 import { departmentBudget } from "./budgets";
+import { monthLastDay } from "./spend";
+import { gstNotCreditedBetween } from "./tax-on-bill";
 import { liveDelegatedDepartments } from "./delegations";
 import { StoresError } from "./errors";
 import { listShelves } from "./shelves";
@@ -76,5 +78,9 @@ export async function budgetsForMonth(db: Db, actor: Actor, month: string): Prom
   const ids = [...new Set(shelfDepts)];
   const depts = ids.length === 0 ? [] : await db.select({ id: orgDepartments.id, code: orgDepartments.code, name: orgDepartments.name }).from(orgDepartments)
     .where(inArray(orgDepartments.id, ids)).orderBy(asc(orgDepartments.name));
-  return Promise.all(depts.map(async (d) => ({ ...(await departmentBudget(db, d.id, month)), code: d.code, name: d.name })));
+  // S6c (#1116, decision 4): beside the spend, the derived "GST not credited" (never part of `spentPaise`).
+  return Promise.all(depts.map(async (d) => ({
+    ...(await departmentBudget(db, d.id, month)), code: d.code, name: d.name,
+    gstNotCreditedPaise: (await gstNotCreditedBetween(db, d.code, `${month}-01`, monthLastDay(month))).paise,
+  })));
 }

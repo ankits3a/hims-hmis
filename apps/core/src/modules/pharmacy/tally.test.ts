@@ -131,7 +131,7 @@ describe("the Tally export (parity P5)", () => {
     const run = await createPaymentRun(db, head.actor, { lines: [{ billId: bill.id, payPaise: 23_000, creditPaise: 5_000 }] }, { now: MON3 });
     await submitPaymentRun(db, head.actor, run.id, MON3);
     await decidePaymentRun(db, owner.actor, run.id, "approve", "pay", MON3);
-    await recordVendorPayment(db, head.actor, run.id, vendorId, { mode: "neft", reference: "UTR-99", paidOn: DAY }, MON3);
+    await recordVendorPayment(db, head.actor, run.id, vendorId, { mode: "neft", reference: "UTR9900000000099", paidOn: DAY }, MON3);
     return { billNo: bill.billNo, vendorName: "ACME Pharma Pvt Ltd" };
   }
 

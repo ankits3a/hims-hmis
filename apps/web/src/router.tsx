@@ -76,6 +76,10 @@ import { StoresTower } from "./screens/stores-tower";
 import { StoresAssetPassport, StoresAssets, StoresCondemnSign, StoresTagUnits, StoresVerificationRound } from "./screens/stores-assets";
 import { StoresBuy } from "./screens/stores-buy";
 import { StoresBuying } from "./screens/stores-buying";
+import { StoresPaying } from "./screens/stores-paying";
+import { StoresServices } from "./screens/stores-services";
+import { StoresTopUp } from "./screens/stores-topup";
+import { StoresParSuggestions } from "./screens/stores-par";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -305,6 +309,10 @@ const NAV: readonly NavEntry[] = [
   },
   // STORES S5b (#1115) — the buying desk by hand, `storesManifest.menu`'s row.
   { to: "/stores/buying", label: "nav.storesBuying", permission: "stores.buying.manage", group: "admin" },
+  // STORES S6a (#1116) — the paying desk, `storesManifest.menu`'s row; the releaser and the owner reach it too.
+  { to: "/stores/pay", label: "nav.storesPaying", permission: "materials.bills.manage", group: "admin", anyScope: ["stores.holds.release", "materials.payments.prepare", "materials.payments.record"] },
+  // STORES S6a (#1116) — "Service to confirm", the department's phone (a grant AT the department shows the row).
+  { to: "/stores/services", label: "nav.storesServices", permission: "stores.ses.confirm", group: "desk", anyScope: ["stores.ses.confirm"] },
   { to: "/stores/gate", label: "nav.storesGate", permission: "stores.gatepass.scan", group: "desk" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
@@ -1973,6 +1981,20 @@ const storesBuyingRoute = createRoute({
   validateSearch: (s: Record<string, unknown>): { award?: string; po?: string; tab?: string } => ({ award: str(s.award), po: str(s.po), tab: str(s.tab) }),
   component: StoresBuying,
 });
+// STORES S6a (#1116) — the paying desk (16:9: To book, Holds, Due, Runs, Payments, Exports) and, from a notice, the owner's
+// phone sheet for one run (`?run=`) or one bill's hold cards (`?bill=`).
+const storesPayRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/stores/pay",
+  // S6c (#1116): `?flags=1`, the auditor's flags.
+  validateSearch: (s: Record<string, unknown>): { run?: string; bill?: string; tab?: string; flags?: string } => ({ run: str(s.run), bill: str(s.bill), tab: str(s.tab), flags: s.flags === undefined || s.flags === "" ? undefined : String(s.flags) }),
+  component: StoresPaying,
+});
+// STORES S6a (#1116) — "Service to confirm": the department confirms a service month (or a term started) on the phone.
+const storesServicesRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/services", component: StoresServices });
+// STORES S7 (#1117) — the planner's top-up (the in-charge's phone, opened by the "Running out" Now card / waiting line) and the
+// materials head's par suggestions (16:9, opened from `/stores`). No menu rows: each is reached from its card or the desk.
+const storesTopUpRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/topup", component: StoresTopUp });
+const storesParRoute = createRoute({ getParentRoute: () => authedRoute, path: "/stores/par", component: StoresParSuggestions });
 // STORES S4b (#1114) — the committee's phone: the condemnations this person may sign (`?c=` puts one first).
 const storesCondemnRoute = createRoute({
   getParentRoute: () => authedRoute, path: "/stores/condemn",
@@ -2092,7 +2114,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesAssetsRoute, storesAssetRoute, storesTagUnitsRoute, storesRoundRoute, storesCondemnRoute, storesBuyRoute, storesBuyingRoute, storesTicketRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute, storesDeskRoute, storesShelfRoute, storesApproveRoute, storesPickRoute, storesReceiveRoute, storesPorterRoute, storesGateRoute, storesPassesRoute, storesTowerRoute, storesAssetsRoute, storesAssetRoute, storesTagUnitsRoute, storesRoundRoute, storesCondemnRoute, storesBuyRoute, storesBuyingRoute, storesPayRoute, storesServicesRoute, storesTopUpRoute, storesParRoute, storesTicketRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

@@ -17,7 +17,8 @@ Owner rulings: `docs/decisions/` 0099 (Stores & Procurement), 0027 (materials co
 Specs: `docs/specs/stores-programme.md`, `docs/specs/1111-stores-masters-shelves.md` (S1, built),
 `docs/specs/1112-stores-tickets-custody.md` (S2, built: S2a and S2b), `docs/specs/1119-stores-gate-passes.md` (S2c, built),
 `docs/specs/1113-stores-control-tower.md` (S3, built), `docs/specs/1114-stores-asset-passport.md` (S4, built: S4a and S4b),
-`docs/specs/1115-stores-buying-desk.md` (S5, built: S5a, S5b, S5c).
+`docs/specs/1115-stores-buying-desk.md` (S5, built: S5a, S5b, S5c),
+`docs/specs/1116-stores-paying-desk.md` (S6, built: S6a, S6b, S6c), `docs/specs/1117-stores-stock-planner.md` (S7, built).
 
 ## 1. Purpose
 One master register for every non-drug item the hospital keeps ("even a dustbin"), the central store, and the
@@ -442,8 +443,149 @@ department shelves every department (housekeeping included) receives from. Pharm
   Confirm line), "Draft by agent" on RFQ/PO, One supplier, Advance; sheets `?exception=`, `?po=` (advance). `/stores/buy`
   Budgets: On order, the over-budget list (`?tab=budgets&month=` from the owner's notice).
 
+## 10g. The paying desk (S6a #1116; decision 0099 Q4, ruling 0101 Q6, Q7)
+- One book: Stores bills ARE materials `supplier_bills`; every pharmacy number stays as before with the switches off
+  (`materials/stores-s6a-no-change.test.ts` + its golden JSON, captured on the lane below — rerun it after any change to
+  `materials/supplier-bills.ts` or `materials/payments.ts`).
+- Service entry sheets (`service-entries.ts`, migration 0247): `stores_service_entries` + `_lines`, append-only. One per PO
+  and period (`ses_exists`, advisory lock; a reversal names the first: `reverses_id`, the reversing act is NOT built).
+  Confirmer: `stores.ses.confirm` AT the department. Lines carry the PO line's rate, multiplier and GST (what the bill is
+  matched against). "Term started" (`period_kind = term_start`) is a prepaid contract's acceptance on its start day.
+- Bill lines from an SES: `supplier_bill_lines.ses_id` (plain text; `grn_id` nullable; CHECK exactly one). Materials reads
+  the sheet through `registerServiceEntrySource` (registered at import of `service-entries.ts`; a line naming an SES with
+  no reader is refused, fail closed). TRAP: `grn_id` can now be null — any `not in (select grn_id …)` needs
+  `grn_id is not null` (`unbilledGrns` does). A bill view's SES line has `grnId: null`, `grnNo: ""`, and `sesId`/`sesNo`
+  keys only when set (a GRN line's view is byte-identical).
+- Holds (`holds.ts`): rules, never the agent; placed on booking (materials `book()` → `registerBillHoldHooks.onBooked`, same
+  tx) and re-checked before a run is drafted or submitted (own tx, so a hold found at submit survives the refusal). Scope:
+  a bill with a Stores item line or a service line; pharmacy-only only when `holds_cover_pharmacy` is on. A kind open on
+  the bill is not placed again; a kind a person RELEASED is never placed again (else every re-check re-holds it); a
+  cooling-off hold returns only for a new `ends_at`. Open holds keep a bill out of `planPaymentRun`, refuse
+  create/update/submit (`line_on_hold`) and the payment. Release: a reason; ≤ ₹50,000 the materials head, above only
+  the owner (role); never the booker (`created_by`), the PO's `approved_by`, or the authoriser of a run carrying the bill;
+  `bank_cooling_off` never (`ends_by_itself`). Keep: reason + review ≤ 30 days; stays open.
+- `pay_after_grn` (DECIDED reading): a line billed `not_received`/`qty_over` on a PO whose `payTermsOf` is after_grn (or
+  no PO). `above_po`: all live bills on the PO above its total + the match tolerance. `out_of_pattern`: > 2 × p90 (nearest
+  rank) of the supplier's accepted bills in the 12 months before the bill date, or a first bill > ₹1,00,000.
+- UTR (materials `recordVendorPayment`, decision 9): NEFT 16 / RTGS 22 letters-digits, UPI 12 digits, upper-cased without
+  spaces, checked AFTER the earlier refusals (so their order is unchanged); reuse per mode over all rows
+  (`utr_reused`), backed by a partial unique index over `reference_checked` rows only (old rows stay false).
+- Switches (`paying-settings.ts`): versioned, owner's role; switching ON needs a dry run ≤ 1 day old (`holdsDryRun`, writes
+  nothing). `msme_rule` is stored but only S6b wires it.
+- Reads (`paying-reads.ts`): `payablesByGroup` apportions each bill's outstanding over its lines by value (item group = top
+  category, drugs one group; cost centre = SES department, else the receiving shelf's department, else the store code).
+  The owner's phone line (`runToAuthorise`); `submitRunFromDesk` raises "Run to authorise" (`stores_pay_run`).
+- Audit pack `{ billId }`: PO, GRN/SES, `supplier_bill.*`, holds and their steps, `payment_run.*`, `supplier_payment.*`
+  (the payment row's `after` carries mode and reference). TRAP: `grn.received` is dated by the wall clock.
+- Web: `/stores/pay` (`apps/web/src/screens/stores-paying.tsx`; `?run=` the owner's sheet, `?bill=` a bill's hold cards), `/stores/services`.
+
+## 10h. Tax on the bill, the MSME clock, the Tally split (S6b #1116; ruling 0101 Q1, Q2)
+- Rules a CA signs, not advice. Pharmacy safety: `pharmacy/stores-s6b-no-change.test.ts` + `pharmacy/__golden__/stores-s6b-no-change.json`
+  (bills from plain/micro/medium/no-terms suppliers, payables, plan, run, NEFT, ledger, AND the drug-only Tally files byte for
+  byte), captured on S6a. Rerun it after any change to `materials/supplier-bills.ts` or `pharmacy/tally.ts`.
+- Hooks Stores registers with materials at import (`registerBillTaxHooks` in `tax-on-bill.ts`, `registerPurchaseSplitSource`
+  in `tally-split.ts`); each returns null / leaves a bill out when its switch is off or no table is signed.
+- Marks (migration 0248, all nullable on `supplier_bill_lines`): `gst_credit`, `reverse_charge` ride `BillLineInput` and are
+  refused on a pharmacy line (`bill_invalid`). Reverse charge = the line's GST columns 0 and the expected total leaves that
+  line's GST out (so the match holds). A Stores line booked unmarked takes the proposal (signed `gst_credit` table: own
+  category before top, named supplier type before `any`; else `not_available`).
+- TDS: tables `stores_tax_tables` (+ `_signs`, one per version; newest SIGNED wins), shipped EMPTY. Nature = the row whose
+  `categoryCodes` hold the line's category (own or top), else `goods`. The goods row needs the owner's `tds_goods` too.
+  DECIDED: the threshold compares the supplier's booked value of that nature (bill / calendar month / FY) PLUS this bill;
+  when crossed the whole bill's base is taxed. Payee = PAN's 4th letter (P/H individual). Certificate (`stores_tds_certificates`,
+  a Stores table — `vendor_documents` has no rate column) valid on the bill date wins, then PAN missing. A pharmacy-only bill
+  no switched-on row reaches stays `tds_paise` null (as before). Booking writes the lines' TDS and `supplier_bills.tds_paise`
+  and ADDS it to `paid_paise` (a deduction is a settlement), so payables, runs and payments (`materials/payments.ts` untouched) see total −
+  TDS; the supplier ledger shows a `tds` debit. `setBillTds` (reason) writes `tds_reason`; booking keeps it; an edit or
+  re-match drops it (lines are re-inserted).
+- IRN: `supplier_bills.irn`; hold `irn_missing` when the supplier's `einvoice_applicable` and a line is eligible OR shared
+  (DECIDED: shared claims credit too) and no IRN.
+- MSME (`msme.ts`): `msme_rule = act` → micro/small only (trader per `msme_traders_on_clock`, default on); start = delivery
+  (materials' `acceptanceDayOf`) or the latest close of an objection raised within 15 days (`stores_msme_objections` + `_closes`;
+  an open objection moves nothing); 15 days, or the vendor's terms (≤ 45) when a `payment_terms_agreement` document is valid
+  on the start day (DECIDED: the agreed days are the terms on file). Medium = bill date + terms. Written once at booking.
+- Switches (`paying-settings.ts`): every field optional; turning ON (holds, act, tds_goods, traders off) needs a dry run ≤ 1 day.
+- Tally (`tally-split.ts`): ledger keys `purchase:<TOP>`, `asset:<TOP>` (a GRN line whose batch has a tagged unit),
+  `tds:<nature>`, `rcm_liability`; names in `stores_tally_ledgers` (newest per key; `pharmacy.tally.export` holders). Missing
+  names → `invalid_tally_ledgers` with `detail.missing`, before writing. Cost centre = the `payablesByGroup` rule (SES dept,
+  shelf dept, else store code); the masters file adds the ledgers and COSTCENTRE masters only when used.
+- "GST not credited" (`gstNotCreditedOn`): derived on read from shelf receipts × the billed line's GST rate where the mark is
+  `not_available` (unbilled: the category default). Not yet on the spend/budget screens.
+
+## 10i. The auditor agent, the notices, the desk's tax screens (S6c #1116; decision 11)
+- Flags (`auditor-agent.ts`, migration 0249): `stores_audit_flags` (kind, `key` unique = kind + cited rows, `department_ids`,
+  text, cites, night) + `stores_audit_flag_reviews` (one per flag), both append-only. T1 only: rules over rows, no model, never
+  a hold/release/payment/supplier message. Rules: split POs (vendor + TOP category, Stores lines, each < `PO_HEAD_APPROVAL_LIMIT_PAISE`,
+  ≥ 2 within 7 days, sum above); both ends (bill created/accepted by the payment's recorder; PO `approved_by` = bill booker; PR
+  `raised_by` = GRN `qc_by` via award → group → PR); price drift (GRN cost/base > live contract rate/base + 2 %); more than book
+  (≥ 3 `check` acts with `more_than_book` per shelf per calendar quarter, `quarterOf`); use out of pattern (last 7 IST days vs
+  the 12 weeks before, per OPD visit when every week has visits, else at cost; ≥ 6 weeks with use; > 1.5 × median).
+  DECIDED: per bed-day waits for IPD on production. Text names departments, documents, item and category names — never a
+  person; a supplier is not named either (a proprietor is a person).
+- Night: `runAuditorNightIfDue` on the chaser's minute after the buyer's night (marker act `auditor_night`, advisory lock, no
+  new job name); halted by the copilot `draft`/`global` halt (writes nothing); cap 50 new flags a night; one "Flags to review"
+  notice per reviewer per night (`refType stores_audit_flags`).
+- Review (`reviewFlag`): role `materials_head` or `stores_auditor` (no new permission: the role is the seat, as for release);
+  never `department_head` AT a department the flag names (`hod_reviews_own`); one per flag (`flag_reviewed`; the
+  `copilot_acts` row's `confirm_id` = `af_<flag>` is unique too). Reads (`auditFlags`, `ownerMonthlyList`) also for the owner.
+  "Unreviewed 7 days is a tower card" → DECIDED a hot Now card (`storesFlagsDesk`): S3 locks the tower's key set.
+- Notices (`paying-notices.ts`, minute sweep, source keys checked before any write): "Service to confirm" to the confirmers
+  AT the department that confirmed the PO's last sheet (DECIDED: a service PO names no department, so a first month is not
+  announced); "MSME bill due soon" (MSME, accepted, unpaid, due within 5 days) to `materials.payments.prepare` holders and
+  accounts officers, plus a kept hold's keeper and the owner (edge 11). Waiting kinds `stores.servicesToConfirm`,
+  `stores.flagsToReview` (web + mobile words); MSME due soon is a Now card only (a payment is never a waiting kind: me-waiting done-means 5).
+- Reversing SES (`reverseServiceEntry`): header-only row naming the first (`reverses_id`), reason in `note`; refused on a billed
+  sheet (`ses_already_billed`: the supplier's credit note corrects it), on a reversal (`not_reversible`), twice (`already_reversed`).
+- MSME dues report (`msmeDuesReport`, FY halves `YYYY-H1` Apr–Sep / `YYYY-H2` Oct–Mar): micro/small bills accepted > 45 days
+  before the half's end (or today), outstanding then (payments dated after it added back).
+- "GST not credited" (`gstNotCreditedBetween`) on the tower's spend tile (`spend.departments[].gstNotCreditedPaise`, optional on
+  the wire) and the budgets month / `budgetView` — never inside `chargePaise` / `spentPaise`; `departmentBudget` (the approval's
+  hot path) does not compute it.
+- Web: `/stores/pay` Tax button beside the six tabs (`apps/web/src/screens/stores-paying-tax.tsx`: tables in force/drafts, Record signature, certificates), Exports →
+  Tally ledger names, Due → objections + MSME report, `?flags=1` the flags; `/stores/services` → confirmed sheets + Reverse.
+
+## 10j. The stock planner (S7 #1117; decision 0101 Q8)
+- Files: `planner-math.ts` (pure arithmetic), `planner-core.ts` (forecast/warning/draft rows, the proposal limit, the day's
+  `recheckShelfItem`), `planner.ts` (the in-charge's top-up: read, Send, Not now, slow-stock Return; trail; settings; T3),
+  `planner-night.ts` (the 02:00 IST night), `planner-central.ts` (`planner` PRs), `par-suggestions.ts`, `planner-score.ts`
+  (`stockOutsWithoutWarning`, `plannerScore`, the monthly line). Migration 0250: five tables, all append-only (0242's trigger fn).
+- TRAP (import cycle): `use.ts` calls `planner-core.ts` `recheckShelfItem` in the SAME tx as each "Used" and each receipt
+  (decision 5). `planner-core.ts` must never import `use.ts`, `tickets.ts`, `custody.ts` or `assets.ts` (they import `use.ts`).
+- Use per day: 8 weeks net of reversals, weighted 2:1 (`weightedUsePerDay`); < 8 weeks of history (from the first ledger row
+  at the place) = "Learning, n of 8 weeks" and S1's par rule (warn at reorder only). Workload form (OPD visits) only when its
+  last-28-day error beat plain; season factor only with 365 days of history. Both stored in `inputs` with the error.
+- Warn: (on hand + on its way) ≤ 48 h of use, or ≤ reorder. On its way = open tickets (requested: approved ?? asked; issued:
+  in transit). One live warning (newest row `warn`) until RECOVERED, judged on ON HAND only (a ticket sent never ends it).
+  A use-time check writes a forecast row (copy of the stored use per day, today's stock) only when it acts.
+- Drafts: one open top-up draft per shelf (advisory lock); a warning is drafted at most once (so Not now closes the card
+  until the item recovers and is warned again). Qty = max − on hand − on way, rounded UP to the issue pack only when that
+  stays within max, else down to whole packs (DECIDED). Only `track_mode = 'shelf'` items (never expensed/durable/tagged).
+- Limit: open proposals per department = top-up (all shelves = 1) + slow-stock (1) + each quarter's open par set; a 4th is
+  refused and "Planner paused: 3 open" goes to `stores.planner.manage` holders once per blocking set (source key = hash).
+- Halts: `draft` or `global` stop drafts (warnings still run); `read` (asks, model text) does not — nothing uses a model
+  and the "why" is a template from the forecast row (D10). DECIDED reading of decision 12.
+- Send = `raiseTicket` (channel `agent`, the person as requester) + `sent` row (`data.lines` planner vs person) +
+  `copilot_acts` (`confirm_id` `sp_<draft>`) + `planner_send`. Over 100 % of budget: a `stores_over_budget_marks` row at
+  send (decision 10), never a refusal. T3 auto-send (`raisePlannerTicketInTx`, HOD still approves) only when the
+  department's switch is on; switching on needs `plannerScore` over 8 weeks to pass (≥ 4 weeks, ≥ 95 % unchanged, 0
+  stock-outs without warning) and an `owner_t3` row by the owner role. OFF by default.
+- Central: only items with 8 weeks of issues at a central store; learning ones stay with the buyer's par-rule shortfall
+  (each subtracts the other's open central/planner asks). Lead = `lead_time_days` ?? median last 3 PO→GRN ?? 7; unknown
+  VED = Essential, unknown ABC = B (DECIDED). Estimate = last paid receipt else newest batch cost. One PR per category.
+- Par: quarterly (IST calendar quarter), 90 days of use; supply interval = median days between receipt days (180-day
+  look-back), 7 with fewer than two. Only `stores.masters.manage` accepts; accept writes S1's `par` act + `planner_par_accept`.
+- Metric: `stockOutsWithoutWarning` = ledger rows taking a shelf item's running balance to 0 with no live warning ≥ 24 h
+  before. Tower red card `no_warning` (7 days); not a new tower key. TRAP: it windows the whole shelf ledger; index or
+  snapshot before shelves reach ~10⁶ rows.
+- Night: `runPlannerNightIfDue` on the chaser's minute (02:00–07:00 IST, marker act `planner_night`, advisory lock).
+- Not built: chat intents (S3 D7 locks seven); "Buy now" urgency from a store-short shelf (edge 5: the draft shows "Store is
+  short" only); per bed-day workload (IPD off production); item-substitution history transfer beyond S1 merge.
+
 ## 11. Not built here
 The end-of-shift red card (needs a shift end from attendance); an offline scan queue (native
 staff app); choosing which porter to send; purchasing (S5). S4 leaves: a regulated unit's transfer to another
 SITE (no sites yet), PDF/print of the removals export (CSV + screen only). S5 leaves: splitting one request line
-across groups; the buyer's chat intents (locked S3 D7 pin); paying an advance and "Pay after GRN" enforcement (S6).
+across groups; the buyer's chat intents (locked S3 D7 pin). S6 leaves: PAYING an equipment advance (a bill-less payable
+needs `supplier_payments.run_id` and run lines' `bill_id` nullable in materials' pharmacy-live payment run — outside S6c,
+which touches no pharmacy file); auditor chat intents (locked S3 D7 pin); a document UPLOAD for the CA's tables and
+certificates (a reference is typed; there is no document store on this path); per bed-day use (IPD not on production).

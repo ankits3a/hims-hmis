@@ -267,7 +267,8 @@ export const STORES_TOWER_CLOCKS = ["approval", "pick", "leg", "custody", "short
 export type StoresTowerClock = (typeof STORES_TOWER_CLOCKS)[number];
 /** The red-card strip's kinds (decision 4). */
 /** S4 (#1114) adds four: calibration overdue, AMC lapsed, a missing asset, units ≠ ledger. */
-export const STORES_RED_CARD_KINDS = ["stuck", "short", "out", "pass", "over_book", "calibration", "amc", "missing", "units_ledger"] as const;
+/** S7 (#1117) adds one: a shelf item that ran out with no planner warning 24 h before (`no_warning`). */
+export const STORES_RED_CARD_KINDS = ["stuck", "short", "out", "pass", "over_book", "calibration", "amc", "missing", "units_ledger", "no_warning"] as const;
 export type StoresRedCardKind = (typeof STORES_RED_CARD_KINDS)[number];
 
 /** One ticket on the board. No patient field and no money: the key set is pinned by spec #1113 D6. */
@@ -305,7 +306,11 @@ export type WireTowerNumbers = {
 export type WireTowerSpend = {
   /** The IST month, `YYYY-MM`. */
   month: string;
-  departments: { id: string; code: string; name: string; chargePaise: number; perOpdVisitPaise: number | null; perBedDayPaise: number | null }[];
+  departments: {
+    id: string; code: string; name: string; chargePaise: number; perOpdVisitPaise: number | null; perBedDayPaise: number | null;
+    /** S6c (#1116, decision 4): "GST not credited / बिना क्रेडिट GST" this month, derived; never in `chargePaise`. */
+    gstNotCreditedPaise?: number;
+  }[];
   /** S4 (#1114, decision 19): tagged units received by departments this month: "Equipment received", never in `chargePaise`. */
   equipment?: WireEquipmentReceived[];
 };
@@ -507,6 +512,8 @@ export type WireDepartmentBudget = {
   departmentId: string; month: string; budgetPaise: number | null; spentPaise: number; pct: number | null;
   /** S5c (decision 15): the part of `spentPaise` that is Stores POs ordered for the department's requests and not yet delivered. */
   committedPaise: number;
+  /** S6c (#1116, decision 4): the month's "GST not credited", a second derived figure beside the spend (not in `spentPaise`). */
+  gstNotCreditedPaise?: number;
   /** Equipment is budgeted apart (decision 15): band C equipment requests approved in the month. */
   equipment: { requests: { prId: string; prNo: string; estimatePaise: number }[] };
 };
@@ -742,3 +749,284 @@ export const storesAdvanceBody = z.object({
   guaranteeValidTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), guaranteePaise: z.number().int().min(1).max(100_000_000_000),
 });
 export const storesDecideBody = z.object({ approve: z.boolean(), reason: z.string().trim().max(300).nullish() });
+
+// ═══════════════════════════════ S6a (#1116): the paying desk ═══════════════════════════════
+
+/** Decision 2: where a service entry sheet's quantities came from. */
+export const SES_SOURCES = ["laundry_month", "amc_visit", "manpower_month", "canteen_month", "term_start"] as const;
+export type WireSesSource = (typeof SES_SOURCES)[number];
+export const SES_PERIOD_KINDS = ["month", "quarter", "visit", "term_start"] as const;
+export type WireSesPeriodKind = (typeof SES_PERIOD_KINDS)[number];
+
+export type WireServiceEntry = {
+  id: string; sesNo: string; purchaseOrderId: string; poNo: string; vendorId: string; vendorName: string;
+  department: { id: string; code: string; name: string };
+  period: { kind: WireSesPeriodKind; key: string; start: string; end: string };
+  source: WireSesSource; sourceRef: string | null;
+  /** `short` when any line was confirmed below what the contract names. */
+  status: "confirmed" | "short";
+  lines: { itemId: string; itemName: string; baseUom: string; orderedBase: number; qtyBase: number; shortBase: number; shortReason: string | null; ratePaise: number; multiplier: number }[];
+  confirmedBy: { id: string; name: string }; confirmedAt: string; billNo: string | null;
+};
+
+/** A service PO whose period is due and not yet confirmed, with the quantities prefilled. */
+export type WireServiceToConfirm = {
+  purchaseOrderId: string; poNo: string; vendorName: string; department: { id: string; code: string; name: string };
+  period: { kind: WireSesPeriodKind; key: string; start: string; end: string }; source: WireSesSource;
+  lines: { itemId: string; itemName: string; baseUom: string; qtyBase: number }[];
+};
+
+export const PAY_HOLD_KINDS = ["duplicate_like", "out_of_pattern", "bank_cooling_off", "kyc_incomplete", "above_po", "pay_after_grn", "irn_missing"] as const;
+export type WirePayHoldKind = (typeof PAY_HOLD_KINDS)[number];
+export type WirePayHoldRefusal = "own_bill" | "po_approver" | "above_limit" | "ends_by_itself" | "run_authoriser" | "not_permitted";
+
+export type WirePayHold = {
+  id: string; billId: string; billNo: string; vendorName: string; totalPaise: number; msme: boolean; dueDate: string | null;
+  kind: WirePayHoldKind;
+  /** The documents behind the hold: `{ type: "bill" | "po" | "grn" | "ses" | "vendor", id, no }`. */
+  evidence: { type: string; id: string; no: string }[];
+  placedAt: string; endsAt: string | null;
+  status: "open" | "kept" | "released" | "ended";
+  kept: { reason: string; reviewOn: string; by: { id: string; name: string } } | null;
+  released: { reason: string; at: string; by: { id: string; name: string } } | null;
+  /** May the reader release it; else why not (and who to ask). */
+  canRelease: boolean;
+  refusal: { code: WirePayHoldRefusal; ask: string | null; on: string | null } | null;
+};
+
+export type WirePayBillStatus = "booked" | "matched" | "difference" | "accepted" | "on_hold" | "in_run" | "paid" | "cancelled";
+
+export type WirePayToBook = { kind: "grn" | "ses"; id: string; no: string; vendorId: string; vendorName: string; at: string; poNo: string | null };
+
+export type WirePayDue = {
+  billId: string; billNo: string; vendorBillNo: string; vendorName: string; msme: boolean; dueDate: string; daysLeft: number;
+  outstandingPaise: number; status: WirePayBillStatus; dueWord: "due_soon" | "overdue" | null;
+};
+
+export type WirePayRun = {
+  id: string; runNo: string; status: "draft" | "pending_authorisation" | "authorised" | "completed" | "cancelled";
+  totalPaise: number; bills: number; msme: number; heldOut: number;
+};
+
+export type WirePayPayment = { id: string; paymentNo: string; runNo: string; vendorName: string; mode: string; reference: string | null; paidOn: string; amountPaise: number };
+
+export type WirePayingSettings = {
+  version: number; holdsCoverPharmacy: boolean; msmeRule: "as_today" | "act"; outOfPatternMultipleBps: number; firstBillLimitPaise: number;
+  /**
+   * STORES S6b (#1116): the TDS goods row's owner switch (off) and the CA's trader line for the MSME clock (default on).
+   * Always sent by the server; optional on the wire so an S6a reader (and its locked check's fixture) still types.
+   */
+  tdsGoods?: boolean; msmeTradersOnClock?: boolean;
+  setAt: string | null; setBy: { id: string; name: string } | null;
+};
+
+export type WirePayingDesk = {
+  can: { book: boolean; release: boolean; prepare: boolean; record: boolean; owner: boolean; export: boolean };
+  toBook: WirePayToBook[]; holds: WirePayHold[]; due: WirePayDue[]; runs: WirePayRun[]; payments: WirePayPayment[];
+  settings: WirePayingSettings;
+};
+
+/** The owner's phone line for a run: "₹ total · n bills · m MSME · k held out". */
+export type WireRunToAuthorise = {
+  runId: string; runNo: string; status: WirePayRun["status"]; totalPaise: number; bills: number; msme: number; heldOut: number; canDecide: boolean;
+};
+
+export type WireHoldsDryRun = { at: string; bills: { billId: string; billNo: string; vendorName: string; totalPaise: number; kinds: WirePayHoldKind[] }[] };
+
+export type WirePayablesByGroup = {
+  asOf: string; totalPaise: number;
+  byGroup: { group: string; name: string; paise: number }[];
+  byDepartment: { costCentre: string; name: string; paise: number }[];
+};
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const storesSesBody = z.object({
+  purchaseOrderId: id, departmentId: id,
+  period: z.object({ kind: z.enum(SES_PERIOD_KINDS), key: z.string().trim().min(1).max(20), start: isoDay, end: isoDay }),
+  source: z.enum(SES_SOURCES), sourceRef: z.string().trim().max(80).nullish(),
+  lines: z.array(z.object({
+    itemId: id, qtyBase: z.number().int().min(0).max(10_000_000), shortReason: z.string().trim().max(200).nullish(),
+  })).max(100).optional(),
+  note: z.string().trim().max(300).nullish(),
+});
+export const storesHoldReleaseBody = z.object({ reason: z.string().trim().max(300) });
+export const storesHoldKeepBody = z.object({ reason: z.string().trim().max(300), reviewOn: isoDay });
+/** Each switch is optional (unchanged when absent); switching one ON needs its dry run at most a day old. */
+export const storesPayingSettingsBody = z.object({
+  holdsCoverPharmacy: z.boolean().optional(), msmeRule: z.enum(["as_today", "act"]).optional(), tdsGoods: z.boolean().optional(),
+  msmeTradersOnClock: z.boolean().optional(), dryRunAt: z.string().datetime(),
+});
+export const storesRecordPaymentBody = z.object({
+  vendorId: id, mode: z.enum(["neft", "rtgs", "upi", "cheque", "cash"]), reference: z.string().trim().max(64).nullish(), paidOn: isoDay.nullish(),
+});
+export const storesRunDecideBody = z.object({ approve: z.boolean(), reason: z.string().trim().max(300).nullish() });
+/** Book a bill from a GRN or a service entry: only what is on the paper (number, date; a line's quantity or rate when they differ). */
+export const storesPayBookBody = z.object({
+  kind: z.enum(["grn", "ses"]), id, vendorBillNo: z.string().trim().min(1).max(64), billDate: isoDay,
+  lines: z.array(z.object({
+    itemId: id, qtyPacks: z.number().int().min(0).max(1_000_000), ratePaise: z.number().int().min(0).max(1_000_000_000),
+    // STORES S6b (#1116, decision 4): the officer's confirmed marks on a Stores or service line.
+    gstCredit: z.enum(["eligible", "not_available", "shared"]).nullish(), reverseCharge: z.boolean().nullish(),
+  })).max(300).optional(),
+  irn: z.string().trim().max(100).nullish(),
+});
+export type WirePayBookDraft = {
+  kind: "grn" | "ses"; id: string; no: string; vendorId: string; vendorName: string; poNo: string | null; vendorBillNo: string; billDate: string;
+  lines: {
+    itemId: string; itemName: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number;
+    /** STORES S6b: a Stores or service line takes marks; the proposal from the signed GST-credit table (or the default). */
+    storesLine: boolean; gstCredit: WireGstCredit | null; reverseCharge: boolean;
+  }[];
+  expectedTotalPaise: number;
+  /** STORES S6b: the supplier's e-invoicing declaration (an eligible line then needs the IRN) and whether TDS can be checked. */
+  einvoiceApplicable: boolean; tdsChecked: boolean;
+};
+export type WirePayBooked = { billId: string; billNo: string; status: WirePayBillStatus; totalPaise: number; holds: WirePayHoldKind[] };
+
+/* ═══ STORES S6b (#1116, decisions 4–6, 10) — tax on the bill, the MSME clock, the Tally split ═══ */
+
+export const GST_CREDITS = ["eligible", "not_available", "shared"] as const;
+export type WireGstCredit = (typeof GST_CREDITS)[number];
+export const TDS_NATURES = ["contract", "professional", "rent", "commission", "goods"] as const;
+export type WireTdsNature = (typeof TDS_NATURES)[number];
+
+/** One row of the CA's TDS table. The Act's section is TEXT (data, never code): the Income-tax Act, 2025 renumbered them. */
+export type WireTdsRule = {
+  nature: WireTdsNature; section: string; rateBps: { individual: number; other: number }; panMissingRateBps: number;
+  threshold: { kind: "bill" | "month" | "year"; paise: number }; on: boolean;
+  /** The item categories (codes, top or own) whose lines are of this nature; a line matching none is "goods". */
+  categoryCodes: string[];
+};
+/** One row of the CA's GST-credit table: what is proposed for a category and supplier type. */
+export type WireGstCreditRule = { categoryCode: string; supplier: "registered" | "unregistered" | "any"; credit: WireGstCredit; reverseCharge: boolean };
+
+const tdsRuleSchema = z.object({
+  nature: z.enum(TDS_NATURES), section: z.string().trim().min(1).max(120),
+  rateBps: z.object({ individual: z.number().int().min(0).max(10_000), other: z.number().int().min(0).max(10_000) }),
+  panMissingRateBps: z.number().int().min(0).max(10_000),
+  threshold: z.object({ kind: z.enum(["bill", "month", "year"]), paise: z.number().int().min(0).max(1_000_000_000_000) }),
+  on: z.boolean(), categoryCodes: z.array(z.string().trim().min(1).max(40)).max(200),
+});
+const gstCreditRuleSchema = z.object({
+  categoryCode: z.string().trim().min(1).max(40), supplier: z.enum(["registered", "unregistered", "any"]), credit: z.enum(GST_CREDITS), reverseCharge: z.boolean(),
+});
+export const storesTaxTableBody = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("tds"), rules: z.array(tdsRuleSchema).max(50), documentRef: z.string().trim().min(1).max(300) }),
+  z.object({ kind: z.literal("gst_credit"), rules: z.array(gstCreditRuleSchema).max(500), documentRef: z.string().trim().min(1).max(300) }),
+]);
+export const storesTaxSignBody = z.object({ documentRef: z.string().trim().min(1).max(300) });
+export const storesTdsCertificateBody = z.object({
+  vendorId: id, number: z.string().trim().min(1).max(64), rateBps: z.number().int().min(0).max(10_000), validFrom: isoDay, validTo: isoDay,
+  documentRef: z.string().trim().min(1).max(300),
+});
+export const storesBillTdsBody = z.object({
+  lines: z.array(z.object({ lineId: id, tdsPaise: z.number().int().min(0).max(1_000_000_000_000) })).min(1).max(300), reason: z.string().trim().max(300),
+});
+export const storesMsmeObjectionBody = z.object({
+  grnId: id.nullish(), sesId: id.nullish(), kind: z.enum(["qc_rejection", "short"]), raisedOn: isoDay, reason: z.string().trim().max(300),
+});
+export const storesMsmeObjectionCloseBody = z.object({ closedOn: isoDay, note: z.string().trim().max(300) });
+export const storesTallyLedgersBody = z.object({ names: z.record(z.string().trim().min(1).max(80), z.string().trim().max(100)) });
+
+export type WireTaxTable = {
+  id: string; kind: "tds" | "gst_credit"; version: number; rules: WireTdsRule[] | WireGstCreditRule[]; documentRef: string;
+  createdBy: { id: string; name: string } | null; createdAt: string;
+  signed: { by: { id: string; name: string } | null; at: string; documentRef: string } | null;
+};
+export type WireTaxTables = { tds: WireTaxTable | null; gstCredit: WireTaxTable | null; drafts: WireTaxTable[]; canManage: boolean };
+
+/** What HMIS proposes for an entered, not yet booked bill: per line the marks and the TDS. */
+export type WireBillTaxProposal = {
+  billId: string; billNo: string; tdsChecked: boolean; tdsPaise: number | null; irn: string | null; irnNeeded: boolean;
+  lines: {
+    lineId: string; itemId: string; itemName: string; storesLine: boolean; taxablePaise: number;
+    gstCredit: WireGstCredit | null; reverseCharge: boolean;
+    tds: { nature: WireTdsNature; section: string; rateBps: number; basePaise: number; paise: number; why: "rate" | "pan_missing" | "certificate" | "under_threshold" | "row_off" } | null;
+  }[];
+};
+export type WireTdsDryRun = { at: string; bills: { billId: string; billNo: string; vendorName: string; basePaise: number; tdsPaise: number }[] };
+export type WireMsmeDryRun = { at: string; bills: { billId: string; billNo: string; vendorName: string; dueDate: string; actDueDate: string }[] };
+export type WireStoresTallyLedgers = { names: Record<string, string>; needed: string[] };
+
+/* ═══ STORES S6c (#1116, decision 11) — the auditor agent's flags and their review; the MSME dues report ═══ */
+
+export const AUDIT_FLAG_KINDS = ["use_out_of_pattern", "price_drift", "split_po", "both_ends", "more_than_book"] as const;
+export type WireAuditFlagKind = (typeof AUDIT_FLAG_KINDS)[number];
+/**
+ * One finding. `text` names departments and documents only, never a person: a person is seen only by opening a cited
+ * document under its own grant. `cites`: `{ type: "po" | "grn" | "bill" | "payment" | "pr" | "shelf" | "check" | "ses", id, no }`.
+ */
+export type WireAuditFlag = {
+  id: string; kind: WireAuditFlagKind; text: string; departments: { id: string; code: string; name: string }[];
+  cites: { type: string; id: string; no: string }[]; raisedAt: string; night: string;
+  status: "open" | "upheld" | "dismissed";
+  /** Open for 7 days or more (decision 11: an unreviewed flag is a Now card). */
+  stale: boolean;
+  review: { verdict: "upheld" | "dismissed"; note: string; by: { id: string; name: string }; at: string } | null;
+  /** May this reader review it now; else why not. */
+  canReview: boolean; refusal: "hod_reviews_own" | "not_permitted" | null;
+};
+export const storesFlagReviewBody = z.object({ verdict: z.enum(["upheld", "dismissed"]), note: z.string().trim().max(300) });
+
+/** The half-yearly MSME dues report (decision 6): micro and small suppliers' bills outstanding beyond 45 days at the half's end. */
+export type WireMsmeDuesReport = {
+  half: string; from: string; to: string; asOf: string;
+  rows: { billId: string; billNo: string; vendorBillNo: string; vendorId: string; vendorName: string; udyam: string | null; msmeClass: string; acceptanceDate: string; daysOutstanding: number; outstandingPaise: number }[];
+  totalPaise: number;
+};
+/** S6c: a department's sheet as its confirmer lists it — reversed (a reversing sheet names it) or itself a reversal. */
+export type WireServiceEntryRow = WireServiceEntry & { reversed: boolean; reversal: boolean };
+
+// ── S7 (#1117): the stock planner ──
+/** A line's status word: "Low / कम", "Runs out soon / जल्द खत्म", "Learning / सीख रहा". */
+export type StoresPlannerWord = "low" | "runs_out_soon" | "learning";
+export type StoresPar = { minBase: number; reorderBase: number; maxBase: number };
+/** One line of a shelf's top-up draft. Every number in `why` is the forecast row's (`forecastId`); the model writes none. */
+export type WireTopUpLine = {
+  itemId: string; code: string; name: string; qty: number; onHand: number; onWay: number; usePerDay: number;
+  word: StoresPlannerWord; words: [string, string]; why: [string, string]; urgent: boolean;
+  /** Weeks of history when the item is still learning (under 8): "Learning, 3 of 8 weeks". */
+  learningWeeks: number | null; forecastId: string | null; warningId: string | null;
+};
+export type WireTopUpSection = {
+  draftId: string; shelfId: string; shelfName: string; status: "open" | "sent" | "not_now" | "withdrawn";
+  /** "Budget 80% used" or "Over budget" once this draft is added to the month; null when below 80 % or no budget is set. */
+  budget: { pct: number; over: boolean; words: [string, string] } | null;
+  /** "Store is short / स्टोर में कम" when the supplying store holds less than a line asks (edge 5). */
+  storeShort?: boolean;
+  lines: WireTopUpLine[];
+};
+/** A shelf item not used in 90 days: "Not used in 90 days, return?" with Return (a return ticket, S2). */
+export type WireSlowStockCard = { draftId: string; shelfId: string; shelfName: string; lines: { itemId: string; name: string; onHand: number }[] };
+/** A department's one top-up proposal (decision 6): a section per shelf, each sent as its own ticket. */
+export type WireTopUpProposal = {
+  departmentId: string; departmentName: string;
+  /** The Now card: "3 run out in 2 days"; urgent: "Runs out today". */
+  runOut: { count: number; days: number; urgent: boolean };
+  sections: WireTopUpSection[];
+  slow: WireSlowStockCard[];
+};
+export type WireParSuggestion = {
+  id: string; shelfId: string; shelfName: string; itemId: string; itemName: string; quarter: string;
+  now: StoresPar | null; suggested: StoresPar; usePerDay: number; supplyIntervalDays: number; why: [string, string];
+  status: "open" | "accepted" | "kept";
+};
+export type WirePlannerForecast = {
+  id: string; storeId: string; itemId: string; scope: "shelf" | "central"; method: "learning" | "plain" | "workload"; weeks: number;
+  learning: boolean; learningWords: [string, string] | null; usePerDay: number; onHand: number; onWay: number; hoursToZero: number | null;
+  inputs: Record<string, unknown>; at: string;
+};
+/** The owner's and the materials head's monthly line: "Stock-outs without warning: 0 · Drafts unchanged: 93%". */
+export type WirePlannerMonthly = { month: string; stockOutsWithoutWarning: number; unchangedPct: number | null };
+export type WirePlannerScore = {
+  departmentId: string; from: string; to: string; weeks: number; sent: number; sentUnchanged: number; unchangedPct: number | null;
+  stockOutsWithoutWarning: number; passes: boolean;
+};
+export type WirePlannerSettings = {
+  departmentId: string | null; paused: boolean; t3: boolean; ownerApproved: boolean;
+  safetyDays: { V: number; E: number; D: number }; coverDays: { A: number; B: number; C: number };
+};
+export type WirePlannerTrailRow = {
+  kind: "forecast" | "warning" | "recovered" | "draft" | "line_withdrawn" | "not_now" | "withdrawn" | "ticket";
+  at: string; id: string; refId: string | null; detail: Record<string, unknown>;
+};

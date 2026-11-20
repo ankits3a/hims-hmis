@@ -219,6 +219,33 @@ export async function raiseDeliveryTicketInTx(
   return { id: made.indentId, indentNo: made.indentNo };
 }
 
+/**
+ * S7 (#1117, decision 11) — THE PLANNER'S T3 TOP-UP, raised in the caller's transaction for a department whose T3 switch
+ * the owner approved (OFF by default). The agent holds no shelf grant, so this is the one raise without one; it is a
+ * routine ticket like any other: it WAITS FOR THE HOD's approval (its approvers are told) and a person still receives.
+ */
+export async function raisePlannerTicketInTx(
+  tx: Tx, actor: Actor, input: { shelfId: string; lines: { itemId: string; qtyBase: number }[]; priority: TicketPriority; draftId: string }, now: Date,
+): Promise<{ id: string; indentNo: string }> {
+  const shelf = await requireShelf(tx, input.shelfId);
+  if (shelf.suppliedBy === null) throw new StoresError("unknown_store", `${shelf.code} names no supplying store`, { storeId: shelf.id });
+  const { source, night } = await sourceFor(tx, shelf.suppliedBy, input.priority === "emergency" ? "urgent" : input.priority, now);
+  const note = "Planner top-up";
+  const made = await raiseIndentScoped(tx, actor, { fromResourceId: shelf.id, toResourceId: source.id, lines: input.lines, note }, now, { issueBeforeApproval: false });
+  await tx.insert(storesTicketDetails).values({
+    indentId: made.indentId, departmentId: shelf.departmentId, shelfId: shelf.id, priority: input.priority === "emergency" ? "urgent" : input.priority,
+    channel: "agent", night, clockFrom: now,
+  });
+  await recordAct(tx, actor, now, {
+    act: "raise_ticket", storeId: shelf.id, refId: made.indentId,
+    after: { indentNo: made.indentNo, priority: input.priority, sourceId: source.id, night, origin: null, draftId: input.draftId },
+    lines: input.lines.map((l) => ({ itemId: l.itemId, qtyBase: l.qtyBase })),
+  });
+  const ref = { id: made.indentId, indentNo: made.indentNo };
+  for (const u of await approversToTell(tx, shelf.departmentId, actor.id)) await notify(tx, u, WORDS.toApprove, ref, "to-approve", now);
+  return ref;
+}
+
 /** Decision 3: a declined ticket re-raises in one call with its lines, linked to the first and on the first's clock. */
 export async function reRaiseTicket(db: Db, actor: Actor, indentId: string, now: Date = new Date()): Promise<TicketView> {
   const first = await requireTicketRow(db, indentId);

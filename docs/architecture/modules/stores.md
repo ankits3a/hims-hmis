@@ -25,12 +25,15 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_GATEPASS_RAISE`
   - `STORES_GATEPASS_SCAN`
   - `STORES_GRN_QC`
+  - `STORES_HOLDS_RELEASE`
   - `STORES_INDENTS_APPROVE`
   - `STORES_MASTERS`
   - `STORES_NIGHTSTORE_ISSUE`
   - `STORES_PURCHASE_REQUEST`
+  - `STORES_SES_CONFIRM`
   - `STORES_SHELF_READ`
   - `STORES_SHELF_WORK`
+  - `STORES_TAX_MANAGE`
 - `advances.ts`
   - `ADVANCE_MAX_BPS`
   - `ADVANCE_WORDS`
@@ -82,6 +85,18 @@ Source: `apps/core/src/modules/stores/`
   - `withdrawUnit(db: Db, actor: Actor, unitId: string, input: { reason: string }, now: Date = new Date()): Promise<WireAssetLookup>`
 - `audit-pack.ts`
   - `storesAuditPack(db: Db, actor: Actor, filter: AuditPackFilter, now: Date = new Date()): Promise<AuditPack>`
+- `auditor-agent.ts`
+  - `AUDITOR_AGENT: Actor`
+  - `AUDITOR_TOOL`
+  - `AUDIT_FLAGS_PER_NIGHT`
+  - `AUDIT_FLAG_WORDS`
+  - `auditFlags(db: Db, actor: Actor, filter: { status?: WireAuditFlag["status"] } = {}, now: Date = new Date()): Promise<WireAuditFlag[]>`
+  - `flagsToReview(db: Db, actor: Actor, now: Date = new Date()): Promise<WireAuditFlag[]>`
+  - `ownerMonthlyList(db: Db, actor: Actor, month: string, now: Date = new Date()): Promise<WireAuditFlag[]>`
+  - `reviewFlag(db: Db, actor: Actor, flagId: string, input: { verdict: "upheld" | "dismissed"; note: string }, now: Date = new Date()): Promise…`
+  - `runAuditorNight(db: Db, now: Date = new Date()): Promise<AuditorNightRun>`
+  - `runAuditorNightIfDue(db: Db, now: Date = new Date()): Promise<AuditorNightRun | null>`
+  - types: `AuditorNightRun`
 - `awards.ts`
   - `AWARD_WORDS`
   - `PAY_AFTER_GRN`
@@ -202,11 +217,15 @@ Source: `apps/core/src/modules/stores/`
   - `STORES_DESK_PROVIDERS`
   - `storesApproveDesk: DeskProvider`
   - `storesAwardSignDesk: DeskProvider`
+  - `storesFlagsDesk: DeskProvider`
+  - `storesMsmeDueDesk: DeskProvider`
   - `storesPickDesk: DeskProvider`
   - `storesPurchaseApproveDesk: DeskProvider`
   - `storesReceiveDesk: DeskProvider`
+  - `storesServicesDesk: DeskProvider`
   - `storesStuckDesk: DeskProvider`
   - `storesTakeBackDesk: DeskProvider`
+  - `storesTopUpDesk: DeskProvider`
 - `errors.ts`
   - `STORES_ERROR_CODES`
   - `class StoresError`
@@ -236,6 +255,17 @@ Source: `apps/core/src/modules/stores/`
   - `postStoresGrn(db: Db, actor: Actor, grnId: string, now: Date = new Date()): Promise<{ status: string; ledgerEntryIds: string[] }>`
   - `signStoresQc(db: Db, actor: Actor, grnId: string, now: Date = new Date()): Promise<{ status: string; verdicts: { grnLineId: string; verdict…`
   - `storesGrnsForQc(db: Db, actor: Actor): Promise<WireStoresGrnForQc[]>`
+- `holds.ts`
+  - `HOLD_RELEASE_LIMIT_PAISE`
+  - `HOLD_WORDS`
+  - `heldBillIds(db: Exec, billIds: readonly string[], now: Date): Promise<Set<string>>`
+  - `holdsDryRun(db: Db, actor: Actor, now: Date = new Date()): Promise<WireHoldsDryRun>`
+  - `holdsForBill(db: Db, actor: Actor, billId: string, now: Date = new Date()): Promise<WirePayHold[]>`
+  - `holdsToClear(db: Db, actor: Actor, now: Date = new Date()): Promise<WirePayHold[]>`
+  - `keepHold(db: Db, actor: Actor, holdId: string, input: { reason: string; reviewOn: string }, now: Date = new Date()): Promise<WirePayHold>`
+  - `openHoldKinds(db: Exec, billId: string, now: Date): Promise<WirePayHoldKind[]>`
+  - `recheckBillHolds(db: Db, actor: Actor, billId: string, now: Date = new Date()): Promise<string[]>`
+  - `releaseHold(db: Db, actor: Actor, holdId: string, reason: string, now: Date = new Date()): Promise<WirePayHold>`
 - `items.ts`
   - `CENTRAL_STORE_CODE`
   - `NIGHT_STORE_CODE`
@@ -253,8 +283,81 @@ Source: `apps/core/src/modules/stores/`
   - `updateStoresItem(db: Db, actor: Actor, itemId: string, patch: { categoryId?: string; trackMode?: TrackMode; searchAliases?: string[] }, rea…`
 - `manifest.ts`
   - `storesManifest: ModuleManifest`
+- `msme.ts`
+  - `MSME_ACT_DAYS`
+  - `MSME_ACT_MAX_DAYS`
+  - `MSME_REPORT_DAYS`
+  - `actDueDate(db: Exec, input: { billId: string; vendorId: string; billDate: string; acceptanceDate: string; termsDays: number | null }, trade…`
+  - `closeMsmeObjection(db: Db, actor: Actor, objectionId: string, input: { closedOn: string; note: string }, now: Date = new Date()): Promise<{…`
+  - `msmeDryRun(db: Db, actor: Actor, now: Date = new Date()): Promise<WireMsmeDryRun>`
+  - `msmeDuesReport(db: Db, actor: Actor, half: string, now: Date = new Date()): Promise<WireMsmeDuesReport>`
+  - `msmeHalfBounds(half: string): { from: string; to: string }`
+  - `msmeHalfOf(now: Date): string`
+  - `msmeObjections(db: Db, actor: Actor): Promise<{ id: string; kind: "qc_rejection" | "short"; vendorName: string; doc: { type: "grn" | "ses";…`
+  - `onTheClock(v: Pick<VendorRow, "msmeClass" | "msmeActivity">, tradersOnClock: boolean): boolean`
+  - `recordMsmeObjection(db: Db, actor: Actor, input: { grnId?: string | null; sesId?: string | null; kind: "qc_rejection" | "short"; raisedOn: …`
+- `par-suggestions.ts`
+  - `acceptParSuggestion(db: Db, actor: Actor, suggestionId: string, edit: StoresPar | null, now: Date = new Date()): Promise<{ par: StoresPar; …`
+  - `keepParSuggestion(db: Db, actor: Actor, suggestionId: string, now: Date = new Date()): Promise<{ actId: string }>`
+  - `parSuggestions(db: Db, actor: Actor, now: Date = new Date(), opts: { all?: boolean } = {}): Promise<WireParSuggestion[]>`
+  - `suggestPars(db: Db, now: Date = new Date()): Promise<number>`
+- `paying-book.ts`
+  - `bookDraft(db: Db, actor: Actor, kind: "grn" | "ses", id: string): Promise<WirePayBookDraft>`
+  - `bookFromDesk(db: Db, actor: Actor, input: { kind: "grn" | "ses"; id: string; vendorBillNo: string; billDate: string; irn?: string | null; l…`
+- `paying-notices.ts`
+  - `MSME_DUE_SOON_DAYS`
+  - `MSME_DUE_WORDS`
+  - `SERVICE_WORDS`
+  - `msmeBillsDueSoon(db: Db, now: Date): Promise<{ id: string; billNo: string; dueDate: string }[]>`
+  - `sendMsmeDueSoon(db: Db, now: Date = new Date()): Promise<number>`
+  - `sendServiceToConfirm(db: Db, now: Date = new Date()): Promise<number>`
+  - `servicesDue(db: Db, now: Date): Promise<{ poId: string; poNo: string; departmentId: string | null; monthKey: string; since: string }[]>`
+- `paying-reads.ts`
+  - `decideRunFromPhone(db: Db, actor: Actor, runId: string, input: { approve: boolean; reason?: string | null }, now: Date = new Date()): Promi…`
+  - `payablesByGroup(db: Db, actor: Actor, now: Date = new Date()): Promise<WirePayablesByGroup>`
+  - `payingDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<WirePayingDesk>`
+  - `runToAuthorise(db: Db, actor: Actor, runId: string, now: Date = new Date()): Promise<WireRunToAuthorise>`
+  - `submitRunFromDesk(db: Db, actor: Actor, runId: string, now: Date = new Date()): Promise<WireRunToAuthorise>`
+- `paying-settings.ts`
+  - `PAYING_DEFAULTS: WirePayingSettings`
+  - `payingSettings(db: Exec): Promise<WirePayingSettings>`
+  - `setPayingSettings(db: Db, actor: Actor, input: PayingSwitches, now: Date = new Date()): Promise<WirePayingSettings>`
+  - types: `PayingSwitches`
 - `pdf-text.ts`
   - `pdfPages(bytes: Buffer): PdfPage[]`
+- `planner-central.ts`
+  - `planCentral(db: Db, now: Date): Promise<CentralRun>`
+- `planner-core.ts`
+  - `PLANNER_AGENT: Actor`
+  - `PROPOSAL_CAP`
+  - `STORES_PLANNER_MANAGE`
+  - `recheckShelfItem(tx: Tx, shelf: ShelfCtx, it: { id: string; trackMode: string }, source: "use" | "receipt", now: Date): Promise<void>`
+- `planner-night.ts`
+  - `plannerNightOf(now: Date): string | null`
+  - `runPlannerNight(db: Db, now: Date = new Date()): Promise<PlannerNightRun>`
+  - `runPlannerNightIfDue(db: Db, now: Date = new Date()): Promise<PlannerNightRun | null>`
+  - types: `PlannerNightRun`
+- `planner-score.ts`
+  - `NO_WARNING_WINDOW_MS`
+  - `plannerMonthly(db: Db | Tx, month: string): Promise<WirePlannerMonthly>`
+  - `plannerScore(db: Db | Tx, departmentId: string, from: Date, to: Date): Promise<WirePlannerScore>`
+  - `stockOutsWithoutWarning(db: Db | Tx, from: Date, to: Date): Promise<{ count: number; events: StockOutEvent[] }>`
+- `planner.ts`
+  - `BUDGET_DRAFT_WORDS`
+  - `NOT_NOW_REASONS`
+  - `PLANNER_TOOLS`
+  - `approvePlannerT3(db: Db, actor: Actor, departmentId: string, now: Date = new Date()): Promise<WirePlannerSettings>`
+  - `departmentPlannerScore(db: Db, actor: Actor, departmentId: string, now: Date = new Date()): Promise<WirePlannerScore>`
+  - `myTopUps(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<WireTopUpProposal[]>`
+  - `notNowTopUp(db: Db, actor: Actor, draftId: string, reason: string | null, now: Date = new Date()): Promise<{ actId: string }>`
+  - `plannerForecast(db: Db | Tx, storeId: string, itemId: string): Promise<WirePlannerForecast | null>`
+  - `plannerMonthlyLine(db: Db, actor: Actor, month?: string, now: Date = new Date()): Promise<WirePlannerMonthly>`
+  - `plannerSettingsView(db: Db | Tx, departmentId: string | null): Promise<WirePlannerSettings>`
+  - `plannerTrail(db: Db | Tx, actor: Actor, shelfId: string, itemId: string): Promise<WirePlannerTrailRow[]>`
+  - `returnSlowStock(db: Db, actor: Actor, draftId: string, now: Date = new Date()): Promise<{ transferIds: string[]; actId: string }>`
+  - `sendTopUp(db: Db, actor: Actor, draftId: string, input: { lines?: readonly { itemId: string; qty: number }[] }, now: Date = new Date()): Pr…`
+  - `setPlannerSettings(db: Db, actor: Actor, input: { departmentId?: string | null; paused?: boolean; t3?: boolean; safetyDays?: unknown; cover…`
+  - `topUpProposal(db: Db | Tx, actor: Actor, departmentId: string, now: Date = new Date()): Promise<WireTopUpProposal | null>`
 - `purchase-delivery.ts`
   - `purchaseDeliveries(db: Db | Tx, prId: string): Promise<{ lineIdx: number; qtyBase: number; indentId: string; grnId: string; at: string }[]>`
 - `purchase-requests.ts`
@@ -303,6 +406,18 @@ Source: `apps/core/src/modules/stores/`
   - `quarterBounds(quarter: string): { from: string; to: string }`
   - `quarterOf(now: Date): string`
   - `supplierScorecard(db: Db, actor: Actor, vendorId: string, quarter: string, now: Date = new Date()): Promise<WireSupplierScorecard>`
+- `service-entries.ts`
+  - `billDraftFromSes(db: Db, actor: Actor, sesId: string, opts: { hospitalStateCode?: string | null } = {}): Promise<SesBillDraft>`
+  - `confirmServiceEntry(db: Db, actor: Actor, input: ServiceEntryInput, now: Date = new Date()): Promise<WireServiceEntry>`
+  - `getServiceEntry(db: Exec, sesId: string): Promise<WireServiceEntry>`
+  - `myServiceDepartments(db: Db, actor: Actor): Promise<{ id: string; code: string; name: string }[]>`
+  - `previousMonth(day: string): { key: string; start: string; end: string }`
+  - `readServiceEntry(db: Db, actor: Actor, sesId: string): Promise<WireServiceEntry>`
+  - `reverseServiceEntry(db: Db, actor: Actor, sesId: string, reason: string, now: Date = new Date()): Promise<WireServiceEntry>`
+  - `serviceEntriesAt(db: Db, actor: Actor, departmentId: string, limit = 30): Promise<(WireServiceEntry & { reversed: boolean; reversal: boolea…`
+  - `servicesToConfirm(db: Db, actor: Actor, departmentId: string, now: Date = new Date()): Promise<WireServiceToConfirm[]>`
+  - `unbilledServiceEntries(db: Db, limit = 200): Promise<{ id: string; sesNo: string; vendorId: string; vendorName: string; at: string; poNo: s…`
+  - types: `ServiceEntryInput`, `SesBillDraft`
 - `shelves.ts`
   - `createShelf(db: Db, actor: Actor, input: { code: string; name: string; floorId: string; departmentId: string; suppliedBy: string }, now: Da…`
   - `createStoresStore(db: Db, actor: Actor, input: { code: string; name: string; kind: "central" | "sub" | "night"; parentId?: string | null; t…`
@@ -320,6 +435,25 @@ Source: `apps/core/src/modules/stores/`
   - `setSupplierFields(db: Db, actor: Actor, vendorId: string, patch: { msmeActivity?: "maker" | "service" | "trader" | null; einvoiceApplicable…`
   - `storesSuppliers(db: Db, actor: Actor, now: Date = new Date()): Promise<WireStoresSupplier[]>`
   - `supplierKyc(db: Db | Tx, vendorId: string, now: Date, opts: { categoryId?: string | null } = {}): Promise<WireSupplierKyc>`
+- `tally-split.ts`
+  - `setStoresTallyLedgers(db: Db, actor: Actor, names: Record<string, string>, now: Date = new Date()): Promise<WireStoresTallyLedgers>`
+  - `storesTallyLedgerNames(db: Db, actor: Actor): Promise<WireStoresTallyLedgers>`
+- `tax-on-bill.ts`
+  - `addTdsCertificate(db: Db, actor: Actor, input: { vendorId: string; number: string; rateBps: number; validFrom: string; validTo: string; doc…`
+  - `billTaxProposal(db: Db, actor: Actor, billId: string, now: Date = new Date()): Promise<WireBillTaxProposal>`
+  - `gstNotCreditedBetween(db: Db | Tx, departmentCode: string, from: string, to: string): Promise<{ paise: number; rows: number }>`
+  - `gstNotCreditedOn(db: Db, departmentCode: string, day: string): Promise<{ paise: number; rows: number }>`
+  - `natureOf(rules: readonly WireTdsRule[], line: Pick<TaxLine, "storesLine" | "catCode" | "topCode">): WireTdsNature`
+  - `payingSuppliers(db: Db, actor: Actor): Promise<{ id: string; code: string; name: string }[]>`
+  - `proposeCredit(rules: readonly WireGstCreditRule[] | null, line: Pick<TaxLine, "catCode" | "topCode">, registered: boolean): { credit: WireG…`
+  - `saveTaxTable(db: Db, actor: Actor, input: { kind: "tds"; rules: WireTdsRule[]; documentRef: string } | { kind: "gst_credit"; rules: WireGst…`
+  - `setBillTds(db: Db, actor: Actor, billId: string, input: { lines: { lineId: string; tdsPaise: number }[]; reason: string }, now: Date = new …`
+  - `signTaxTable(db: Db, actor: Actor, tableId: string, input: { documentRef: string }, now: Date = new Date()): Promise<WireTaxTable>`
+  - `signedTaxTable(db: Exec, kind: "tds" | "gst_credit"): Promise<Signed | null>`
+  - `taxTables(db: Db, actor: Actor): Promise<WireTaxTables>`
+  - `tdsCertificates(db: Db, actor: Actor): Promise<{ id: string; vendorId: string; vendorName: string; number: string; rateBps: number; validFr…`
+  - `tdsDryRun(db: Db, actor: Actor, now: Date = new Date()): Promise<WireTdsDryRun>`
+  - `tdsFor(db: Exec, billId: string, opts: { goodsOn: boolean }): Promise<TdsResult>`
 - `tickets.ts`
   - `CLAIM_IDLE_MS`
   - `EMERGENCY_REVIEW_MS`
@@ -380,7 +514,7 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_agent_proposal_steps`, `stores_agent_proposals`, `stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_award_lines`, `stores_award_signatures`, `stores_awards`, `stores_buy_exception_steps`, `stores_buy_exceptions`, `stores_buy_group_moves`, `stores_buy_groups`, `stores_client_keys`, `stores_committee_seats`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_nudges`, `stores_over_budget_marks`, `stores_picking_claims`, `stores_po_advance_steps`, `stores_po_advances`, `stores_pr_band_settings`, `stores_pr_deliveries`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_quote_admissions`, `stores_quote_lines`, `stores_quote_technical`, `stores_quotes`, `stores_rfq_invitees`, `stores_rfq_lines`, `stores_rfq_steps`, `stores_rfqs`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_tag_decisions`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
+`stores_agent_proposal_steps`, `stores_agent_proposals`, `stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_audit_flag_reviews`, `stores_audit_flags`, `stores_award_lines`, `stores_award_signatures`, `stores_awards`, `stores_bill_hold_steps`, `stores_bill_holds`, `stores_buy_exception_steps`, `stores_buy_exceptions`, `stores_buy_group_moves`, `stores_buy_groups`, `stores_client_keys`, `stores_committee_seats`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_msme_objection_closes`, `stores_msme_objections`, `stores_nudges`, `stores_over_budget_marks`, `stores_par_suggestions`, `stores_paying_settings`, `stores_picking_claims`, `stores_planner_drafts`, `stores_planner_forecasts`, `stores_planner_settings`, `stores_planner_warnings`, `stores_po_advance_steps`, `stores_po_advances`, `stores_pr_band_settings`, `stores_pr_deliveries`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_quote_admissions`, `stores_quote_lines`, `stores_quote_technical`, `stores_quotes`, `stores_rfq_invitees`, `stores_rfq_lines`, `stores_rfq_steps`, `stores_rfqs`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_service_entries`, `stores_service_entry_lines`, `stores_tag_decisions`, `stores_tally_ledgers`, `stores_tax_table_signs`, `stores_tax_tables`, `stores_tds_certificates`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
 
 Foreign keys into: `materials`, `org`, `resources`
 
@@ -390,6 +524,8 @@ Foreign keys into: `materials`, `org`, `resources`
 - `buyer-agent.controller.ts` — `/stores/agent`, `/stores/budgets`, `/stores/buying`, `/stores/quotes`, `/stores/suppliers`
 - `buying-desk.controller.ts` — `/stores/awards`, `/stores/buying`, `/stores/committee`, `/stores/quotes`, `/stores/rfqs`
 - `buying.controller.ts` — `/stores/budgets`, `/stores/buy`, `/stores/delegations`, `/stores/grns`, `/stores/purchase-requests`, `/stores/suppliers`
+- `paying.controller.ts` — `/stores/pay`
+- `planner.controller.ts` — `/stores/planner`
 - `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/tower`, `/stores/transit-losses`, `/stores/who-to-ask`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`

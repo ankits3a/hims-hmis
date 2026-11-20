@@ -233,7 +233,7 @@ export async function updateStoresItem(
   });
 }
 
-async function issuePacks(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, { uom: string; multiplier: number }>> {
+export async function issuePacks(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, { uom: string; multiplier: number }>> {
   const out = new Map<string, { uom: string; multiplier: number }>();
   if (itemIds.length === 0) return out;
   const rows = await db.select({ itemId: itemUoms.itemId, uom: itemUoms.uom, m: itemUoms.toBaseMultiplier }).from(itemUoms)

@@ -1253,6 +1253,14 @@ export const supplierBills = pgTable(
     cancelledBy: text("cancelled_by"),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
+    /**
+     * STORES S6b (#1116, decisions 4–5) — both nullable; every pharmacy bill leaves them null. `irn` the e-invoice's
+     * reference number as printed (not checked against the GST portal). `tds_paise` the TDS deducted when the bill was
+     * booked, from a CA-signed table (null = "TDS not checked": nothing was deducted). A deduction is a settlement, so
+     * it is counted in `paid_paise` at booking (the payable is the total less TDS).
+     */
+    irn: text("irn"),
+    tdsPaise: bigint("tds_paise", { mode: "number" }),
     ...auditColumns,
   },
   (t) => [
@@ -1286,7 +1294,13 @@ export const supplierBillLines = pgTable(
   {
     id: text("id").primaryKey(),
     billId: text("bill_id").notNull().references(() => supplierBills.id),
-    grnId: text("grn_id").notNull().references(() => grns.id),
+    /**
+     * STORES S6a (#1116, decision 3) — a line names the GRN it bills OR (a service) the service entry sheet,
+     * `ses_id`, never both and never neither (`supplier_bill_lines_doc_ck`). Every pharmacy line names a GRN, as before.
+     * `ses_id` is plain text (the `award_id` precedent): materials knows no Stores table.
+     */
+    grnId: text("grn_id").references(() => grns.id),
+    sesId: text("ses_id"),
     itemId: text("item_id").notNull().references(() => items.id),
     uom: text("uom").notNull(),
     multiplier: integer("multiplier").notNull(),
@@ -1311,14 +1325,33 @@ export const supplierBillLines = pgTable(
     listRatePaise: bigint("list_rate_paise", { mode: "number" }),
     discountBps: integer("discount_bps").notNull().default(0),
     discountPaise: bigint("discount_paise", { mode: "number" }).notNull().default(0),
+    /**
+     * STORES S6b (#1116, decisions 4–5) — all nullable; a pharmacy line leaves every one null. `gst_credit` the line's
+     * input-credit mark (`eligible` | `not_available` | `shared`, a Stores or service line only); `reverse_charge` true =
+     * the supplier billed no GST and the hospital owes it (the line's GST columns are then 0). `tds_paise` the TDS
+     * deducted on this line at booking, its `tds_nature`, the signed table row it came from (`tds_ref`: table id and
+     * section) and, when a person changed the proposal, `tds_reason`.
+     */
+    gstCredit: text("gst_credit"),
+    reverseCharge: boolean("reverse_charge"),
+    tdsPaise: bigint("tds_paise", { mode: "number" }),
+    tdsNature: text("tds_nature"),
+    tdsRef: text("tds_ref"),
+    tdsReason: text("tds_reason"),
   },
   (t) => [
+    check("supplier_bill_lines_gst_credit_ck", sql`${t.gstCredit} is null or ${t.gstCredit} in ('eligible', 'not_available', 'shared')`),
+    check("supplier_bill_lines_reverse_charge_ck", sql`${t.reverseCharge} is not true or (${t.cgstPaise} = 0 and ${t.sgstPaise} = 0 and ${t.igstPaise} = 0)`),
+    check("supplier_bill_lines_tds_ck", sql`${t.tdsPaise} is null or (${t.tdsPaise} >= 0 and ${t.tdsPaise} <= ${t.taxablePaise})`),
     check(
       "supplier_bill_lines_discount_ck",
       sql`(${t.listRatePaise} is null and ${t.discountBps} = 0 and ${t.discountPaise} = 0) or (${t.listRatePaise} >= 0 and ${t.discountBps} between 0 and 10000 and ${t.discountPaise} between 0 and ${t.listRatePaise} and ${t.ratePaise} = ${t.listRatePaise} - ${t.discountPaise} and (${t.discountBps} = 0 or ${t.discountPaise} = ${t.listRatePaise} - (${t.listRatePaise} * (10000 - ${t.discountBps}) + 5000) / 10000))`,
     ),
     uniqueIndex("supplier_bill_lines_grn_item_ux").on(t.billId, t.grnId, t.itemId),
+    uniqueIndex("supplier_bill_lines_ses_item_ux").on(t.billId, t.sesId, t.itemId).where(sql`${t.sesId} is not null`),
     index("supplier_bill_lines_grn_idx").on(t.grnId),
+    index("supplier_bill_lines_ses_idx").on(t.sesId),
+    check("supplier_bill_lines_doc_ck", sql`(${t.grnId} is null) <> (${t.sesId} is null)`),
     check("supplier_bill_lines_qty_ck", sql`${t.qtyPacks} >= 0 and ${t.multiplier} > 0 and ${t.expectedBase} >= 0`),
     check("supplier_bill_lines_money_ck", sql`${t.ratePaise} >= 0 and ${t.gstRateBps} >= 0 and ${t.taxablePaise} = ${t.qtyPacks} * ${t.ratePaise}`),
   ],
@@ -1385,9 +1418,16 @@ export const supplierPayments = pgTable(
     amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
     recordedBy: text("recorded_by").notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * STORES S6a (#1116, decision 9) — true on every payment recorded after the cut-over: its reference was checked for
+     * shape (NEFT 16, RTGS 22, UPI 12 digits) and reuse. Old rows stay false, so an old duplicate cannot fail the
+     * partial unique index below (or the deploy that builds it).
+     */
+    referenceChecked: boolean("reference_checked").notNull().default(false),
   },
   (t) => [
     uniqueIndex("supplier_payments_payment_no_ux").on(t.paymentNo),
+    uniqueIndex("supplier_payments_bank_reference_ux").on(t.mode, t.reference).where(sql`${t.referenceChecked} and ${t.mode} in ('neft', 'rtgs', 'upi')`),
     uniqueIndex("supplier_payments_run_vendor_ux").on(t.runId, t.vendorId),
     index("supplier_payments_vendor_idx").on(t.vendorId, t.paidOn),
     check("supplier_payments_mode_ck", sql`${t.mode} in ('neft', 'rtgs', 'upi', 'cheque', 'cash')`),

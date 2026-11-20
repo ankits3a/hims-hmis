@@ -52,6 +52,20 @@ export const STORES_ACTS = [
   // equipment advances (refId = the advance).
   "agent_night", "confirm_agent_draft", "dismiss_agent_draft", "confirm_quote_line", "read_quote_pdf", "request_exception", "certify_exception",
   "approve_exception", "confirm_exception", "refuse_exception", "request_advance", "decide_advance",
+  // S6a (#1116): a service entry sheet confirmed (refId = the SES), a payment hold placed by a rule, released or kept
+  // (refId = the hold), the paying desk's switches set (refId = the settings row), a run authorised from the phone.
+  "ses_confirm", "hold_placed", "hold_release", "hold_keep", "paying_settings",
+  // S6b (#1116): a tax table saved or signed (refId = the table), a lower-deduction certificate, a TDS changed from the
+  // proposal (refId = the bill), an MSME objection raised or closed (refId = the objection), the Stores Tally ledger names.
+  "tax_table_save", "tax_table_sign", "tds_certificate", "tds_change", "msme_objection", "msme_objection_close", "tally_ledgers",
+  // S6c (#1116): the auditor's night (refId null; after.flags), a person's review of a flag (refId = the flag), a service entry
+  // reversed (refId = the reversing sheet; after.reverses = the first).
+  "auditor_night", "audit_flag_review", "ses_reverse",
+  // S7 (#1117): the stock planner — a warning and its end (storeId + itemId), a draft line (refId = the draft), a person's
+  // send / not now / return (refId = the draft), a withdrawal, a slow-stock card, a par suggestion accepted or kept (refId =
+  // the suggestion), the settings and the owner's T3 approval (refId = the row), the night's marker.
+  "planner_warning", "planner_recovered", "planner_draft", "planner_send", "planner_not_now", "planner_return", "planner_withdraw", "planner_slow",
+  "planner_par_accept", "planner_par_keep", "planner_settings", "planner_t3_approve", "planner_night",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

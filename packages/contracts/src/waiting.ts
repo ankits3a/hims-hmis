@@ -37,6 +37,12 @@ export const WAITING_KINDS = [
   // STORES S5c (#1115) — "Purchase to approve" (the HOD's, department-scoped) and "Award to sign" (a committee seat's).
   "stores.purchaseToApprove",
   "stores.awardToSign",
+  // STORES S6c (#1116) — "Service to confirm" (department-scoped) and "Flags to review" (the materials head's and the stores
+  // auditor's). "MSME bill due soon" is a payment, so it is a notice and a Now card, never a waiting line (done-means 5).
+  "stores.servicesToConfirm",
+  "stores.flagsToReview",
+  // STORES S7 (#1117) — the stock planner's top-up for the department's in-charge: "3 run out in 2 days" (department-scoped).
+  "stores.runningOut",
   "reminders.today",
   "roster.dutiesToday",
 ] as const;
@@ -75,6 +81,9 @@ export const WAITING_WEB_HREF: Record<WaitingKind, string | null> = {
   "stores.condemnToSign": "/stores/condemn",
   "stores.purchaseToApprove": "/stores/buy",
   "stores.awardToSign": "/stores/buying",
+  "stores.servicesToConfirm": "/stores/services",
+  "stores.flagsToReview": "/stores/pay",
+  "stores.runningOut": "/stores/topup",
   "reminders.today": null,
   "roster.dutiesToday": "/roster/my-duties",
 };
@@ -96,6 +105,9 @@ export const WAITING_TONE: Record<WaitingKind, WaitingTone> = {
   "stores.condemnToSign": "warn",
   "stores.purchaseToApprove": "warn",
   "stores.awardToSign": "warn",
+  "stores.servicesToConfirm": "warn",
+  "stores.flagsToReview": "warn",
+  "stores.runningOut": "hot",
   "reminders.today": "calm",
   "roster.dutiesToday": "calm",
 };

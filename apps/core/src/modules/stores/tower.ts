@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import {
-  events, itemStockLevels, opdEncounters, orgDepartments, resources, stockBalances, stockLedger, storeIndents, storesDeliveryLines,
+  events, itemStockLevels, items, opdEncounters, orgDepartments, resources, stockBalances, stockLedger, storeIndents, storesDeliveryLines,
   storesTicketDetails, transfers,
 } from "../../kernel/db/schema";
 import { STORES_ACT_EVENT } from "./events";
@@ -10,8 +10,10 @@ import { holds } from "./access";
 import { assetRedCards, equipmentReceivedByMonth } from "./asset-reads";
 import { CARRIER_KINDS, chainsOf } from "./chain";
 import { overdueGatePasses } from "./gate-pass";
+import { NO_WARNING_WINDOW_MS, stockOutsWithoutWarning } from "./planner-score";
 import { listShelves } from "./shelves";
-import { departmentSpendByMonth, nextMonthStart } from "./spend";
+import { departmentSpendByMonth, monthLastDay, nextMonthStart } from "./spend";
+import { gstNotCreditedBetween } from "./tax-on-bill";
 import { EMERGENCY_REVIEW_MS, ticketViews } from "./tickets";
 import type { Chain } from "./chain";
 import type { TicketRow } from "./tickets";
@@ -324,6 +326,20 @@ export async function redCards(db: Db | Tx, now: Date, cards: readonly BoardCard
       push({ id: `over_book:${e.eventId}`, kind: "over_book", what: names.get(shelfId) ?? "", where: "", clock: null, indentId: null, shelfId, passId: null }, e.at);
     }
   }
+  // S7 (#1117, decision 13): a shelf item that ran out with no planner warning 24 h before, over the last 7 days.
+  const outs = (await stockOutsWithoutWarning(db, new Date(now.getTime() - NO_WARNING_WINDOW_MS), now)).events;
+  if (outs.length > 0) {
+    const shelfNames = new Map((await (db as Db).select({ id: resources.id, name: resources.name }).from(resources)
+      .where(inArray(resources.id, [...new Set(outs.map((o) => o.storeId))]))).map((r) => [r.id, r.name] as const));
+    const itemNames = new Map((await (db as Db).select({ id: items.id, name: items.name }).from(items)
+      .where(inArray(items.id, [...new Set(outs.map((o) => o.itemId))]))).map((r) => [r.id, r.name] as const));
+    for (const o of outs) {
+      push({
+        id: `no_warning:${o.storeId}:${o.itemId}:${o.at}`, kind: "no_warning", what: itemNames.get(o.itemId) ?? "", where: shelfNames.get(o.storeId) ?? "",
+        clock: null, indentId: null, shelfId: o.storeId, passId: null,
+      }, new Date(o.at));
+    }
+  }
   // S4 (#1114): calibration overdue, AMC lapsed, a missing asset, units ≠ ledger.
   out.push(...(await assetRedCards(db as Db, now)));
   return out.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)).map((c) => {
@@ -380,13 +396,19 @@ async function spendOf(db: Db | Tx, now: Date): Promise<WireTowerSpend> {
     .where(and(inArray(opdEncounters.departmentId, opdIds), ne(opdEncounters.status, "abandoned"),
       gte(opdEncounters.serviceDate, `${month}-01`), lt(opdEncounters.serviceDate, nextMonthStart(month)))).groupBy(opdEncounters.departmentId))
     .map((v) => [v.dept, v.n] as const));
+  // S6c (#1116, decision 4): each department's derived "GST not credited" this month, beside (never inside) the charge.
+  const gst = new Map<string, number>();
+  for (const d of depts) gst.set(d.code, (await gstNotCreditedBetween(db, d.code, `${month}-01`, monthLastDay(month))).paise);
   return {
     month,
     departments: depts.map((d) => {
       const charge = byCode.get(d.code) ?? 0;
       const n = d.opd === null ? 0 : (visits.get(d.opd) ?? 0);
       // Per occupied bed-day once IPD is on production (owner 2026-10-13); null until then.
-      return { id: d.id, code: d.code, name: d.name, chargePaise: charge, perOpdVisitPaise: n === 0 ? null : Math.round(charge / n), perBedDayPaise: null };
+      return {
+        id: d.id, code: d.code, name: d.name, chargePaise: charge, perOpdVisitPaise: n === 0 ? null : Math.round(charge / n), perBedDayPaise: null,
+        gstNotCreditedPaise: gst.get(d.code) ?? 0,
+      };
     }).sort((a, b) => b.chargePaise - a.chargePaise || a.code.localeCompare(b.code)),
   };
 }

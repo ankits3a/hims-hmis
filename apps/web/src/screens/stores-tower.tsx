@@ -319,6 +319,7 @@ function Spend({ spend }: { spend: NonNullable<WireTowerView["spend"]> }): React
     <span key={d.id} title={d.name} style={{ flexShrink: 0 }}>
       <b>{d.code}</b> {rupees(d.chargePaise)}
       {d.perOpdVisitPaise !== null && <span className="tw-dim"> ({rupees(d.perOpdVisitPaise)}/{t("stores.tower.perVisit")})</span>}
+      {(d.gstNotCreditedPaise ?? 0) > 0 && <span className="tw-dim" data-testid={`gst-not-credited-${d.code}`}> · {t("stores.paying.tax.gstNotCredited")} {rupees(d.gstNotCreditedPaise ?? 0)}</span>}
     </span>
   );
   const shown = rows.slice(0, fit);

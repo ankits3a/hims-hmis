@@ -41,6 +41,12 @@ export const STORES_BUDGET_MANAGE = "stores.budget.manage";
 export const STORES_GRN_QC = "stores.grn.qc";
 /** S5b (#1115, decision 16) — sign an award in a committee seat (and the materials head's band B approval): the seat holders. */
 export const STORES_AWARD_SIGN = "stores.award.sign";
+/** S6a (#1116, decision 12) — confirm a service entry sheet AT the department that receives the service (HOD, in-charge; biomedical for AMC). */
+export const STORES_SES_CONFIRM = "stores.ses.confirm";
+/** S6a (#1116, decision 8; ruling 0101 Q6) — release a payment hold: the materials head up to ₹50,000, the owner. */
+export const STORES_HOLDS_RELEASE = "stores.holds.release";
+/** S6b (#1116, decision 12) — keep the CA's TDS and GST-credit tables (upload and sign), certificates, MSME objections: `accounts_officer`. */
+export const STORES_TAX_MANAGE = "stores.tax.manage";
 
 export async function holds(db: Db | Tx, actor: Actor, permission: string, departmentId?: string): Promise<boolean> {
   if (actor.type !== "user") return false;

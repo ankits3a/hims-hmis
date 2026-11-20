@@ -1,5 +1,7 @@
 import { waitingItem } from "../../kernel/desk/waiting";
-import { STORES_AWARD_SIGN, STORES_INDENTS_APPROVE, STORES_SHELF_WORK } from "./access";
+import { STORES_AUDIT_READ, STORES_AWARD_SIGN, STORES_INDENTS_APPROVE, STORES_SES_CONFIRM, STORES_SHELF_WORK } from "./access";
+import { flagsToReview } from "./auditor-agent";
+import { msmeBillsDueSoon, servicesDueFor } from "./paying-notices";
 import { listAwards } from "./awards";
 import { purchaseRequestsToApprove } from "./purchase-requests";
 import { lateScansToConfirm, returnsToReceive, ticketsComingBack } from "./custody";
@@ -7,9 +9,11 @@ import { ticketsToApprove, ticketsToPick, ticketsToReceive } from "./tickets";
 import { STORES_TOWER_READ, boardCards } from "./tower";
 import { STORES_ASSETS_MANAGE, faultsToSee } from "./assets";
 import { STORES_ASSETS_CONDEMN, condemnationsToSign } from "./condemnation";
+import { noDeskCards } from "../../kernel/desk/types";
+import { myTopUps } from "./planner";
 import type { DeskCard, DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
 import type { TicketView } from "./types";
-import type { WaitingItem, WaitingKind } from "@hmis/contracts";
+import type { WaitingItem, WaitingKind, WireAuditFlag } from "@hmis/contracts";
 
 /**
  * STORES S2a (#1112, decision 12) — THE THREE NOW CARDS: "Indents to approve" (the department's approvers and
@@ -211,7 +215,102 @@ export const storesAwardSignDesk: DeskProvider = {
   waitingSelfGated: true,
 };
 
+/**
+ * S6c (#1116, spec "Notices") — "Service to confirm / सेवा की पुष्टि करें": the department's confirmers' line (their grant is
+ * department-scoped, so a waiting line, not a card); the count is the service POs last confirmed at their department
+ * whose last month is not yet confirmed (`paying-notices.ts` `servicesDue`).
+ */
+export const storesServicesDesk: DeskProvider = {
+  key: "stores.services", permission: STORES_SES_CONFIRM,
+  load: noDeskCards,
+  waiting: async (ctx) => {
+    const d = await servicesDueFor(ctx.db, ctx.actor, ctx.now);
+    const item = waitingItem("stores.servicesToConfirm", d.n, d.since);
+    return item === null ? [] : [item];
+  },
+  waitingSelfGated: true,
+};
+
+/**
+ * S6c (#1116) — "MSME bill due soon / MSME बिल जल्द देय": the payment preparers' Now card (bill numbers only, no supplier, no
+ * amount). A payment is never a waiting line (`GET /me/waiting` done-means 5: no kind is money), so it has none.
+ */
+export const storesMsmeDueDesk: DeskProvider = {
+  key: "stores.msmeDue", permission: "materials.payments.prepare",
+  load: async (ctx) => {
+    const rows = await msmeBillsDueSoon(ctx.db, ctx.now);
+    if (rows.length === 0) return [];
+    return [{
+      key: "stores.msmeDue", band: "now", titleKey: "stores.now.msmeDueSoon",
+      stats: [{ key: "count", value: String(rows.length), href: "/stores/pay?tab=due" }],
+      rows: rows.slice(0, MAX_ROWS).map((b) => ({ id: b.id, badge: "!", title: b.billNo, subtitle: b.dueDate, action: "Open", href: "/stores/pay?tab=due", severity: "hot" as const })),
+    }];
+  },
+};
+
+/**
+ * S6c (#1116, decision 11) — "Flags to review / जाँच के संकेत": the auditor's open flags, for the materials head and the
+ * stores auditor only (edge case 8: never a notice board). A flag open for 7 days is marked hot (the spec's "tower card";
+ * DECIDED a Now card, because the tower's key set is locked by S3).
+ */
+const FLAG_WORDS: Record<WireAuditFlag["kind"], string> = {
+  use_out_of_pattern: "Use above pattern", price_drift: "Price above contract", split_po: "Split purchase", both_ends: "One person at both ends",
+  more_than_book: "More than book",
+};
+export const storesFlagsDesk: DeskProvider = {
+  key: "stores.flags", permission: STORES_AUDIT_READ,
+  load: async (ctx) => {
+    const rows = await flagsToReview(ctx.db, ctx.actor, ctx.now);
+    if (rows.length === 0) return [];
+    return [{
+      key: "stores.flags", band: "now", titleKey: "stores.now.flagsToReview",
+      stats: [{ key: "count", value: String(rows.length), href: "/stores/pay?flags=1" }],
+      rows: rows.slice(0, MAX_ROWS).map((f) => ({
+        id: f.id, badge: f.stale ? "!" : null, title: FLAG_WORDS[f.kind], subtitle: f.departments.map((d) => d.name).join(", "), action: "Open", href: "/stores/pay?flags=1",
+        severity: f.stale ? "hot" as const : "warn" as const,
+      })),
+    }];
+  },
+  waiting: async (ctx) => {
+    const rows = await flagsToReview(ctx.db, ctx.actor, ctx.now);
+    const item = waitingItem("stores.flagsToReview", rows.length, rows[0]?.raisedAt ?? null);
+    return item === null ? [] : [item];
+  },
+  waitingSelfGated: true,
+};
+
+/**
+ * S7 (#1117, flow 2) — the planner's top-up for the department's in-charge: "3 run out in 2 days" (urgent: "Runs out
+ * today"). One row per shelf section; every row opens the phone's top-up screen, where Send is the next tap. A department-
+ * scoped in-charge sees it through the waiting line (`stores.runningOut`); the card is for a hospital-scope holder.
+ * Quantities and item counts only, never money (the budget word is on the draft itself).
+ */
+export const storesTopUpDesk: DeskProvider = {
+  key: "stores.topup", permission: STORES_SHELF_WORK,
+  load: async (ctx) => {
+    const props = await myTopUps(ctx.db, ctx.actor, ctx.now);
+    const sections = props.flatMap((p) => p.sections.map((s) => ({ p, s })));
+    if (sections.length === 0) return [];
+    const lines = sections.reduce((n, x) => n + x.s.lines.length, 0);
+    return [{
+      key: "stores.topup", band: "now", titleKey: "stores.now.runningOut",
+      stats: [{ key: "count", value: String(lines), href: "/stores/topup" }],
+      rows: sections.slice(0, MAX_ROWS).map(({ p, s }) => ({
+        id: s.draftId, badge: s.lines.some((l) => l.urgent) ? "!" : null, title: s.shelfName, subtitle: `${p.departmentName} · ${String(s.lines.length)}`,
+        action: "Open", href: "/stores/topup", severity: s.lines.some((l) => l.urgent) ? "hot" as const : "warn" as const,
+      })),
+    }];
+  },
+  waiting: async (ctx) => {
+    const props = await myTopUps(ctx.db, ctx.actor, ctx.now);
+    const n = props.reduce((a, p) => a + p.runOut.count, 0);
+    const item = waitingItem("stores.runningOut", n, null);
+    return item === null ? [] : [item];
+  },
+  waitingSelfGated: true,
+};
+
 export const STORES_DESK_PROVIDERS = [
   storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk, storesStuckDesk, storesFaultsDesk, storesCondemnDesk, storesPurchaseApproveDesk,
-  storesAwardSignDesk,
+  storesAwardSignDesk, storesServicesDesk, storesMsmeDueDesk, storesFlagsDesk, storesTopUpDesk,
 ] as const;

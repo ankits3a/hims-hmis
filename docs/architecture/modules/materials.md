@@ -202,6 +202,7 @@ Source: `apps/core/src/modules/materials/`
   - types: `OpeningLine`
 - `payments.ts`
   - `PAYMENT_MODES: readonly PaymentMode[]`
+  - `REFERENCE_SHAPES: Readonly<Partial<Record<PaymentMode, { re: RegExp; words: string }>>>`
   - `assertNotRunAuthoriser(db: Db, actor: Actor, runId: string): Promise<void>`
   - `cancelPaymentRun(db: Db, actor: Actor, runId: string, reason: string, now: Date = new Date()): Promise<RunView>`
   - `createPaymentRun(db: Db, actor: Actor, input: { lines: RunLineInput[]; note?: string | null }, opts: { source?: "manual" | "agent"; now?: D…`
@@ -209,6 +210,7 @@ Source: `apps/core/src/modules/materials/`
   - `draftPaymentRun(db: Db, actor: Actor, now: Date = new Date()): Promise<RunView>`
   - `getPaymentRun(db: Db, actor: Actor, runId: string, now: Date = new Date()): Promise<RunView>`
   - `listPaymentRuns(db: Db, actor: Actor, filter: { statuses?: readonly RunStatus[]; limit?: number } = {}): Promise<RunSummary[]>`
+  - `normaliseReference(mode: PaymentMode, reference: string | null): string | null`
   - `planPaymentRun(db: Db, now: Date = new Date()): Promise<PaymentPlan>`
   - `recordVendorPayment(db: Db, actor: Actor, runId: string, vendorId: string, input: PaymentInput, now: Date = new Date()): Promise<RunView>`
   - `settlePaymentRuns(db: Db, now: Date = new Date(), runIds?: readonly string[]): Promise<number>`
@@ -308,11 +310,14 @@ Source: `apps/core/src/modules/materials/`
   - types: `StoreRow`
 - `supplier-bills.ts`
   - `AGE_BUCKETS: readonly AgeBucket[]`
+  - `BILL_GST_CREDITS: readonly BillGstCredit[]`
   - `PAYABLE_BILL_STATUSES: readonly BillStatus[]`
   - `acceptBillDifference(db: Db, actor: Actor, billId: string, reason: string, now: Date = new Date()): Promise<BillView>`
   - `acceptSupplierBill(db: Db, actor: Actor, billId: string, now: Date = new Date()): Promise<BillView>`
+  - `addDays(isoDate: string, days: number): string`
   - `ageBucketOf(ageDays: number): AgeBucket`
   - `billDraftFromGrn(db: Db, actor: Actor, grnId: string, opts: { hospitalStateCode?: string | null } = {}): Promise<BillDraft>`
+  - `billHoldHooks(): BillHoldHooks | null`
   - `billsDueBy(db: Db | Tx, until: string): Promise<BillRow[]>`
   - `cancelSupplierBill(db: Db, actor: Actor, billId: string, reason: string, now: Date = new Date()): Promise<BillView>`
   - `createSupplierBill(db: Db, actor: Actor, input: BillInput, opts: { source?: "manual" | "agent"; now?: Date } = {}): Promise<BillView>`
@@ -324,13 +329,19 @@ Source: `apps/core/src/modules/materials/`
   - `matchSupplierBill(db: Db, actor: Actor, billId: string, now: Date = new Date()): Promise<BillView>`
   - `matchTolerancePaise(expectedPaise: number): number`
   - `payables(db: Db, actor: Actor, now: Date = new Date(), filter: { vendorId?: string } = {}): Promise<Payables>`
+  - `purchaseSplitsFor(db: Db | Tx, billIds: readonly string[]): Promise<Map<string, PurchaseSplit>>`
+  - `registerBillHoldHooks(hooks: BillHoldHooks): () => void`
+  - `registerBillTaxHooks(hooks: BillTaxHooks): () => void`
+  - `registerPurchaseSplitSource(source: PurchaseSplitSource): () => void`
+  - `registerServiceEntrySource(source: ServiceEntrySource): () => void`
   - `supplierLedger(db: Db, actor: Actor, vendorId: string, range: { from?: string | null; to?: string | null } = {}): Promise<SupplierLedger>`
   - `unbilledGrns(db: Db, actor: Actor, limit = 200): Promise<UnbilledGrn[]>`
   - `updateSupplierBill(db: Db, actor: Actor, billId: string, patch: Partial<BillInput>, now: Date = new Date()): Promise<BillView>`
   - `vendorBillKey(no: string): string`
   - `vendorCredits(db: Db | Tx, vendorIds?: readonly string[], exceptRunId?: string): Promise<Map<string, VendorCredit>>`
   - `withinMatch(actualPaise: number, expectedPaise: number): boolean`
-  - types: `AgeBucket`, `BillDraft`, `BillFilter`, `BillInput`, `BillLineInput`, `BillLineView`, `BillMismatch`, `BillStatus`, `BillSummary`, `BillView`, `LedgerEntry`, `PayableRow`, `Payables`, `SupplierLedger`, `SupplierSummaryRow`, `UnbilledGrn`, `VendorCredit`
+  - `writeBillLineTds(tx: Tx, billId: string, lines: readonly { lineId: string; tdsPaise: number }[], reason: string): Promise<BillRow>`
+  - types: `AgeBucket`, `BillBookingTax`, `BillDraft`, `BillFilter`, `BillGstCredit`, `BillHoldHooks`, `BillInput`, `BillLineInput`, `BillLineView`, `BillMismatch`, `BillStatus`, `BillSummary`, `BillTaxHooks`, `BillView`, `LedgerEntry`, `PayableRow`, `Payables`, `PurchaseSplit`, `PurchaseSplitEntry`, `PurchaseSplitSource`, `ServiceEntryLine`, `ServiceEntrySource`, `SupplierLedger`, `SupplierSummaryRow`, `UnbilledGrn`, `VendorCredit`
 - `supplier-returns.ts`
   - `EXPIRY_PRESETS: readonly ExpiryPreset[]`
   - `RETURN_LINE_REASONS: readonly ReturnLineReason[]`

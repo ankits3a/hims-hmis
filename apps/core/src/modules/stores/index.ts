@@ -105,3 +105,47 @@ export { EMERGENCY_CONFIRM_MS, EXCEPTION_WORDS, advanceBuyException, getBuyExcep
 export { ADVANCE_MAX_BPS, ADVANCE_WORDS, advancesToDecide, decidePoAdvance, payTermsOf, requestPoAdvance } from "./advances";
 export { OVER_BUDGET_WORDS, overBudgetList, sendOwnerOverBudgetList } from "./budgets";
 export { storesAwardSignDesk, storesPurchaseApproveDesk } from "./desk";
+// S6a (#1116): the paying desk — service entry sheets and the bill from one, payment holds and their release, the
+// switches (off at merge) and their dry run, payables by item group and department, the desk's reads. Importing these
+// registers the service-entry reader and the payment-hold hooks with materials.
+export { STORES_HOLDS_RELEASE, STORES_SES_CONFIRM } from "./access";
+export { billDraftFromSes, confirmServiceEntry, getServiceEntry, myServiceDepartments, previousMonth, readServiceEntry, servicesToConfirm, unbilledServiceEntries } from "./service-entries";
+export type { ServiceEntryInput, SesBillDraft } from "./service-entries";
+export { HOLD_RELEASE_LIMIT_PAISE, HOLD_WORDS, heldBillIds, holdsDryRun, holdsForBill, holdsToClear, keepHold, openHoldKinds, recheckBillHolds, releaseHold } from "./holds";
+export { PAYING_DEFAULTS, payingSettings, setPayingSettings } from "./paying-settings";
+export { decideRunFromPhone, payablesByGroup, payingDesk, runToAuthorise, submitRunFromDesk } from "./paying-reads";
+export { bookDraft, bookFromDesk } from "./paying-book";
+// S6b (#1116): tax on the bill (GST credit marks, reverse charge, TDS from a CA-signed table, the IRN hold), the MSME
+// clock of the Act behind its switch, the Tally split. Importing these registers the tax and MSME hooks and the
+// purchase split with materials; with every switch off and no signed table, pharmacy is as before.
+export { STORES_TAX_MANAGE } from "./access";
+export {
+  addTdsCertificate, billTaxProposal, gstNotCreditedOn, natureOf, proposeCredit, saveTaxTable, setBillTds, signTaxTable, signedTaxTable, taxTables, tdsDryRun, tdsFor,
+} from "./tax-on-bill";
+export { MSME_ACT_DAYS, MSME_ACT_MAX_DAYS, actDueDate, closeMsmeObjection, msmeDryRun, onTheClock, recordMsmeObjection } from "./msme";
+export { setStoresTallyLedgers, storesTallyLedgerNames } from "./tally-split";
+export type { PayingSwitches } from "./paying-settings";
+// S6c (#1116): the auditor agent (T1: it flags, a person decides) and its review, the reversing service entry, the
+// half-yearly MSME dues report, the "Service to confirm" and "MSME bill due soon" notices, the desk's tax screens' reads.
+export {
+  AUDITOR_AGENT, AUDITOR_TOOL, AUDIT_FLAGS_PER_NIGHT, AUDIT_FLAG_WORDS, auditFlags, flagsToReview, ownerMonthlyList, reviewFlag, runAuditorNight, runAuditorNightIfDue,
+} from "./auditor-agent";
+export type { AuditorNightRun } from "./auditor-agent";
+export { reverseServiceEntry, serviceEntriesAt } from "./service-entries";
+export { MSME_REPORT_DAYS, msmeDuesReport, msmeHalfBounds, msmeHalfOf, msmeObjections } from "./msme";
+export { MSME_DUE_SOON_DAYS, MSME_DUE_WORDS, SERVICE_WORDS, msmeBillsDueSoon, sendMsmeDueSoon, sendServiceToConfirm, servicesDue } from "./paying-notices";
+export { gstNotCreditedBetween, payingSuppliers, tdsCertificates } from "./tax-on-bill";
+export { storesFlagsDesk, storesMsmeDueDesk, storesServicesDesk } from "./desk";
+// S7 (#1117): the stock planner — forecasts, warnings (also at every shelf use and receipt), one top-up proposal per
+// department, central `planner` requests, quarterly par suggestions only a person accepts, the score and the T3 switch.
+export { PLANNER_AGENT, PROPOSAL_CAP, STORES_PLANNER_MANAGE, recheckShelfItem } from "./planner-core";
+export {
+  BUDGET_DRAFT_WORDS, NOT_NOW_REASONS, PLANNER_TOOLS, approvePlannerT3, departmentPlannerScore, myTopUps, notNowTopUp, plannerForecast, plannerMonthlyLine,
+  plannerSettingsView, plannerTrail, returnSlowStock, sendTopUp, setPlannerSettings, topUpProposal,
+} from "./planner";
+export { NO_WARNING_WINDOW_MS, plannerMonthly, plannerScore, stockOutsWithoutWarning } from "./planner-score";
+export { acceptParSuggestion, keepParSuggestion, parSuggestions, suggestPars } from "./par-suggestions";
+export { planCentral } from "./planner-central";
+export { plannerNightOf, runPlannerNight, runPlannerNightIfDue } from "./planner-night";
+export type { PlannerNightRun } from "./planner-night";
+export { storesTopUpDesk } from "./desk";

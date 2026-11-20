@@ -345,7 +345,7 @@ describe("returns to the supplier, credit notes, write-offs and recalls (parity 
 
     await submitPaymentRun(db, head.actor, run.id, EXPIRED);
     await decidePaymentRun(db, owner.actor, run.id, "approve", "pay", EXPIRED);
-    const paid = await recordVendorPayment(db, head.actor, run.id, vendor, { mode: "neft", reference: "UTR1", paidOn: "2027-08-01" }, EXPIRED);
+    const paid = await recordVendorPayment(db, head.actor, run.id, vendor, { mode: "neft", reference: "UTR1000000000001", paidOn: "2027-08-01" }, EXPIRED);
     expect(paid.status).toBe("completed");
     const line = (await db.select().from(supplierPaymentRunLines).where(eq(supplierPaymentRunLines.runId, run.id)))[0]!;
     expect([line.payPaise, line.creditPaise, line.paymentId !== null]).toEqual([28_000 - credit, credit, true]);

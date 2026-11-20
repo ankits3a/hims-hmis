@@ -11,7 +11,8 @@ import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { STORES_BUDGET_MANAGE, departmentOf, holds, recordAct } from "./access";
 import { groupLines, holdsRole, lineMoney } from "./buying-common";
 import { StoresError } from "./errors";
-import { departmentSpendByMonth, nextMonthStart } from "./spend";
+import { departmentSpendByMonth, monthLastDay, nextMonthStart } from "./spend";
+import { gstNotCreditedBetween } from "./tax-on-bill";
 import { approversToTell } from "./tickets";
 import type { WireDepartmentBudget, WireOverBudgetMonth } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
@@ -288,5 +289,8 @@ export async function budgetView(db: Db, actor: Actor, departmentId: string, mon
   if (!(await holds(db, actor, STORES_BUDGET_MANAGE)) && !(await holds(db, actor, "stores.indents.approve", departmentId))) {
     throw new StoresError("not_permitted", "the budget is finance's and the department head's", { permission: STORES_BUDGET_MANAGE });
   }
-  return departmentBudget(db, departmentId, month);
+  const b = await departmentBudget(db, departmentId, month);
+  const dept = await departmentOf(db, departmentId);
+  // S6c (#1116, decision 4): the derived "GST not credited" beside the spend (never part of `spentPaise`).
+  return { ...b, gstNotCreditedPaise: (await gstNotCreditedBetween(db, dept.code, `${month}-01`, monthLastDay(month))).paise };
 }

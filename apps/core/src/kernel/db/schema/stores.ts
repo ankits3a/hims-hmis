@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { grnLines, grns, itemCategories, items, stockBatches, storeIndents, transferLines, transfers, vendors } from "./materials";
+import { bigint, bigserial, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { grnLines, grns, itemCategories, items, purchaseOrders, stockBatches, storeIndents, supplierBills, transferLines, transfers, vendors } from "./materials";
 import { orgDepartments } from "./org";
 import { resources } from "./resources";
 
@@ -1280,5 +1280,466 @@ export const storesPoAdvanceSteps = pgTable(
     uniqueIndex("stores_po_advance_steps_once_ux").on(t.advanceId),
     check("stores_po_advance_steps_kind_ck", sql`${t.kind} in ('approved', 'refused')`),
     check("stores_po_advance_steps_reason_ck", sql`${t.kind} <> 'refused' or ${t.reason} is not null`),
+  ],
+);
+
+/**
+ * STORES S6a (#1116, decision 2) — A SERVICE ENTRY SHEET: the GRN of a service. A department confirms that a service
+ * contract (a PO on `service` items) was rendered for a period (a month, a quarter, one visit, or "term started" for a
+ * contract billed in advance by its own terms), with the quantities per line (prefilled from the PO or the source
+ * module; a short is a line below the contract, with its reason). One per PO and period (`ses_exists`, in the intent
+ * under an advisory lock). APPEND-ONLY (0247): a correction is a reversing SES naming the first (`reverses_id`).
+ * `supplier_bill_lines.ses_id` (plain text) names it when it is billed.
+ */
+export const STORES_SES_SOURCES = ["laundry_month", "amc_visit", "manpower_month", "canteen_month", "term_start"] as const;
+export const storesServiceEntries = pgTable(
+  "stores_service_entries",
+  {
+    id: text("id").primaryKey(),
+    sesNo: text("ses_no").notNull(),
+    purchaseOrderId: text("purchase_order_id").notNull().references(() => purchaseOrders.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    periodKind: text("period_kind").notNull(),
+    periodKey: text("period_key").notNull(),
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    periodEnd: date("period_end", { mode: "string" }).notNull(),
+    source: text("source").notNull(),
+    sourceRef: text("source_ref"),
+    reversesId: text("reverses_id"),
+    note: text("note"),
+    confirmedBy: text("confirmed_by").notNull(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_service_entries_no_ux").on(t.sesNo),
+    index("stores_service_entries_po_idx").on(t.purchaseOrderId, t.periodKey),
+    check("stores_service_entries_period_ck", sql`${t.periodKind} in ('month', 'quarter', 'visit', 'term_start') and ${t.periodStart} <= ${t.periodEnd}`),
+    check("stores_service_entries_source_ck", sql`${t.source} in ('laundry_month', 'amc_visit', 'manpower_month', 'canteen_month', 'term_start')`),
+  ],
+);
+
+export const storesServiceEntryLines = pgTable(
+  "stores_service_entry_lines",
+  {
+    id: text("id").primaryKey(),
+    sesId: text("ses_id").notNull().references(() => storesServiceEntries.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    /** The PO line's quantity in base units, and what was confirmed (≤ ordered; the difference is the short). */
+    orderedBase: integer("ordered_base").notNull(),
+    qtyBase: integer("qty_base").notNull(),
+    shortReason: text("short_reason"),
+    /** The PO line's rate per pack of `multiplier` base units, and its GST — what the bill is matched against. */
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    multiplier: integer("multiplier").notNull(),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_service_entry_lines_item_ux").on(t.sesId, t.itemId),
+    check("stores_service_entry_lines_qty_ck", sql`${t.qtyBase} >= 0 and ${t.qtyBase} <= ${t.orderedBase} and ${t.multiplier} > 0 and ${t.ratePaise} >= 0`),
+    check("stores_service_entry_lines_short_ck", sql`${t.qtyBase} = ${t.orderedBase} or ${t.shortReason} is not null`),
+  ],
+);
+
+/**
+ * STORES S6a (#1116, decisions 7–8) — A PAYMENT HOLD on a supplier bill, placed by a rule (never by the agent), citing
+ * the rows behind it (`evidence`). "Open" is derived: placed, not released, and (for `bank_cooling_off`) before
+ * `ends_at`. Released or kept by a `stores_bill_hold_steps` row (one release per hold; a keep carries its review date).
+ * A re-placed hold is a new row. Both APPEND-ONLY (0247). `bill_id` names a pharmacy-shared `supplier_bills` row.
+ */
+export const storesBillHolds = pgTable(
+  "stores_bill_holds",
+  {
+    id: text("id").primaryKey(),
+    billId: text("bill_id").notNull().references(() => supplierBills.id),
+    kind: text("kind").notNull(),
+    evidence: jsonb("evidence").notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    trigger: text("trigger").notNull(),
+    placedBy: text("placed_by").notNull(),
+    placedAt: timestamp("placed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_bill_holds_bill_idx").on(t.billId, t.kind),
+    check("stores_bill_holds_kind_ck", sql`${t.kind} in ('duplicate_like', 'out_of_pattern', 'bank_cooling_off', 'kyc_incomplete', 'above_po', 'pay_after_grn', 'irn_missing')`),
+    check("stores_bill_holds_ends_ck", sql`(${t.kind} = 'bank_cooling_off') = (${t.endsAt} is not null)`),
+  ],
+);
+
+export const storesBillHoldSteps = pgTable(
+  "stores_bill_hold_steps",
+  {
+    id: text("id").primaryKey(),
+    holdId: text("hold_id").notNull().references(() => storesBillHolds.id),
+    step: text("step").notNull(),
+    reason: text("reason").notNull(),
+    reviewOn: date("review_on", { mode: "string" }),
+    asRole: text("as_role").notNull(),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_bill_hold_steps_release_ux").on(t.holdId).where(sql`${t.step} = 'released'`),
+    check("stores_bill_hold_steps_step_ck", sql`${t.step} in ('released', 'kept')`),
+    check("stores_bill_hold_steps_reason_ck", sql`length(${t.reason}) > 0 and ((${t.step} = 'kept') = (${t.reviewOn} is not null))`),
+  ],
+);
+
+/**
+ * STORES S6a (#1116, decision 13) — THE PAYING DESK'S SWITCHES, versioned (newest row wins; none = the defaults). Every
+ * switch that could move a pharmacy number defaults OFF: `holds_cover_pharmacy` false, `msme_rule` `as_today` (S6b
+ * wires it). The out-of-pattern thresholds are the materials head's (decision 7, DECIDED: 2 × p90, first bill ₹1,00,000).
+ * A switch names the dry run it followed (`dry_run_at`). APPEND-ONLY (0247).
+ */
+export const storesPayingSettings = pgTable(
+  "stores_paying_settings",
+  {
+    id: text("id").primaryKey(),
+    version: integer("version").notNull(),
+    holdsCoverPharmacy: boolean("holds_cover_pharmacy").notNull(),
+    msmeRule: text("msme_rule").notNull(),
+    outOfPatternMultipleBps: integer("out_of_pattern_multiple_bps").notNull(),
+    firstBillLimitPaise: bigint("first_bill_limit_paise", { mode: "number" }).notNull(),
+    /** STORES S6b (#1116, decision 13) — the TDS goods row's owner switch (off) and the CA's trader line for the MSME clock (on: the cautious side). */
+    tdsGoods: boolean("tds_goods").notNull().default(false),
+    msmeTradersOnClock: boolean("msme_traders_on_clock").notNull().default(true),
+    dryRunAt: timestamp("dry_run_at", { withTimezone: true }),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_paying_settings_version_ux").on(t.version),
+    check("stores_paying_settings_msme_ck", sql`${t.msmeRule} in ('as_today', 'act')`),
+    check("stores_paying_settings_limits_ck", sql`${t.outOfPatternMultipleBps} >= 10000 and ${t.firstBillLimitPaise} > 0`),
+  ],
+);
+
+/**
+ * STORES S6b (#1116, decisions 4–5) — THE TAX TABLES the CA signs: `kind` `tds` (rows by nature of payment: section as
+ * TEXT, rates by payee type, the PAN-missing rate, threshold, own switch, the categories it covers) or `gst_credit` (the
+ * input-credit and reverse-charge marks proposed per category and supplier type). A version is written once; it counts
+ * only once signed (`stores_tax_table_signs`, one per version). The newest SIGNED version of a kind is in force; a bill
+ * keeps what it was booked under. Shipped EMPTY: with no signed table nothing is proposed. Both APPEND-ONLY (0248).
+ */
+export const storesTaxTables = pgTable(
+  "stores_tax_tables",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    version: integer("version").notNull(),
+    rules: jsonb("rules").notNull(),
+    documentRef: text("document_ref").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_tax_tables_version_ux").on(t.kind, t.version),
+    check("stores_tax_tables_kind_ck", sql`${t.kind} in ('tds', 'gst_credit')`),
+    check("stores_tax_tables_doc_ck", sql`length(${t.documentRef}) > 0`),
+  ],
+);
+
+export const storesTaxTableSigns = pgTable(
+  "stores_tax_table_signs",
+  {
+    id: text("id").primaryKey(),
+    tableId: text("table_id").notNull().references(() => storesTaxTables.id),
+    documentRef: text("document_ref").notNull(),
+    signedBy: text("signed_by").notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_tax_table_signs_table_ux").on(t.tableId),
+    check("stores_tax_table_signs_doc_ck", sql`length(${t.documentRef}) > 0`),
+  ],
+);
+
+/**
+ * STORES S6b (#1116, decision 5) — a supplier's lower or nil deduction certificate: its rate overrides the TDS row while
+ * valid on the bill's date. APPEND-ONLY (0248); a withdrawn certificate is a later row with rate and dates of its own.
+ */
+export const storesTdsCertificates = pgTable(
+  "stores_tds_certificates",
+  {
+    id: text("id").primaryKey(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    number: text("number").notNull(),
+    rateBps: integer("rate_bps").notNull(),
+    validFrom: date("valid_from", { mode: "string" }).notNull(),
+    validTo: date("valid_to", { mode: "string" }).notNull(),
+    documentRef: text("document_ref").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_tds_certificates_vendor_idx").on(t.vendorId, t.validFrom),
+    check("stores_tds_certificates_ck", sql`${t.rateBps} between 0 and 10000 and ${t.validFrom} <= ${t.validTo} and length(${t.documentRef}) > 0`),
+  ],
+);
+
+/**
+ * STORES S6b (#1116, decision 6) — a WRITTEN OBJECTION to goods or a service inside the MSME Act's 15 days (a QC
+ * rejection, a "Short"): the clock starts on the day it is closed. One close per objection. Both APPEND-ONLY (0248).
+ */
+export const storesMsmeObjections = pgTable(
+  "stores_msme_objections",
+  {
+    id: text("id").primaryKey(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    grnId: text("grn_id").references(() => grns.id),
+    sesId: text("ses_id"),
+    kind: text("kind").notNull(),
+    raisedOn: date("raised_on", { mode: "string" }).notNull(),
+    reason: text("reason").notNull(),
+    raisedBy: text("raised_by").notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_msme_objections_grn_idx").on(t.grnId),
+    index("stores_msme_objections_ses_idx").on(t.sesId),
+    check("stores_msme_objections_doc_ck", sql`(${t.grnId} is null) <> (${t.sesId} is null)`),
+    check("stores_msme_objections_kind_ck", sql`${t.kind} in ('qc_rejection', 'short') and length(${t.reason}) > 0`),
+  ],
+);
+
+export const storesMsmeObjectionCloses = pgTable(
+  "stores_msme_objection_closes",
+  {
+    id: text("id").primaryKey(),
+    objectionId: text("objection_id").notNull().references(() => storesMsmeObjections.id),
+    closedOn: date("closed_on", { mode: "string" }).notNull(),
+    note: text("note").notNull(),
+    closedBy: text("closed_by").notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_msme_objection_closes_ux").on(t.objectionId),
+    check("stores_msme_objection_closes_note_ck", sql`length(${t.note}) > 0`),
+  ],
+);
+
+/**
+ * STORES S6b (#1116, decision 10) — the accountant's Tally ledger names for Stores lines: `purchase:<top category>`,
+ * `asset:<top category>`, `tds:<nature>`, `rcm_liability`. Newest row per key wins. APPEND-ONLY (0248). Pharmacy's own
+ * names stay in `pharmacy_tally_config`, untouched.
+ */
+export const storesTallyLedgers = pgTable(
+  "stores_tally_ledgers",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_tally_ledgers_key_idx").on(t.key, t.setAt),
+    check("stores_tally_ledgers_ck", sql`length(${t.key}) between 1 and 80 and length(${t.name}) between 1 and 100`),
+  ],
+);
+
+/**
+ * STORES S6c (#1116, decision 11) — THE AUDITOR AGENT'S FLAGS (T1: it flags, a person decides). One row per finding:
+ * `kind` (`use_out_of_pattern` | `price_drift` | `split_po` | `both_ends` | `more_than_book`), the departments it names,
+ * its text (departments and documents only, never a person), the rows it cites, and `key` (kind + cited rows) so a
+ * night never raises one finding twice. The agent writes no hold, release, payment or supplier message. APPEND-ONLY (0249).
+ */
+export const storesAuditFlags = pgTable(
+  "stores_audit_flags",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    key: text("key").notNull(),
+    departmentIds: text("department_ids").array().notNull(),
+    text: text("text").notNull(),
+    cites: jsonb("cites").notNull(),
+    night: date("night", { mode: "string" }).notNull(),
+    raisedBy: text("raised_by").notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_audit_flags_key_ux").on(t.key),
+    index("stores_audit_flags_raised_idx").on(t.raisedAt),
+    check("stores_audit_flags_kind_ck", sql`${t.kind} in ('use_out_of_pattern', 'price_drift', 'split_po', 'both_ends', 'more_than_book') and length(${t.text}) > 0`),
+  ],
+);
+
+/** A person's review of a flag: `upheld` (one line on what was done) or `dismissed` (a reason). One per flag. APPEND-ONLY (0249). */
+export const storesAuditFlagReviews = pgTable(
+  "stores_audit_flag_reviews",
+  {
+    id: text("id").primaryKey(),
+    flagId: text("flag_id").notNull().references(() => storesAuditFlags.id),
+    verdict: text("verdict").notNull(),
+    note: text("note").notNull(),
+    confirmId: text("confirm_id").notNull(),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_audit_flag_reviews_flag_ux").on(t.flagId),
+    index("stores_audit_flag_reviews_at_idx").on(t.at),
+    check("stores_audit_flag_reviews_ck", sql`${t.verdict} in ('upheld', 'dismissed') and length(${t.note}) > 0`),
+  ],
+);
+
+// ═══════════════════════════ STORES S7 (#1117): THE STOCK PLANNER ═══════════════════════════
+
+/**
+ * One forecast the planner acted on, with everything it was computed from (`inputs`: the history window, the weekly use,
+ * the method and its measured error, the season factor; for the central store also lead time, safety days and cover), so
+ * any warning or draft can be re-derived. `store_id` is a shelf (`scope = 'shelf'`) or a central/sub Stores store
+ * (`'central'`). `method`: `learning` (under 8 weeks of history: S1's par rule), `plain`, `workload`. APPEND-ONLY (0250).
+ */
+export const storesPlannerForecasts = pgTable(
+  "stores_planner_forecasts",
+  {
+    id: text("id").primaryKey(),
+    storeId: text("store_id").notNull(),
+    itemId: text("item_id").notNull(),
+    departmentId: text("department_id"),
+    scope: text("scope").notNull(),
+    method: text("method").notNull(),
+    weeks: integer("weeks").notNull(),
+    usePerDay: doublePrecision("use_per_day").notNull(),
+    onHand: integer("on_hand").notNull(),
+    onWay: integer("on_way").notNull(),
+    minBase: integer("min_base"),
+    reorderBase: integer("reorder_base"),
+    maxBase: integer("max_base"),
+    hoursToZero: doublePrecision("hours_to_zero"),
+    inputs: jsonb("inputs").notNull(),
+    madeBy: text("made_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_planner_forecasts_item_idx").on(t.storeId, t.itemId, t.at),
+    check("stores_planner_forecasts_ck", sql`${t.scope} in ('shelf', 'central') and ${t.method} in ('learning', 'plain', 'workload') and ${t.usePerDay} >= 0`),
+  ],
+);
+
+/**
+ * A shelf item's warning (`warn`: hours to zero ≤ 48 or on hand ≤ reorder) and its end (`recovered`: on hand back above
+ * reorder). One live warning per shelf item: the newest row is `warn`. `source` says what checked it: the night, a "Used",
+ * a receipt. APPEND-ONLY (0250).
+ */
+export const storesPlannerWarnings = pgTable(
+  "stores_planner_warnings",
+  {
+    id: text("id").primaryKey(),
+    storeId: text("store_id").notNull(),
+    itemId: text("item_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    kind: text("kind").notNull(),
+    rule: text("rule"),
+    urgent: boolean("urgent").notNull().default(false),
+    hoursToZero: doublePrecision("hours_to_zero"),
+    onHand: integer("on_hand").notNull(),
+    onWay: integer("on_way").notNull(),
+    forecastId: text("forecast_id"),
+    source: text("source").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_planner_warnings_item_idx").on(t.storeId, t.itemId, t.at),
+    index("stores_planner_warnings_at_idx").on(t.at),
+    check("stores_planner_warnings_ck", sql`${t.kind} in ('warn', 'recovered') and ${t.source} in ('night', 'use', 'receipt')
+      and (${t.rule} is null or ${t.rule} in ('hours', 'reorder'))`),
+  ],
+);
+
+/**
+ * The planner's drafts, as steps: `open` (a shelf's draft: `proposal` = `topup` or `slow`), `line` (an item joins it, with
+ * the planner's quantity, its warning and forecast), `line_withdrawn`, and one closing step: `sent` (the person's numbers
+ * beside the planner's in `data.lines`, the ticket), `not_now` (a reason chip), `withdrawn` (stock arrived). Status is
+ * derived. APPEND-ONLY (0250); one closing step per draft (partial unique index).
+ */
+export const storesPlannerDrafts = pgTable(
+  "stores_planner_drafts",
+  {
+    id: text("id").primaryKey(),
+    draftId: text("draft_id").notNull(),
+    kind: text("kind").notNull(),
+    proposal: text("proposal").notNull(),
+    storeId: text("store_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    itemId: text("item_id"),
+    qty: integer("qty"),
+    warningId: text("warning_id"),
+    forecastId: text("forecast_id"),
+    indentId: text("indent_id"),
+    reason: text("reason"),
+    data: jsonb("data"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_planner_drafts_draft_idx").on(t.draftId),
+    index("stores_planner_drafts_store_idx").on(t.storeId, t.at),
+    uniqueIndex("stores_planner_drafts_close_ux").on(t.draftId).where(sql`${t.kind} in ('sent', 'not_now', 'withdrawn')`),
+    check("stores_planner_drafts_ck", sql`${t.kind} in ('open', 'line', 'line_withdrawn', 'sent', 'not_now', 'withdrawn')
+      and ${t.proposal} in ('topup', 'slow') and (${t.qty} is null or ${t.qty} > 0)`),
+  ],
+);
+
+/**
+ * Quarterly par suggestions (decision 8) and their outcome: `suggested` (old par beside the new, the use per day and the
+ * supply interval they came from), then one of `accepted` (the par written, edits kept beside the suggestion) or `kept`.
+ * One suggestion per shelf item per quarter. APPEND-ONLY (0250).
+ */
+export const storesParSuggestions = pgTable(
+  "stores_par_suggestions",
+  {
+    id: text("id").primaryKey(),
+    suggestionId: text("suggestion_id").notNull(),
+    kind: text("kind").notNull(),
+    storeId: text("store_id").notNull(),
+    itemId: text("item_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    quarter: text("quarter").notNull(),
+    oldMin: integer("old_min"),
+    oldReorder: integer("old_reorder"),
+    oldMax: integer("old_max"),
+    minBase: integer("min_base").notNull(),
+    reorderBase: integer("reorder_base").notNull(),
+    maxBase: integer("max_base").notNull(),
+    usePerDay: doublePrecision("use_per_day").notNull(),
+    supplyIntervalDays: doublePrecision("supply_interval_days").notNull(),
+    inputs: jsonb("inputs").notNull(),
+    confirmId: text("confirm_id"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_par_suggestions_once_ux").on(t.storeId, t.itemId, t.quarter).where(sql`${t.kind} = 'suggested'`),
+    uniqueIndex("stores_par_suggestions_close_ux").on(t.suggestionId).where(sql`${t.kind} in ('accepted', 'kept')`),
+    index("stores_par_suggestions_store_idx").on(t.storeId, t.at),
+    check("stores_par_suggestions_ck", sql`${t.kind} in ('suggested', 'accepted', 'kept') and ${t.minBase} >= 0 and ${t.minBase} <= ${t.reorderBase}
+      and ${t.reorderBase} < ${t.maxBase}`),
+  ],
+);
+
+/**
+ * The planner's settings, versioned (every change a new row; the newest per department wins; `department_id` null = the
+ * hospital's safety-days and cover table). `kind = 'settings'` (paused, the T3 switch, the tables) or `owner_t3` (the
+ * owner's approval of T3 for a department, which the switch needs). APPEND-ONLY (0250).
+ */
+export const storesPlannerSettings = pgTable(
+  "stores_planner_settings",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    departmentId: text("department_id"),
+    paused: boolean("paused").notNull().default(false),
+    t3: boolean("t3").notNull().default(false),
+    safetyDays: jsonb("safety_days"),
+    coverDays: jsonb("cover_days"),
+    reason: text("reason"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_planner_settings_dept_idx").on(t.departmentId, t.at),
+    check("stores_planner_settings_ck", sql`${t.kind} in ('settings', 'owner_t3')`),
   ],
 );
