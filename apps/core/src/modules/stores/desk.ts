@@ -10,6 +10,7 @@ import { STORES_TOWER_READ, boardCards } from "./tower";
 import { STORES_ASSETS_MANAGE, faultsToSee } from "./assets";
 import { STORES_ASSETS_CONDEMN, condemnationsToSign } from "./condemnation";
 import { noDeskCards } from "../../kernel/desk/types";
+import { myTopUps } from "./planner";
 import type { DeskCard, DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
 import type { TicketView } from "./types";
 import type { WaitingItem, WaitingKind, WireAuditFlag } from "@hmis/contracts";
@@ -278,7 +279,38 @@ export const storesFlagsDesk: DeskProvider = {
   waitingSelfGated: true,
 };
 
+/**
+ * S7 (#1117, flow 2) — the planner's top-up for the department's in-charge: "3 run out in 2 days" (urgent: "Runs out
+ * today"). One row per shelf section; every row opens the phone's top-up screen, where Send is the next tap. A department-
+ * scoped in-charge sees it through the waiting line (`stores.runningOut`); the card is for a hospital-scope holder.
+ * Quantities and item counts only, never money (the budget word is on the draft itself).
+ */
+export const storesTopUpDesk: DeskProvider = {
+  key: "stores.topup", permission: STORES_SHELF_WORK,
+  load: async (ctx) => {
+    const props = await myTopUps(ctx.db, ctx.actor, ctx.now);
+    const sections = props.flatMap((p) => p.sections.map((s) => ({ p, s })));
+    if (sections.length === 0) return [];
+    const lines = sections.reduce((n, x) => n + x.s.lines.length, 0);
+    return [{
+      key: "stores.topup", band: "now", titleKey: "stores.now.runningOut",
+      stats: [{ key: "count", value: String(lines), href: "/stores/topup" }],
+      rows: sections.slice(0, MAX_ROWS).map(({ p, s }) => ({
+        id: s.draftId, badge: s.lines.some((l) => l.urgent) ? "!" : null, title: s.shelfName, subtitle: `${p.departmentName} · ${String(s.lines.length)}`,
+        action: "Open", href: "/stores/topup", severity: s.lines.some((l) => l.urgent) ? "hot" as const : "warn" as const,
+      })),
+    }];
+  },
+  waiting: async (ctx) => {
+    const props = await myTopUps(ctx.db, ctx.actor, ctx.now);
+    const n = props.reduce((a, p) => a + p.runOut.count, 0);
+    const item = waitingItem("stores.runningOut", n, null);
+    return item === null ? [] : [item];
+  },
+  waitingSelfGated: true,
+};
+
 export const STORES_DESK_PROVIDERS = [
   storesApproveDesk, storesPickDesk, storesReceiveDesk, storesTakeBackDesk, storesStuckDesk, storesFaultsDesk, storesCondemnDesk, storesPurchaseApproveDesk,
-  storesAwardSignDesk, storesServicesDesk, storesMsmeDueDesk, storesFlagsDesk,
+  storesAwardSignDesk, storesServicesDesk, storesMsmeDueDesk, storesFlagsDesk, storesTopUpDesk,
 ] as const;

@@ -1744,6 +1744,13 @@
       "when": 1795125579347,
       "tag": "0249_stores_s6c",
       "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1795130065104,
+      "tag": "0250_stores_s7",
+      "breakpoints": true
     }
   ]
 }

@@ -225,6 +225,7 @@ Source: `apps/core/src/modules/stores/`
   - `storesServicesDesk: DeskProvider`
   - `storesStuckDesk: DeskProvider`
   - `storesTakeBackDesk: DeskProvider`
+  - `storesTopUpDesk: DeskProvider`
 - `errors.ts`
   - `STORES_ERROR_CODES`
   - `class StoresError`
@@ -295,6 +296,11 @@ Source: `apps/core/src/modules/stores/`
   - `msmeObjections(db: Db, actor: Actor): Promise<{ id: string; kind: "qc_rejection" | "short"; vendorName: string; doc: { type: "grn" | "ses";…`
   - `onTheClock(v: Pick<VendorRow, "msmeClass" | "msmeActivity">, tradersOnClock: boolean): boolean`
   - `recordMsmeObjection(db: Db, actor: Actor, input: { grnId?: string | null; sesId?: string | null; kind: "qc_rejection" | "short"; raisedOn: …`
+- `par-suggestions.ts`
+  - `acceptParSuggestion(db: Db, actor: Actor, suggestionId: string, edit: StoresPar | null, now: Date = new Date()): Promise<{ par: StoresPar; …`
+  - `keepParSuggestion(db: Db, actor: Actor, suggestionId: string, now: Date = new Date()): Promise<{ actId: string }>`
+  - `parSuggestions(db: Db, actor: Actor, now: Date = new Date(), opts: { all?: boolean } = {}): Promise<WireParSuggestion[]>`
+  - `suggestPars(db: Db, now: Date = new Date()): Promise<number>`
 - `paying-book.ts`
   - `bookDraft(db: Db, actor: Actor, kind: "grn" | "ses", id: string): Promise<WirePayBookDraft>`
   - `bookFromDesk(db: Db, actor: Actor, input: { kind: "grn" | "ses"; id: string; vendorBillNo: string; billDate: string; irn?: string | null; l…`
@@ -319,6 +325,39 @@ Source: `apps/core/src/modules/stores/`
   - types: `PayingSwitches`
 - `pdf-text.ts`
   - `pdfPages(bytes: Buffer): PdfPage[]`
+- `planner-central.ts`
+  - `planCentral(db: Db, now: Date): Promise<CentralRun>`
+- `planner-core.ts`
+  - `PLANNER_AGENT: Actor`
+  - `PROPOSAL_CAP`
+  - `STORES_PLANNER_MANAGE`
+  - `recheckShelfItem(tx: Tx, shelf: ShelfCtx, it: { id: string; trackMode: string }, source: "use" | "receipt", now: Date): Promise<void>`
+- `planner-night.ts`
+  - `plannerNightOf(now: Date): string | null`
+  - `runPlannerNight(db: Db, now: Date = new Date()): Promise<PlannerNightRun>`
+  - `runPlannerNightIfDue(db: Db, now: Date = new Date()): Promise<PlannerNightRun | null>`
+  - types: `PlannerNightRun`
+- `planner-score.ts`
+  - `NO_WARNING_WINDOW_MS`
+  - `plannerMonthly(db: Db | Tx, month: string): Promise<WirePlannerMonthly>`
+  - `plannerScore(db: Db | Tx, departmentId: string, from: Date, to: Date): Promise<WirePlannerScore>`
+  - `stockOutsWithoutWarning(db: Db | Tx, from: Date, to: Date): Promise<{ count: number; events: StockOutEvent[] }>`
+- `planner.ts`
+  - `BUDGET_DRAFT_WORDS`
+  - `NOT_NOW_REASONS`
+  - `PLANNER_TOOLS`
+  - `approvePlannerT3(db: Db, actor: Actor, departmentId: string, now: Date = new Date()): Promise<WirePlannerSettings>`
+  - `departmentPlannerScore(db: Db, actor: Actor, departmentId: string, now: Date = new Date()): Promise<WirePlannerScore>`
+  - `myTopUps(db: Db | Tx, actor: Actor, now: Date = new Date()): Promise<WireTopUpProposal[]>`
+  - `notNowTopUp(db: Db, actor: Actor, draftId: string, reason: string | null, now: Date = new Date()): Promise<{ actId: string }>`
+  - `plannerForecast(db: Db | Tx, storeId: string, itemId: string): Promise<WirePlannerForecast | null>`
+  - `plannerMonthlyLine(db: Db, actor: Actor, month?: string, now: Date = new Date()): Promise<WirePlannerMonthly>`
+  - `plannerSettingsView(db: Db | Tx, departmentId: string | null): Promise<WirePlannerSettings>`
+  - `plannerTrail(db: Db | Tx, actor: Actor, shelfId: string, itemId: string): Promise<WirePlannerTrailRow[]>`
+  - `returnSlowStock(db: Db, actor: Actor, draftId: string, now: Date = new Date()): Promise<{ transferIds: string[]; actId: string }>`
+  - `sendTopUp(db: Db, actor: Actor, draftId: string, input: { lines?: readonly { itemId: string; qty: number }[] }, now: Date = new Date()): Pr…`
+  - `setPlannerSettings(db: Db, actor: Actor, input: { departmentId?: string | null; paused?: boolean; t3?: boolean; safetyDays?: unknown; cover…`
+  - `topUpProposal(db: Db | Tx, actor: Actor, departmentId: string, now: Date = new Date()): Promise<WireTopUpProposal | null>`
 - `purchase-delivery.ts`
   - `purchaseDeliveries(db: Db | Tx, prId: string): Promise<{ lineIdx: number; qtyBase: number; indentId: string; grnId: string; at: string }[]>`
 - `purchase-requests.ts`
@@ -475,7 +514,7 @@ Source: `apps/core/src/modules/stores/`
 
 ## Tables (`kernel/db/schema/stores.ts`)
 
-`stores_agent_proposal_steps`, `stores_agent_proposals`, `stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_audit_flag_reviews`, `stores_audit_flags`, `stores_award_lines`, `stores_award_signatures`, `stores_awards`, `stores_bill_hold_steps`, `stores_bill_holds`, `stores_buy_exception_steps`, `stores_buy_exceptions`, `stores_buy_group_moves`, `stores_buy_groups`, `stores_client_keys`, `stores_committee_seats`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_msme_objection_closes`, `stores_msme_objections`, `stores_nudges`, `stores_over_budget_marks`, `stores_paying_settings`, `stores_picking_claims`, `stores_po_advance_steps`, `stores_po_advances`, `stores_pr_band_settings`, `stores_pr_deliveries`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_quote_admissions`, `stores_quote_lines`, `stores_quote_technical`, `stores_quotes`, `stores_rfq_invitees`, `stores_rfq_lines`, `stores_rfq_steps`, `stores_rfqs`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_service_entries`, `stores_service_entry_lines`, `stores_tag_decisions`, `stores_tally_ledgers`, `stores_tax_table_signs`, `stores_tax_tables`, `stores_tds_certificates`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
+`stores_agent_proposal_steps`, `stores_agent_proposals`, `stores_asset_unit_events`, `stores_asset_units`, `stores_asset_verifications`, `stores_audit_flag_reviews`, `stores_audit_flags`, `stores_award_lines`, `stores_award_signatures`, `stores_awards`, `stores_bill_hold_steps`, `stores_bill_holds`, `stores_buy_exception_steps`, `stores_buy_exceptions`, `stores_buy_group_moves`, `stores_buy_groups`, `stores_client_keys`, `stores_committee_seats`, `stores_condemnation_signatures`, `stores_condemnation_steps`, `stores_condemnations`, `stores_custody_handoffs`, `stores_delegations`, `stores_delivery_lines`, `stores_department_budgets`, `stores_gate_pass_lines`, `stores_gate_pass_scans`, `stores_gate_passes`, `stores_item_requests`, `stores_msme_objection_closes`, `stores_msme_objections`, `stores_nudges`, `stores_over_budget_marks`, `stores_par_suggestions`, `stores_paying_settings`, `stores_picking_claims`, `stores_planner_drafts`, `stores_planner_forecasts`, `stores_planner_settings`, `stores_planner_warnings`, `stores_po_advance_steps`, `stores_po_advances`, `stores_pr_band_settings`, `stores_pr_deliveries`, `stores_purchase_request_lines`, `stores_purchase_request_stamps`, `stores_purchase_requests`, `stores_quote_admissions`, `stores_quote_lines`, `stores_quote_technical`, `stores_quotes`, `stores_rfq_invitees`, `stores_rfq_lines`, `stores_rfq_steps`, `stores_rfqs`, `stores_scan_confirmations`, `stores_scrap_sales`, `stores_service_entries`, `stores_service_entry_lines`, `stores_tag_decisions`, `stores_tally_ledgers`, `stores_tax_table_signs`, `stores_tax_tables`, `stores_tds_certificates`, `stores_ticket_details`, `stores_transit_resolutions`, `stores_vendor_category_approvals`
 
 Foreign keys into: `materials`, `org`, `resources`
 
@@ -486,6 +525,7 @@ Foreign keys into: `materials`, `org`, `resources`
 - `buying-desk.controller.ts` — `/stores/awards`, `/stores/buying`, `/stores/committee`, `/stores/quotes`, `/stores/rfqs`
 - `buying.controller.ts` — `/stores/budgets`, `/stores/buy`, `/stores/delegations`, `/stores/grns`, `/stores/purchase-requests`, `/stores/suppliers`
 - `paying.controller.ts` — `/stores/pay`
+- `planner.controller.ts` — `/stores/planner`
 - `stores.controller.ts` — `/stores/audit-pack`, `/stores/cards`, `/stores/categories`, `/stores/charge`, `/stores/custody`, `/stores/gate-passes`, `/stores/items`, `/stores/my-shelves`, `/stores/par`, `/stores/pickers`, `/stores/requests`, `/stores/returns`, `/stores/search`, `/stores/shelves`, `/stores/stores`, `/stores/tickets`, `/stores/tower`, `/stores/transit-losses`, `/stores/who-to-ask`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/stores`

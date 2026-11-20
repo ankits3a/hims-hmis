@@ -4,6 +4,7 @@ import { StoresBuyerAgentController } from "./buyer-agent.controller";
 import { StoresBuyingController } from "./buying.controller";
 import { StoresBuyingDeskController } from "./buying-desk.controller";
 import { StoresPayingController } from "./paying.controller";
+import { StoresPlannerController } from "./planner.controller";
 import { StoresController } from "./stores.controller";
 import { registerStoresPrinting } from "./voucher";
 import type { OnModuleInit } from "@nestjs/common";
@@ -20,7 +21,11 @@ import type { OnModuleInit } from "@nestjs/common";
   // S5c (#1115): the buyer agent's drafts, the quote PDF reader, the scorecard, exceptions, advances (`buyer-agent.controller.ts`).
   // S6a (#1116): the paying desk (`paying.controller.ts`, `/stores/pay/*`); it also loads the service-entry reader and the
   // payment-hold hooks materials asks (`service-entries.ts`, `holds.ts`, registered at import).
-  controllers: [StoresController, StoresAssetsController, StoresBuyingController, StoresBuyingDeskController, StoresBuyerAgentController, StoresPayingController],
+  // S7 (#1117): the stock planner (`planner.controller.ts`, `/stores/planner/*`).
+  controllers: [
+    StoresController, StoresAssetsController, StoresBuyingController, StoresBuyingDeskController, StoresBuyerAgentController, StoresPayingController,
+    StoresPlannerController,
+  ],
 })
 export class StoresModule implements OnModuleInit {
   onModuleInit(): void {

@@ -6,6 +6,7 @@ import { balances, fefoPick, getBatch, getTransfer, postMovements, receiveStock 
 import { recordAct, requireShelf, requireShelfAct } from "./access";
 import { StoresError } from "./errors";
 import { listStoresItems, requireStoresItem } from "./items";
+import { recheckShelfItem } from "./planner-core";
 import type { MovementInput } from "../materials";
 import type { CheckResult, ReorderDraftLine, TrackMode } from "./types";
 import type { Actor } from "@hmis/contracts";
@@ -83,6 +84,8 @@ export async function receiveAtShelf(
 
     const after = new Map<string, number>();
     for (const id of itemIds) after.set(id, await onHand(tx, shelf.id, id));
+    // S7 (#1117, decision 5): each item received is re-checked against its stored forecast, in this transaction.
+    for (const id of itemIds) await recheckShelfItem(tx, shelf, { id, trackMode: modes.get(id) ?? "shelf" }, "receipt", now);
     const single = itemIds.length === 1 ? itemIds[0]! : null;
     await recordAct(tx, actor, now, {
       act: "receive", storeId: shelf.id, itemId: single, refId: transferId, reason: result.shortfalls.length > 0 ? "short" : null,
@@ -113,6 +116,8 @@ export async function recordShelfUse(
       refType: SHELF_USE_REF, refId: useId, costCenter: shelf.departmentCode, occurredAt: now,
     })));
     await recordAct(tx, actor, now, { act: "use", storeId: shelf.id, itemId: item.id, refId: useId, before, after: before - input.qty });
+    // S7 (#1117, decision 5): the planner's check of this one item against its stored forecast, in this transaction.
+    await recheckShelfItem(tx, shelf, { id: item.id, trackMode: item.trackMode }, "use", now);
     return { ledgerEntryIds: posted.map((p) => p.ledgerEntryId) };
   });
 }

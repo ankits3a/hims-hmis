@@ -1373,6 +1373,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // STORES S6a (#1116, decision 8; ruling 0101 Q6) — releases or keeps a payment hold up to ₹50,000, never on a bill it
       // booked or whose PO it approved (asked in the intent).
       "stores.holds.release",
+      // STORES S7 (#1117, decision 14) — the stock planner: pause it per department, the safety-days table, and the T3
+      // switch (only when the planner's score passes and the owner approved it for that department).
+      "stores.planner.manage",
     ],
   },
   {

@@ -61,6 +61,11 @@ export const STORES_ACTS = [
   // S6c (#1116): the auditor's night (refId null; after.flags), a person's review of a flag (refId = the flag), a service entry
   // reversed (refId = the reversing sheet; after.reverses = the first).
   "auditor_night", "audit_flag_review", "ses_reverse",
+  // S7 (#1117): the stock planner — a warning and its end (storeId + itemId), a draft line (refId = the draft), a person's
+  // send / not now / return (refId = the draft), a withdrawal, a slow-stock card, a par suggestion accepted or kept (refId =
+  // the suggestion), the settings and the owner's T3 approval (refId = the row), the night's marker.
+  "planner_warning", "planner_recovered", "planner_draft", "planner_send", "planner_not_now", "planner_return", "planner_withdraw", "planner_slow",
+  "planner_par_accept", "planner_par_keep", "planner_settings", "planner_t3_approve", "planner_night",
 ] as const;
 export type StoresAct = (typeof STORES_ACTS)[number];
 

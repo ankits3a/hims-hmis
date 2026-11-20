@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { grnLines, grns, itemCategories, items, purchaseOrders, stockBatches, storeIndents, supplierBills, transferLines, transfers, vendors } from "./materials";
 import { orgDepartments } from "./org";
 import { resources } from "./resources";
@@ -1580,5 +1580,166 @@ export const storesAuditFlagReviews = pgTable(
     uniqueIndex("stores_audit_flag_reviews_flag_ux").on(t.flagId),
     index("stores_audit_flag_reviews_at_idx").on(t.at),
     check("stores_audit_flag_reviews_ck", sql`${t.verdict} in ('upheld', 'dismissed') and length(${t.note}) > 0`),
+  ],
+);
+
+// ═══════════════════════════ STORES S7 (#1117): THE STOCK PLANNER ═══════════════════════════
+
+/**
+ * One forecast the planner acted on, with everything it was computed from (`inputs`: the history window, the weekly use,
+ * the method and its measured error, the season factor; for the central store also lead time, safety days and cover), so
+ * any warning or draft can be re-derived. `store_id` is a shelf (`scope = 'shelf'`) or a central/sub Stores store
+ * (`'central'`). `method`: `learning` (under 8 weeks of history: S1's par rule), `plain`, `workload`. APPEND-ONLY (0250).
+ */
+export const storesPlannerForecasts = pgTable(
+  "stores_planner_forecasts",
+  {
+    id: text("id").primaryKey(),
+    storeId: text("store_id").notNull(),
+    itemId: text("item_id").notNull(),
+    departmentId: text("department_id"),
+    scope: text("scope").notNull(),
+    method: text("method").notNull(),
+    weeks: integer("weeks").notNull(),
+    usePerDay: doublePrecision("use_per_day").notNull(),
+    onHand: integer("on_hand").notNull(),
+    onWay: integer("on_way").notNull(),
+    minBase: integer("min_base"),
+    reorderBase: integer("reorder_base"),
+    maxBase: integer("max_base"),
+    hoursToZero: doublePrecision("hours_to_zero"),
+    inputs: jsonb("inputs").notNull(),
+    madeBy: text("made_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_planner_forecasts_item_idx").on(t.storeId, t.itemId, t.at),
+    check("stores_planner_forecasts_ck", sql`${t.scope} in ('shelf', 'central') and ${t.method} in ('learning', 'plain', 'workload') and ${t.usePerDay} >= 0`),
+  ],
+);
+
+/**
+ * A shelf item's warning (`warn`: hours to zero ≤ 48 or on hand ≤ reorder) and its end (`recovered`: on hand back above
+ * reorder). One live warning per shelf item: the newest row is `warn`. `source` says what checked it: the night, a "Used",
+ * a receipt. APPEND-ONLY (0250).
+ */
+export const storesPlannerWarnings = pgTable(
+  "stores_planner_warnings",
+  {
+    id: text("id").primaryKey(),
+    storeId: text("store_id").notNull(),
+    itemId: text("item_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    kind: text("kind").notNull(),
+    rule: text("rule"),
+    urgent: boolean("urgent").notNull().default(false),
+    hoursToZero: doublePrecision("hours_to_zero"),
+    onHand: integer("on_hand").notNull(),
+    onWay: integer("on_way").notNull(),
+    forecastId: text("forecast_id"),
+    source: text("source").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_planner_warnings_item_idx").on(t.storeId, t.itemId, t.at),
+    index("stores_planner_warnings_at_idx").on(t.at),
+    check("stores_planner_warnings_ck", sql`${t.kind} in ('warn', 'recovered') and ${t.source} in ('night', 'use', 'receipt')
+      and (${t.rule} is null or ${t.rule} in ('hours', 'reorder'))`),
+  ],
+);
+
+/**
+ * The planner's drafts, as steps: `open` (a shelf's draft: `proposal` = `topup` or `slow`), `line` (an item joins it, with
+ * the planner's quantity, its warning and forecast), `line_withdrawn`, and one closing step: `sent` (the person's numbers
+ * beside the planner's in `data.lines`, the ticket), `not_now` (a reason chip), `withdrawn` (stock arrived). Status is
+ * derived. APPEND-ONLY (0250); one closing step per draft (partial unique index).
+ */
+export const storesPlannerDrafts = pgTable(
+  "stores_planner_drafts",
+  {
+    id: text("id").primaryKey(),
+    draftId: text("draft_id").notNull(),
+    kind: text("kind").notNull(),
+    proposal: text("proposal").notNull(),
+    storeId: text("store_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    itemId: text("item_id"),
+    qty: integer("qty"),
+    warningId: text("warning_id"),
+    forecastId: text("forecast_id"),
+    indentId: text("indent_id"),
+    reason: text("reason"),
+    data: jsonb("data"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_planner_drafts_draft_idx").on(t.draftId),
+    index("stores_planner_drafts_store_idx").on(t.storeId, t.at),
+    uniqueIndex("stores_planner_drafts_close_ux").on(t.draftId).where(sql`${t.kind} in ('sent', 'not_now', 'withdrawn')`),
+    check("stores_planner_drafts_ck", sql`${t.kind} in ('open', 'line', 'line_withdrawn', 'sent', 'not_now', 'withdrawn')
+      and ${t.proposal} in ('topup', 'slow') and (${t.qty} is null or ${t.qty} > 0)`),
+  ],
+);
+
+/**
+ * Quarterly par suggestions (decision 8) and their outcome: `suggested` (old par beside the new, the use per day and the
+ * supply interval they came from), then one of `accepted` (the par written, edits kept beside the suggestion) or `kept`.
+ * One suggestion per shelf item per quarter. APPEND-ONLY (0250).
+ */
+export const storesParSuggestions = pgTable(
+  "stores_par_suggestions",
+  {
+    id: text("id").primaryKey(),
+    suggestionId: text("suggestion_id").notNull(),
+    kind: text("kind").notNull(),
+    storeId: text("store_id").notNull(),
+    itemId: text("item_id").notNull(),
+    departmentId: text("department_id").notNull(),
+    quarter: text("quarter").notNull(),
+    oldMin: integer("old_min"),
+    oldReorder: integer("old_reorder"),
+    oldMax: integer("old_max"),
+    minBase: integer("min_base").notNull(),
+    reorderBase: integer("reorder_base").notNull(),
+    maxBase: integer("max_base").notNull(),
+    usePerDay: doublePrecision("use_per_day").notNull(),
+    supplyIntervalDays: doublePrecision("supply_interval_days").notNull(),
+    inputs: jsonb("inputs").notNull(),
+    confirmId: text("confirm_id"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("stores_par_suggestions_once_ux").on(t.storeId, t.itemId, t.quarter).where(sql`${t.kind} = 'suggested'`),
+    uniqueIndex("stores_par_suggestions_close_ux").on(t.suggestionId).where(sql`${t.kind} in ('accepted', 'kept')`),
+    index("stores_par_suggestions_store_idx").on(t.storeId, t.at),
+    check("stores_par_suggestions_ck", sql`${t.kind} in ('suggested', 'accepted', 'kept') and ${t.minBase} >= 0 and ${t.minBase} <= ${t.reorderBase}
+      and ${t.reorderBase} < ${t.maxBase}`),
+  ],
+);
+
+/**
+ * The planner's settings, versioned (every change a new row; the newest per department wins; `department_id` null = the
+ * hospital's safety-days and cover table). `kind = 'settings'` (paused, the T3 switch, the tables) or `owner_t3` (the
+ * owner's approval of T3 for a department, which the switch needs). APPEND-ONLY (0250).
+ */
+export const storesPlannerSettings = pgTable(
+  "stores_planner_settings",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    departmentId: text("department_id"),
+    paused: boolean("paused").notNull().default(false),
+    t3: boolean("t3").notNull().default(false),
+    safetyDays: jsonb("safety_days"),
+    coverDays: jsonb("cover_days"),
+    reason: text("reason"),
+    by: text("by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("stores_planner_settings_dept_idx").on(t.departmentId, t.at),
+    check("stores_planner_settings_ck", sql`${t.kind} in ('settings', 'owner_t3')`),
   ],
 );

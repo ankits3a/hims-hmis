@@ -1,6 +1,6 @@
 ---
 issue: 1117
-status: approved
+status: built
 approved: 2026-11-19
 ---
 # SPEC: Stores S7, the stock planner agent: cover, early warnings, top-up and purchase drafts, par suggestions (#1117) — APPROVED by owner 2026-11-19 (decision 0101)

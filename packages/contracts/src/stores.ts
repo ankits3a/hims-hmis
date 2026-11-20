@@ -267,7 +267,8 @@ export const STORES_TOWER_CLOCKS = ["approval", "pick", "leg", "custody", "short
 export type StoresTowerClock = (typeof STORES_TOWER_CLOCKS)[number];
 /** The red-card strip's kinds (decision 4). */
 /** S4 (#1114) adds four: calibration overdue, AMC lapsed, a missing asset, units ≠ ledger. */
-export const STORES_RED_CARD_KINDS = ["stuck", "short", "out", "pass", "over_book", "calibration", "amc", "missing", "units_ledger"] as const;
+/** S7 (#1117) adds one: a shelf item that ran out with no planner warning 24 h before (`no_warning`). */
+export const STORES_RED_CARD_KINDS = ["stuck", "short", "out", "pass", "over_book", "calibration", "amc", "missing", "units_ledger", "no_warning"] as const;
 export type StoresRedCardKind = (typeof STORES_RED_CARD_KINDS)[number];
 
 /** One ticket on the board. No patient field and no money: the key set is pinned by spec #1113 D6. */
@@ -975,3 +976,57 @@ export type WireMsmeDuesReport = {
 };
 /** S6c: a department's sheet as its confirmer lists it — reversed (a reversing sheet names it) or itself a reversal. */
 export type WireServiceEntryRow = WireServiceEntry & { reversed: boolean; reversal: boolean };
+
+// ── S7 (#1117): the stock planner ──
+/** A line's status word: "Low / कम", "Runs out soon / जल्द खत्म", "Learning / सीख रहा". */
+export type StoresPlannerWord = "low" | "runs_out_soon" | "learning";
+export type StoresPar = { minBase: number; reorderBase: number; maxBase: number };
+/** One line of a shelf's top-up draft. Every number in `why` is the forecast row's (`forecastId`); the model writes none. */
+export type WireTopUpLine = {
+  itemId: string; code: string; name: string; qty: number; onHand: number; onWay: number; usePerDay: number;
+  word: StoresPlannerWord; words: [string, string]; why: [string, string]; urgent: boolean;
+  /** Weeks of history when the item is still learning (under 8): "Learning, 3 of 8 weeks". */
+  learningWeeks: number | null; forecastId: string | null; warningId: string | null;
+};
+export type WireTopUpSection = {
+  draftId: string; shelfId: string; shelfName: string; status: "open" | "sent" | "not_now" | "withdrawn";
+  /** "Budget 80% used" or "Over budget" once this draft is added to the month; null when below 80 % or no budget is set. */
+  budget: { pct: number; over: boolean; words: [string, string] } | null;
+  /** "Store is short / स्टोर में कम" when the supplying store holds less than a line asks (edge 5). */
+  storeShort?: boolean;
+  lines: WireTopUpLine[];
+};
+/** A shelf item not used in 90 days: "Not used in 90 days, return?" with Return (a return ticket, S2). */
+export type WireSlowStockCard = { draftId: string; shelfId: string; shelfName: string; lines: { itemId: string; name: string; onHand: number }[] };
+/** A department's one top-up proposal (decision 6): a section per shelf, each sent as its own ticket. */
+export type WireTopUpProposal = {
+  departmentId: string; departmentName: string;
+  /** The Now card: "3 run out in 2 days"; urgent: "Runs out today". */
+  runOut: { count: number; days: number; urgent: boolean };
+  sections: WireTopUpSection[];
+  slow: WireSlowStockCard[];
+};
+export type WireParSuggestion = {
+  id: string; shelfId: string; shelfName: string; itemId: string; itemName: string; quarter: string;
+  now: StoresPar | null; suggested: StoresPar; usePerDay: number; supplyIntervalDays: number; why: [string, string];
+  status: "open" | "accepted" | "kept";
+};
+export type WirePlannerForecast = {
+  id: string; storeId: string; itemId: string; scope: "shelf" | "central"; method: "learning" | "plain" | "workload"; weeks: number;
+  learning: boolean; learningWords: [string, string] | null; usePerDay: number; onHand: number; onWay: number; hoursToZero: number | null;
+  inputs: Record<string, unknown>; at: string;
+};
+/** The owner's and the materials head's monthly line: "Stock-outs without warning: 0 · Drafts unchanged: 93%". */
+export type WirePlannerMonthly = { month: string; stockOutsWithoutWarning: number; unchangedPct: number | null };
+export type WirePlannerScore = {
+  departmentId: string; from: string; to: string; weeks: number; sent: number; sentUnchanged: number; unchangedPct: number | null;
+  stockOutsWithoutWarning: number; passes: boolean;
+};
+export type WirePlannerSettings = {
+  departmentId: string | null; paused: boolean; t3: boolean; ownerApproved: boolean;
+  safetyDays: { V: number; E: number; D: number }; coverDays: { A: number; B: number; C: number };
+};
+export type WirePlannerTrailRow = {
+  kind: "forecast" | "warning" | "recovered" | "draft" | "line_withdrawn" | "not_now" | "withdrawn" | "ticket";
+  at: string; id: string; refId: string | null; detail: Record<string, unknown>;
+};

@@ -3096,7 +3096,7 @@
         "today_one": "रिमाइंडर आज",
         "today_other": "रिमाइंडर आज"
       },
-      "stores": {"indentsToApprove_one": "इंडेंट मंज़ूरी बाकी", "indentsToApprove_other": "इंडेंट मंज़ूरी बाकी", "toPick_one": "टिकट उठाना है", "toPick_other": "टिकट उठाने हैं", "toReceive_one": "सामान लेना है", "toReceive_other": "सामान लेने हैं", "condemnToSign_one": "नाकारा पर हस्ताक्षर करें", "condemnToSign_other": "नाकारा पर हस्ताक्षर करें", "purchaseToApprove_one": "खरीद मंज़ूरी बाकी", "purchaseToApprove_other": "खरीद मंज़ूरी बाकी", "awardToSign_one": "आवंटन पर हस्ताक्षर", "awardToSign_other": "आवंटन पर हस्ताक्षर", "servicesToConfirm_one": "सेवा की पुष्टि करें", "servicesToConfirm_other": "सेवाओं की पुष्टि करें", "flagsToReview_one": "जाँच का संकेत", "flagsToReview_other": "जाँच के संकेत"},
+      "stores": {"indentsToApprove_one": "इंडेंट मंज़ूरी बाकी", "indentsToApprove_other": "इंडेंट मंज़ूरी बाकी", "toPick_one": "टिकट उठाना है", "toPick_other": "टिकट उठाने हैं", "toReceive_one": "सामान लेना है", "toReceive_other": "सामान लेने हैं", "condemnToSign_one": "नाकारा पर हस्ताक्षर करें", "condemnToSign_other": "नाकारा पर हस्ताक्षर करें", "purchaseToApprove_one": "खरीद मंज़ूरी बाकी", "purchaseToApprove_other": "खरीद मंज़ूरी बाकी", "awardToSign_one": "आवंटन पर हस्ताक्षर", "awardToSign_other": "आवंटन पर हस्ताक्षर", "servicesToConfirm_one": "सेवा की पुष्टि करें", "servicesToConfirm_other": "सेवाओं की पुष्टि करें", "flagsToReview_one": "जाँच का संकेत", "flagsToReview_other": "जाँच के संकेत", "runningOut_one": "सामान खत्म होने को", "runningOut_other": "सामान खत्म होने को"},
       "roster": {
         "leaveToDecide_one": "छुट्टी तय करनी है",
         "leaveToDecide_other": "छुट्टियाँ तय करनी हैं",
