@@ -80,7 +80,7 @@ function MyShelves(): React.ReactElement {
   );
 }
 
-type RoleLink = { to: "/stores/approve" | "/stores/pick" | "/stores/receive" | "/stores/porter" | "/stores/passes" | "/stores/gate" | "/stores/asset" | "/stores/assets"; label: string };
+type RoleLink = { to: "/stores/approve" | "/stores/pick" | "/stores/receive" | "/stores/porter" | "/stores/passes" | "/stores/gate" | "/stores/asset" | "/stores/assets" | "/stores/topup" | "/stores/par"; label: string };
 
 /**
  * UX pass (walk finding 13) — each person's own Stores screens, by the grants they hold at ANY scope (an HOD's
@@ -100,6 +100,9 @@ function useRoleLinks(): RoleLink[] {
   // S4a (#1114): the phone passport for a department's holders and biomedical; the assets desk for its readers.
   if (any("stores.shelf.read") || any("stores.shelf.work") || can("stores.assets.manage")) out.push({ to: "/stores/asset", label: "stores.assets.scanTitle" });
   if (can("stores.assets.read") || can("stores.assets.manage") || can("stores.assets.export")) out.push({ to: "/stores/assets", label: "nav.storesAssets" });
+  // S7 (#1117): the planner's top-up for a department's in-charge; the par suggestions for the materials head.
+  if (any("stores.shelf.work")) out.push({ to: "/stores/topup", label: "stores.planner.title" });
+  if (can(MASTERS)) out.push({ to: "/stores/par", label: "stores.planner.parLink" });
   return out;
 }
 

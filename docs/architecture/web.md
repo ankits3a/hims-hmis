@@ -131,6 +131,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/stores/buying` | `apps/web/src/screens/stores-buying` |
 | `/stores/condemn` | `apps/web/src/screens/stores-assets` |
 | `/stores/gate` | `apps/web/src/screens/stores-gate` |
+| `/stores/par` | `apps/web/src/screens/stores-par` |
 | `/stores/passes` | `apps/web/src/screens/stores-gate` |
 | `/stores/pay` | `apps/web/src/screens/stores-paying` |
 | `/stores/pick` | `apps/web/src/screens/stores-tickets` |
@@ -139,4 +140,5 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/stores/services` | `apps/web/src/screens/stores-services` |
 | `/stores/shelf/$shelfId` | `apps/web/src/screens/stores-shelf` |
 | `/stores/tickets/$indentId` | `apps/web/src/screens/stores-tickets` |
+| `/stores/topup` | `apps/web/src/screens/stores-topup` |
 | `/stores/tower` | `apps/web/src/screens/stores-tower` |
